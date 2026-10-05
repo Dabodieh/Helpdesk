@@ -1,0 +1,14 @@
+{
+  "id": "AAMkAIT-imm-005",
+  "receivedDateTime": "2026-10-05T11:00:02Z",
+  "sentDateTime": "2026-10-05T11:00:00Z",
+  "internetMessageId": "<CAF1fwd000@mail.fabrikam.example>",
+  "subject": "FW: Printer jammed [IT-42]",
+  "conversationId": "AAQkIT-conv-FWD",
+  "isDraft": false,
+  "body": { "contentType": "text", "content": "FYI, forwarding. ---- Original message ----" },
+  "from": { "emailAddress": { "address": "bob@fabrikam.example" } },
+  "internetMessageHeaders": [
+    { "name": "Message-ID", "value": "<CAF1fwd000@mail.fabrikam.example>" }
+  ]
+}

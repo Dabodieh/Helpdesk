@@ -1,0 +1,16 @@
+{
+  "id": "AAMkHR-imm-900",
+  "receivedDateTime": "2026-10-05T12:00:02Z",
+  "sentDateTime": "2026-10-05T12:00:00Z",
+  "internetMessageId": "<CAF1xmb111@mail.fabrikam.example>",
+  "subject": "RE: Printer jammed [IT-42]",
+  "conversationId": "AAQkHR-conv-X",
+  "isDraft": false,
+  "body": { "contentType": "text", "content": "Reply-all that also reached the HR mailbox. [hd:tok9f3a1c7d5e2b4a60]" },
+  "from": { "emailAddress": { "address": "alice@fabrikam.example" } },
+  "internetMessageHeaders": [
+    { "name": "Message-ID", "value": "<CAF1xmb111@mail.fabrikam.example>" },
+    { "name": "In-Reply-To", "value": "<MW4PR01MB1234-0a1b2c3d@MW4PR01MB1234.namprd01.prod.outlook.com>" },
+    { "name": "References", "value": "<CAF1abc123@mail.fabrikam.example> <MW4PR01MB1234-0a1b2c3d@MW4PR01MB1234.namprd01.prod.outlook.com>" }
+  ]
+}

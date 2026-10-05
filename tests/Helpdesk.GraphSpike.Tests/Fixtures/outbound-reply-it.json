@@ -1,0 +1,21 @@
+{
+  "id": "AAMkAIT-imm-sent-001",
+  "createdDateTime": "2026-10-05T08:10:00Z",
+  "receivedDateTime": "2026-10-05T08:10:05Z",
+  "sentDateTime": "2026-10-05T08:10:05Z",
+  "internetMessageId": "<MW4PR01MB1234-0a1b2c3d@MW4PR01MB1234.namprd01.prod.outlook.com>",
+  "subject": "RE: Printer jammed [IT-42]",
+  "parentFolderId": "AAMkAIT-folder-sentitems",
+  "conversationId": "AAQkIT-conv-A",
+  "isDraft": false,
+  "body": { "contentType": "html", "content": "<p>We are on it.</p><div style=\"display:none\">[hd:tok9f3a1c7d5e2b4a60]</div>" },
+  "sender": { "emailAddress": { "name": "IT Support", "address": "support@contoso.example" } },
+  "from": { "emailAddress": { "name": "IT Support", "address": "support@contoso.example" } },
+  "toRecipients": [ { "emailAddress": { "address": "alice@fabrikam.example" } } ],
+  "internetMessageHeaders": [
+    { "name": "Message-ID", "value": "<MW4PR01MB1234-0a1b2c3d@MW4PR01MB1234.namprd01.prod.outlook.com>" },
+    { "name": "In-Reply-To", "value": "<CAF1abc123@mail.fabrikam.example>" },
+    { "name": "References", "value": "<CAF1abc123@mail.fabrikam.example>" },
+    { "name": "x-helpdesk-token", "value": "tok9f3a1c7d5e2b4a60" }
+  ]
+}

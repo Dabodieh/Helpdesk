@@ -1,0 +1,18 @@
+{
+  "value": [
+    {
+      "subscriptionId": "sub-it-0001",
+      "clientState": "forged-value",
+      "changeType": "created",
+      "resource": "users/11111111-1111-1111-1111-111111111111/messages/AAMkAIT-imm-777",
+      "resourceData": { "id": "AAMkAIT-imm-777" }
+    },
+    {
+      "subscriptionId": "sub-unknown",
+      "clientState": "test-client-state-it",
+      "changeType": "created",
+      "resource": "users/44444444-4444-4444-4444-444444444444/messages/AAMkX-imm-1",
+      "resourceData": { "id": "AAMkX-imm-1" }
+    }
+  ]
+}

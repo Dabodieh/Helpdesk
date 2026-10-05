@@ -1,0 +1,27 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('22222222-2222-2222-2222-222222222222')/messages(internetMessageHeaders)/$entity",
+  "@odata.etag": "W/\"CQAAABYAAAAxxITfixture1\"",
+  "id": "AAMkAIT-imm-001",
+  "createdDateTime": "2026-10-05T08:00:01Z",
+  "receivedDateTime": "2026-10-05T08:00:02Z",
+  "sentDateTime": "2026-10-05T08:00:00Z",
+  "hasAttachments": false,
+  "internetMessageId": "<CAF1abc123@mail.fabrikam.example>",
+  "subject": "Printer jammed",
+  "bodyPreview": "The third floor printer is jammed again.",
+  "importance": "normal",
+  "parentFolderId": "AAMkAIT-folder-inbox",
+  "conversationId": "AAQkIT-conv-A",
+  "conversationIndex": "AdwMK1bQ6f4w3S1ZQmGq1m0lCtD0tQ==",
+  "isDraft": false,
+  "isRead": false,
+  "body": { "contentType": "text", "content": "The third floor printer is jammed again." },
+  "sender": { "emailAddress": { "name": "Alice Example", "address": "alice@fabrikam.example" } },
+  "from": { "emailAddress": { "name": "Alice Example", "address": "alice@fabrikam.example" } },
+  "toRecipients": [ { "emailAddress": { "name": "IT Support", "address": "support@contoso.example" } } ],
+  "internetMessageHeaders": [
+    { "name": "Message-ID", "value": "<CAF1abc123@mail.fabrikam.example>" },
+    { "name": "Subject", "value": "Printer jammed" },
+    { "name": "Date", "value": "Mon, 05 Oct 2026 08:00:00 +0000" }
+  ]
+}

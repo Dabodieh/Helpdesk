@@ -1,0 +1,7 @@
+{
+  "value": [
+    { "subscriptionId": "sub-it-0001", "subscriptionExpirationDateTime": "2026-10-09T08:00:00Z", "tenantId": "00000000-0000-0000-0000-000000000000", "clientState": "test-client-state-it", "lifecycleEvent": "reauthorizationRequired" },
+    { "subscriptionId": "sub-it-0001", "clientState": "test-client-state-it", "lifecycleEvent": "missed" },
+    { "subscriptionId": "sub-hr-0001", "clientState": "test-client-state-hr", "lifecycleEvent": "subscriptionRemoved" }
+  ]
+}

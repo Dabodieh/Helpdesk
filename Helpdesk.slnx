@@ -9,5 +9,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/Helpdesk.Host.Tests/Helpdesk.Host.Tests.csproj" />
     <Project Path="tests/Helpdesk.ArchitectureTests/Helpdesk.ArchitectureTests.csproj" />
+    <Project Path="tests/Helpdesk.GraphSpike.Tests/Helpdesk.GraphSpike.Tests.csproj" />
   </Folder>
 </Solution>

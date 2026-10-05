@@ -5,7 +5,7 @@
 | R-01 | Cross-department data leakage via missed authorization check | Critical | Single `IAuthorizer`, scoped query filters, 404 policy, isolation matrix tests, optional RLS (D-04) | QA/Sec |
 | R-02 | Duplicate/lost inbound mail (webhook duplicates, expiry, outages) | High | Delta query as source of truth, unique provider id constraint, reconciliation job, failed-mail visibility | Messaging |
 | R-03 | Graph subscription expiry / throttling (429) | High | Renewal + lifecycle handling, backoff honouring Retry-After, per-mailbox concurrency limit | Messaging |
-| R-04 | Graph cannot set `In-Reply-To`/`References` on outbound; broken threading | High | createReply drafts, X-headers + guarded subject token; prove in Phase 3 spike before building on it | Messaging |
+| R-04 | Graph cannot set `In-Reply-To`/`References` on outbound; broken threading | High | createReply drafts (MIME draft as documented fallback), X-headers + guarded subject token; spike (Phase 1, docs + mocks) done, **still OPEN**: must be proven on a real tenant (runbook E-21..E-26) before Phase 3 builds on it. Note `x-` headers do not return in customer replies, so threading relies on Exchange setting `In-Reply-To`/`References` on the reply draft (ADR-011) | Messaging |
 | R-05 | Ticket hijack/spoofing through subject token or forged sender | High | Token honoured only for known participants; SPF/DKIM/DMARC results (Authentication-Results) considered; no auto-privilege from email | Messaging/QA |
 | R-06 | Malicious HTML/attachments | High | Sanitisation, sandboxed rendering, CSP, validation, AV hook | Backend/QA |
 | R-07 | Graph credential compromise reaching all mailboxes | Critical | Application access policy scoped to department mailboxes, cert credentials, rotation | Messaging |

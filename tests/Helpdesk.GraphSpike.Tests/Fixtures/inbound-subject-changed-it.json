@@ -1,0 +1,16 @@
+{
+  "id": "AAMkAIT-imm-004",
+  "receivedDateTime": "2026-10-05T10:00:02Z",
+  "sentDateTime": "2026-10-05T10:00:00Z",
+  "internetMessageId": "<CAF1ghi789@mail.fabrikam.example>",
+  "subject": "Totally different subject",
+  "conversationId": "AAQkIT-conv-NEW-after-subject-change",
+  "isDraft": false,
+  "body": { "contentType": "text", "content": "Changed the subject line while replying." },
+  "from": { "emailAddress": { "address": "alice@fabrikam.example" } },
+  "internetMessageHeaders": [
+    { "name": "Message-ID", "value": "<CAF1ghi789@mail.fabrikam.example>" },
+    { "name": "In-Reply-To", "value": "<MW4PR01MB1234-0a1b2c3d@MW4PR01MB1234.namprd01.prod.outlook.com>" },
+    { "name": "References", "value": "<CAF1abc123@mail.fabrikam.example> <MW4PR01MB1234-0a1b2c3d@MW4PR01MB1234.namprd01.prod.outlook.com>" }
+  ]
+}

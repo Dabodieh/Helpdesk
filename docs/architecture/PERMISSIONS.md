@@ -55,3 +55,7 @@ Example: User A = IT: TeamLead, Facilities: Agent, HR: none → sees IT and Faci
 
 ## Tooling
 Policy-style authorization handlers sit behind `IAuthorizer`; endpoint filters make a missing declaration a startup/architecture-test failure.
+
+## Phase 1 implementation notes
+- The frontend infers a platform admin's administrative permissions for departments without a membership from the permission catalogue (a hardcoded list in `src/web/src/api/permissions.ts`); this is UX only and tracked in BACKLOG ("single source for UI hints").
+- Enforcement rule 4 (EF department query filter) is deferred until ticket tables exist (Phase 2); Phase 1 org tables are protected by authorizer checks and, for lists, by query-level filtering.

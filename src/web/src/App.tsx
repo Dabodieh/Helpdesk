@@ -1,38 +1,41 @@
-import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
-import { BrowserRouter, Link, Route, Routes } from 'react-router-dom'
-import { fetchHealth } from './api/health'
+import { QueryClientProvider, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { setUnauthorizedHandler } from './api/http'
+import { createQueryClient, endSession } from './queryClient'
+import RequireAuth from './components/RequireAuth'
+import DepartmentPage from './pages/DepartmentPage'
+import DepartmentsPage from './pages/DepartmentsPage'
+import StatusPage from './pages/StatusPage'
+import TeamPage from './pages/TeamPage'
 
-const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
-})
+export function AppRoutes() {
+  const qc = useQueryClient()
+  useEffect(() => {
+    // Any 401 means the session ended: drop cached data and show the sign-in screen.
+    setUnauthorizedHandler(() => endSession(qc))
+    return () => setUnauthorizedHandler(null)
+  }, [qc])
 
-function StatusPage() {
-  const { data, isPending, isError } = useQuery({
-    queryKey: ['health', 'ready'],
-    queryFn: () => fetchHealth('/health/ready'),
-  })
   return (
-    <section aria-labelledby="status-heading">
-      <h1 id="status-heading">System status</h1>
-      <p role="status">
-        {isPending ? 'Checking…' : isError ? 'API unreachable' : `API: ${data.status}`}
-      </p>
-    </section>
+    <Routes>
+      <Route element={<RequireAuth />}>
+        <Route index element={<DepartmentsPage />} />
+        <Route path="departments/:departmentId" element={<DepartmentPage />} />
+        <Route path="departments/:departmentId/teams/:teamId" element={<TeamPage />} />
+        <Route path="status" element={<StatusPage />} />
+        <Route path="*" element={<p>Page not found.</p>} />
+      </Route>
+    </Routes>
   )
 }
 
 export default function App() {
+  const [client] = useState(createQueryClient)
   return (
-    <QueryClientProvider client={queryClient}>
+    <QueryClientProvider client={client}>
       <BrowserRouter>
-        <nav aria-label="Main">
-          <Link to="/">Status</Link>
-        </nav>
-        <main>
-          <Routes>
-            <Route path="/" element={<StatusPage />} />
-          </Routes>
-        </main>
+        <AppRoutes />
       </BrowserRouter>
     </QueryClientProvider>
   )

@@ -1,6 +1,6 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
-COPY global.json Directory.Build.props Directory.Packages.props ./
+COPY global.json Directory.Build.props Directory.Packages.props .editorconfig ./
 # Project files first so the restore layer is cached until a dependency changes.
 COPY src/Helpdesk.SharedKernel/Helpdesk.SharedKernel.csproj src/Helpdesk.SharedKernel/
 COPY src/Helpdesk.Modules.Audit/Helpdesk.Modules.Audit.csproj src/Helpdesk.Modules.Audit/

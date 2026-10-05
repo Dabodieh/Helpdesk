@@ -1,0 +1,14 @@
+{
+  "id": "AAMkAIT-imm-003",
+  "receivedDateTime": "2026-10-05T09:30:02Z",
+  "sentDateTime": "2026-10-05T09:30:00Z",
+  "internetMessageId": "<gateway-77aa@relay.fabrikam.example>",
+  "subject": "RE: Printer jammed",
+  "conversationId": "AAQkIT-conv-A",
+  "isDraft": false,
+  "body": { "contentType": "text", "content": "Replied through a gateway that dropped threading headers." },
+  "from": { "emailAddress": { "address": "alice@fabrikam.example" } },
+  "internetMessageHeaders": [
+    { "name": "Message-ID", "value": "<gateway-77aa@relay.fabrikam.example>" }
+  ]
+}

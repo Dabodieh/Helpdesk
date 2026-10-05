@@ -12,4 +12,4 @@ Mail module owns IMailProvider; only MicrosoftGraphMailProvider implemented. Inb
 Direct Graph calls from ticketing (lock-in); IMAP polling first (weaker for M365 scale and auth).
 
 ## Consequences
-+ Provider swap without domain change. - Interface shape must be validated by the Phase 3 spike; R-04 outbound-header risk.
++ Provider swap without domain change. - Interface shape must be validated by the Phase 3 spike; R-04 outbound-header risk. Refined by ADR-010 and ADR-011 (Graph correlation, idempotency, subscription policy).

@@ -14,7 +14,10 @@ services:
       timeout: 3s
       retries: 10
 
+  # Not needed before Phase 3 (attachments). Opt-in: `docker compose --profile storage up -d`.
+  # The public minio/minio image is no longer published on Docker Hub; pick the object-store image/provider (OPEN_DECISIONS D-15) before Phase 3.
   minio:
+    profiles: [storage]
     image: minio/minio:latest
     command: server /data --console-address ":9001"
     environment:

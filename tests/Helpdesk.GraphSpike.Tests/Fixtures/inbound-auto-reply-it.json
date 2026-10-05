@@ -1,0 +1,17 @@
+{
+  "id": "AAMkAIT-imm-006",
+  "receivedDateTime": "2026-10-05T13:00:02Z",
+  "sentDateTime": "2026-10-05T13:00:00Z",
+  "internetMessageId": "<oof-5521@mail.fabrikam.example>",
+  "subject": "Automatic reply: RE: Printer jammed [IT-42]",
+  "conversationId": "AAQkIT-conv-A",
+  "isDraft": false,
+  "body": { "contentType": "text", "content": "I am out of office." },
+  "from": { "emailAddress": { "address": "alice@fabrikam.example" } },
+  "internetMessageHeaders": [
+    { "name": "Message-ID", "value": "<oof-5521@mail.fabrikam.example>" },
+    { "name": "In-Reply-To", "value": "<MW4PR01MB1234-0a1b2c3d@MW4PR01MB1234.namprd01.prod.outlook.com>" },
+    { "name": "Auto-Submitted", "value": "auto-replied" },
+    { "name": "X-Auto-Response-Suppress", "value": "All" }
+  ]
+}

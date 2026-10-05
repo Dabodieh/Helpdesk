@@ -76,3 +76,10 @@ MinIO console at http://localhost:9001 (credentials from `.env`). Used from Phas
 
 ## Debugging
 Serilog writes structured logs to the console. Set `OTEL_EXPORTER_OTLP_ENDPOINT` to export traces.
+
+## Local environment notes (verified Phase 1)
+- If host port 5432 is taken, set `POSTGRES_PORT` in `.env` (e.g. 5433) and use the same port in `Database__ConnectionString` / `HELPDESK_TEST_DB`.
+- MinIO is opt-in (`docker compose --profile storage up -d`): the public `minio/minio` image is no longer pullable, and nothing before Phase 3 uses it (D-17).
+- Host image: `docker build -f docker/host.Dockerfile -t helpdesk-host:local .`; migrate with `docker run --rm --network <compose-net> -e Database__ConnectionString=... helpdesk-host:local migrate`. In `Development` inside a container also set `Urls=http://+:8080` (appsettings.Development.json binds localhost:5080).
+- No local .NET 10 SDK? Run any dotnet command in `mcr.microsoft.com/dotnet/sdk:10.0` with the repo mounted and the compose network attached (set `HELPDESK_TEST_DB` to the compose service host).
+- Expected noise: `migrate` logs EF "Failed executing DbCommand" at ERR for the history-table probe on a fresh database, and Npgsql may print `libgssapi_krb5.so.2` on slim images; both are harmless.

@@ -22,3 +22,10 @@
 - Rate limiting (per-user API, per-IP anonymous/webhook)
 - Dedicated DB roles/grants (app role vs migration role); deployment step for `migrate`
 - Move `/api/me` permission-list logic into `IAuthorizer` so UI hints and enforcement share one source (Phase 2)
+- Machine-readable problem `type`/`code` for 409 (version conflict vs uniqueness vs last-admin) and CSRF failures, so the UI stops matching message text
+- `/api/me` should expose effective administrative permissions for platform admins (replaces the hardcoded list in the web app)
+- Department audit view and platform-admin management screens in the web UI (API exists)
+- Playwright end-to-end smoke for the admin UI; OpenAPI-generated TS types
+- User lookup scope/privacy review (currently all active users)
+- Web Dockerfile / reverse-proxy config; CI step that builds the host image
+- Real Entra tenant sign-in verification (needs a dev tenant)
