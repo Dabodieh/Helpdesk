@@ -6,7 +6,7 @@ Vertical slices; each phase leaves a runnable product. Phase order follows the b
 |---|---|---|
 | 0 Foundation | Repo, docs, ADRs, Compose (Postgres 18, S3 dev store), .NET host, Vite app, health endpoints, Serilog, OTel, CI | `docker compose up` deps; API `/health/live` & `/health/ready`; web builds; host + web tests run in CI |
 | 1 Identity & organisation | Entra login, users, departments, teams, memberships, RBAC, audit writer, admin UI; Graph spike | Isolation test matrix for org endpoints; arch tests enforce module boundaries; spike result recorded as ADR |
-| 2 Core ticketing | Requesters, tickets, list/detail, status/priority/assign, public reply/note (no email yet), audit history | Isolation tests on all ticket endpoints; ticket workspace usable |
+| 2 Core ticketing (CLOSED) | Requesters, tickets, list/detail, status/priority/assign, public reply/note (no email yet), audit history | Isolation tests on all ticket endpoints; ticket workspace usable. Report: `docs/reports/PHASE-2-CORE-TICKETING.md` |
 | 3 Email slice | Mailboxes, Graph, subscriptions, inbound, dedup, threading, outbound, attachments, sender identity | **MVP acceptance scenario** automated + manual |
 | 4 Agent productivity | Views, filters, FTS search, canned responses, tags, watchers, bulk actions, SignalR | |
 | 5 SLA & automation | Business hours, SLA policies/timers, escalation, rules engine, retries | |
@@ -15,6 +15,9 @@ Vertical slices; each phase leaves a runnable product. Phase order follows the b
 
 ## Phase 1 scope (CLOSED, see report)
 Entra auth foundation + internal users, departments, teams, memberships/roles/permissions, server-side authorization, audit writer, minimal admin UI, department-isolation tests, migrations on PostgreSQL 18, Graph shared-mailbox threading spike (messaging specialist, documentation + tooling + mocks; real-tenant results only if a dev mailbox is supplied), practical verification of the Phase 0 runtime foundation. Contract: `docs/api/PHASE1_API.md`; design: ADR-009, PERMISSIONS.md. Closed with `docs/reports/PHASE-1-IDENTITY-ORGANISATION.md`. Phase 2 is next but not started.
+
+## Phase 2 scope (CLOSED, see report)
+Agent workspace (queues, split ticket view, conversation, composer, history, keyboard); ticketing module (requesters, concurrency-safe department references, tickets, public messages and internal notes, assignment with database-enforced department consistency, queues with keyset pagination); structured problem codes; fail-closed department scope filter; Phase 2 isolation matrix and threat model; Playwright critical-flow test. Design: `docs/architecture/TICKETING.md`, ADR-012, `docs/api/PHASE2_API.md`, `docs/design/agent-workspace/UX.md`. Phase 3 (email) is next but not started.
 
 ## Phase 0 work packages
 1. Repo scaffolding, conventions, CLAUDE.md, agent definitions (done in bootstrap).
