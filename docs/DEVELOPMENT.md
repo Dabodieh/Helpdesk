@@ -79,6 +79,7 @@ dotnet run --project src/Helpdesk.Host            # Development: dev sign-in ena
 npm --prefix src/web run dev                      # http://localhost:5173 (proxies /api)
 npm --prefix src/web ci                           # once
 npm --prefix src/web exec playwright install chromium   # once
+# no download possible? reuse an installed browser: E2E_BROWSER_CHANNEL=chrome (or msedge) npm --prefix src/web run e2e
 npm --prefix src/web run e2e                      # add -- --headed to watch
 ```
 The config does not start a web server. `E2E_BASE_URL` overrides the target (default `http://localhost:5173`). The spec seeds its own data through the API with dev-login users (a new department with a unique key, a team, a TeamLead and an Agent, two tickets) and needs the `dev-admin` bootstrap platform admin, so it never touches existing data and can be rerun.
@@ -95,3 +96,6 @@ Serilog writes structured logs to the console. Set `OTEL_EXPORTER_OTLP_ENDPOINT`
 - Host image: `docker build -f docker/host.Dockerfile -t helpdesk-host:local .`; migrate with `docker run --rm --network <compose-net> -e Database__ConnectionString=... helpdesk-host:local migrate`. In `Development` inside a container also set `Urls=http://+:8080` (appsettings.Development.json binds localhost:5080).
 - No local .NET 10 SDK? Run any dotnet command in `mcr.microsoft.com/dotnet/sdk:10.0` with the repo mounted and the compose network attached (set `HELPDESK_TEST_DB` to the compose service host).
 - Expected noise: `migrate` logs EF "Failed executing DbCommand" at ERR for the history-table probe on a fresh database, and Npgsql may print `libgssapi_krb5.so.2` on slim images; both are harmless.
+
+## Demo data
+`node scripts/dev-seed.mjs [apiBase]` seeds a LOCAL Development API (dev sign-in must be enabled) with an IT department, two teams, agents `alice`, `bob`, `carol` (TeamLead) plus `dev-admin`, and 12 realistic tickets with conversations. Idempotent: it leaves existing tickets alone.
