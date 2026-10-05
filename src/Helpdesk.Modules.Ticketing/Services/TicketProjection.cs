@@ -86,7 +86,7 @@ internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirec
             participants);
     }
 
-    public async Task<IReadOnlyList<TicketListItemDto>> ListItemsAsync(IReadOnlyList<TicketRow> rows, CancellationToken ct)
+    public async Task<IReadOnlyList<TicketListItemDto>> ListItemsAsync(IReadOnlyList<TicketRow> rows, CancellationToken ct, IReadOnlyDictionary<Guid, MatchDto>? matches = null)
     {
         if (rows.Count == 0)
         {
@@ -110,6 +110,7 @@ internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirec
             r.TeamId is { } teamId && teams.TryGetValue(teamId, out var team) ? new TeamRefDto(team.Id, team.Name) : null,
             r.AssigneeUserId is { } userId && people.TryGetValue(userId, out var person) ? new RefDto(person.Id, person.DisplayName) : null,
             r.CreatedAt,
-            r.UpdatedAt)).ToList();
+            r.UpdatedAt,
+            matches is not null && matches.TryGetValue(r.Id, out var match) ? match : null)).ToList();
     }
 }

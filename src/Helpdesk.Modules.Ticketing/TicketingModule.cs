@@ -4,6 +4,9 @@ using Helpdesk.Modules.Ticketing.Endpoints;
 using Helpdesk.Modules.Ticketing.Persistence;
 using Helpdesk.Modules.Ticketing.Services;
 using Helpdesk.SharedKernel.Database;
+using Helpdesk.SharedKernel.Authorization;
+using Helpdesk.SharedKernel.Security;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -26,6 +29,13 @@ public static class TicketingModule
         services.AddScoped<TicketService>();
         services.AddScoped<TicketQueryService>();
         services.AddScoped<RequesterService>();
+        services.AddScoped<SavedViewService>();
+        services.AddScoped<CannedResponseService>();
+        services.AddSignalR();
+        services.AddSingleton<ITicketEvents, TicketEventPublisher>();
+        services.AddSingleton<HubAccess>();
+        services.AddSingleton<IAccessChangeListener>(sp => sp.GetRequiredService<HubAccess>());
+        services.AddHostedService<HubAccessRefresher>();
         services.AddScoped<ITicketIngress, TicketIngressService>();
         services.AddScoped<IInboundTicketSink, InboundTicketSink>();
         services.AddScoped<IDeliveryStateSink, DeliveryStateSink>();
@@ -35,6 +45,7 @@ public static class TicketingModule
     public static IEndpointRouteBuilder MapTicketingEndpoints(this IEndpointRouteBuilder app)
     {
         TicketEndpoints.Map(app);
+        app.MapHub<TicketHub>("/hubs/tickets").RequireAuthenticatedOnly();
         return app;
     }
 }

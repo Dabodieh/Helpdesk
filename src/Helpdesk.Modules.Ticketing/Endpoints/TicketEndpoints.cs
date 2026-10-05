@@ -17,6 +17,7 @@ internal static class TicketEndpoints
     {
         MapDepartmentScoped(app);
         MapQueues(app);
+        MapViewsAndCanned(app);
         MapTicket(app);
     }
 
@@ -50,6 +51,46 @@ internal static class TicketEndpoints
                 TypedResults.Ok(await queries.QueueCountsAsync(ct)))
             .RequireAuthenticatedOnly()
             .WithTags("Tickets");
+    }
+
+    private static void MapViewsAndCanned(IEndpointRouteBuilder app)
+    {
+        // Personal saved views: owner-only inside the service (404 for anybody else's id). Running one is the normal list with its filter.
+        app.MapGet("/api/views", async (SavedViewService views, CancellationToken ct) => TypedResults.Ok(await views.ListAsync(ct)))
+            .RequireAuthenticatedOnly().WithTags("Views");
+        app.MapPost("/api/views", async (CreateViewRequest body, SavedViewService views, CancellationToken ct) =>
+            {
+                var created = await views.CreateAsync(body, ct);
+                return TypedResults.Created($"/api/views/{created.Id}", created);
+            })
+            .RequireAuthenticatedOnly().WithTags("Views");
+        app.MapPatch("/api/views/{viewId:guid}", async (Guid viewId, UpdateViewRequest body, SavedViewService views, CancellationToken ct) =>
+                TypedResults.Ok(await views.UpdateAsync(viewId, body, ct)))
+            .RequireAuthenticatedOnly().WithTags("Views");
+        app.MapDelete("/api/views/{viewId:guid}", async (Guid viewId, SavedViewService views, CancellationToken ct) =>
+            {
+                await views.DeleteAsync(viewId, ct);
+                return TypedResults.NoContent();
+            })
+            .RequireAuthenticatedOnly().WithTags("Views");
+
+        // Canned responses: authorization (personal owner / department permission) is decided in the service per row.
+        app.MapGet("/api/canned-responses", async (Guid? departmentId, bool? includeInactive, CannedResponseService canned, CancellationToken ct) =>
+                TypedResults.Ok(await canned.ListAsync(departmentId, includeInactive ?? false, ct)))
+            .RequireAuthenticatedOnly().WithTags("Canned responses");
+        app.MapPost("/api/canned-responses", async (CreateCannedRequest body, CannedResponseService canned, CancellationToken ct) =>
+            {
+                var created = await canned.CreateAsync(body, ct);
+                return TypedResults.Created($"/api/canned-responses/{created.Id}", created);
+            })
+            .RequireAuthenticatedOnly().WithTags("Canned responses");
+        app.MapPatch("/api/canned-responses/{id:guid}", async (Guid id, UpdateCannedRequest body, CannedResponseService canned, CancellationToken ct) =>
+                TypedResults.Ok(await canned.UpdateAsync(id, body, ct)))
+            .RequireAuthenticatedOnly().WithTags("Canned responses");
+
+        // Bulk change: every id is authorised and validated individually (see TicketService.BulkAsync).
+        app.MapPost("/api/tickets/bulk", async (BulkRequest body, TicketService tickets, CancellationToken ct) => TypedResults.Ok(await tickets.BulkAsync(body, ct)))
+            .RequireAuthenticatedOnly().WithTags("Tickets");
     }
 
     private static void MapTicket(IEndpointRouteBuilder app)

@@ -17,6 +17,7 @@ internal sealed class TicketingAudit(IAuditWriter writer, TicketingDbContext db,
 {
     public const string TicketObject = "ticket";
     public const string RequesterObject = "requester";
+    public const string CannedObject = "canned_response";
 
     public Task WriteAsync(string action, string objectType, Guid objectId, Guid departmentId, object? previous, object? next, CancellationToken ct) =>
         writer.WriteAsync(new AuditEntry(
@@ -39,6 +40,8 @@ internal static class TicketAuditActions
     public const string MessageAdded = "ticket.message_added";
     public const string MessageDeliveryChanged = "ticket.message_delivery_changed";
     public const string RequesterCreated = "requester.created";
+    public const string CannedCreated = "canned_response.created";
+    public const string CannedUpdated = "canned_response.updated";
 
     public const string ReasonRequesterReply = "requester_reply";
 }

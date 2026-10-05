@@ -12,6 +12,8 @@ internal sealed record RequesterRefDto(Guid Id, string DisplayName, string Email
 
 internal sealed record RequesterDetailDto(Guid Id, string DisplayName, string Email, int OpenTicketCount, int TotalTicketCount);
 
+internal sealed record MatchDto(string Field, string? Snippet);
+
 internal sealed record TicketListItemDto(
     Guid Id,
     string Reference,
@@ -24,7 +26,8 @@ internal sealed record TicketListItemDto(
     TeamRefDto? Team,
     RefDto? Assignee,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    MatchDto? Match = null);
 
 internal sealed record MailboxRefDto(Guid Id, string Address, string Name);
 
@@ -97,6 +100,15 @@ internal sealed record AssignTicketRequest(string? Version, Guid? TeamId, Guid? 
 
 internal sealed record PostMessageRequest(string? Kind, string? Body, string? Status);
 
+internal sealed record IdChange(Guid? Id);
+
+/// <summary>Bulk change: only the fields present are applied (Team/Assignee present with a null id means "clear").</summary>
+internal sealed record BulkRequest(Guid[]? TicketIds, string? Status, string? Priority, IdChange? Team, IdChange? Assignee);
+
+internal sealed record BulkItemDto(Guid TicketId, string? Reference, string Outcome, string? Code);
+
+internal sealed record BulkResultDto(IReadOnlyList<BulkItemDto> Results, int Updated, int Unchanged, int Failed);
+
 /// <summary>Query string of <c>GET /api/tickets</c> (bound by the endpoint).</summary>
 internal sealed record TicketListQuery(
     string? Queue,
@@ -109,4 +121,5 @@ internal sealed record TicketListQuery(
     string? Q,
     string? Sort,
     string? Cursor,
-    int? Limit);
+    int? Limit,
+    Guid? View = null);

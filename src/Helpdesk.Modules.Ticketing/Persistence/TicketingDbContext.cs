@@ -19,6 +19,10 @@ internal sealed class TicketingDbContext(DbContextOptions<TicketingDbContext> op
 
     public DbSet<TicketParticipant> Participants => Set<TicketParticipant>();
 
+    public DbSet<SavedView> SavedViews => Set<SavedView>();
+
+    public DbSet<CannedResponse> CannedResponses => Set<CannedResponse>();
+
     /// <summary>Read by the global query filters on every query (EF evaluates context members per query). Empty = nothing visible.</summary>
     internal Guid[] ScopedDepartmentIds => scope.DepartmentIds;
 
@@ -146,6 +150,50 @@ internal sealed class TicketingDbContext(DbContextOptions<TicketingDbContext> op
             // Idempotency of producers (email ingestion): the same source reference can never create a second message.
             e.HasIndex(x => new { x.DepartmentId, x.Source, x.SourceRef }).IsUnique().HasFilter("source_ref IS NOT NULL").HasDatabaseName("ux_messages_source_ref");
             e.HasQueryFilter(x => ScopedDepartmentIds.Contains(x.DepartmentId));
+        });
+
+        modelBuilder.Entity<SavedView>(e =>
+        {
+            e.ToTable("saved_views", t => t.HasCheckConstraint("ck_saved_views_name", "length(btrim(name)) BETWEEN 1 AND 80"));
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            e.Property(x => x.OwnerUserId).HasColumnName("owner_user_id");
+            e.Property(x => x.Name).HasColumnName("name").HasMaxLength(80);
+            e.Property(x => x.Filter).HasColumnName("filter").HasColumnType("jsonb");
+            e.Property(x => x.IsPinned).HasColumnName("is_pinned");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            e.Property(x => x.Version).HasColumnName("xmin").HasColumnType("xid").IsRowVersion();
+            e.HasIndex(x => new { x.OwnerUserId, x.CreatedAt }).HasDatabaseName("ix_saved_views_owner");
+        });
+
+        modelBuilder.Entity<CannedResponse>(e =>
+        {
+            e.ToTable("canned_responses", t =>
+            {
+                t.HasCheckConstraint("ck_canned_scope", "scope IN ('Personal','Department')");
+                t.HasCheckConstraint(
+                    "ck_canned_scope_shape",
+                    "(scope = 'Personal' AND owner_user_id IS NOT NULL AND department_id IS NULL) OR (scope = 'Department' AND department_id IS NOT NULL AND owner_user_id IS NULL)");
+                t.HasCheckConstraint("ck_canned_title", "length(btrim(title)) BETWEEN 1 AND 120");
+                t.HasCheckConstraint("ck_canned_body", "length(btrim(body)) > 0 AND char_length(body) <= 5000");
+            });
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            e.Property(x => x.Scope).HasColumnName("scope").HasMaxLength(16);
+            e.Property(x => x.DepartmentId).HasColumnName("department_id");
+            e.Property(x => x.OwnerUserId).HasColumnName("owner_user_id");
+            e.Property(x => x.Title).HasColumnName("title").HasMaxLength(120);
+            e.Property(x => x.Body).HasColumnName("body");
+            e.Property(x => x.IsActive).HasColumnName("is_active");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            e.Property(x => x.Version).HasColumnName("xmin").HasColumnType("xid").IsRowVersion();
+            e.HasIndex(x => new { x.DepartmentId, x.Title }).HasFilter("scope = 'Department'").HasDatabaseName("ix_canned_department");
+            e.HasIndex(x => new { x.OwnerUserId, x.Title }).HasFilter("scope = 'Personal'").HasDatabaseName("ix_canned_owner");
+
+            // Department rows are visible only inside the caller's department scope; personal rows are filtered by owner in the service.
+            e.HasQueryFilter(x => x.DepartmentId == null || ScopedDepartmentIds.Contains(x.DepartmentId.Value));
         });
 
         modelBuilder.Entity<TicketParticipant>(e =>

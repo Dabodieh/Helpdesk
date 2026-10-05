@@ -215,6 +215,11 @@ internal sealed class InboundProcessor(
         if (message.State == MessageStates.Ticketed || (message.State == MessageStates.Failed && message.TicketMessageId is not null))
         {
             await StoreAttachmentsAsync(mref, message, email, ct);
+            if (email.Attachments.Count > 0)
+            {
+                await sink.NotifyTicketChangedAsync(message.DepartmentId, message.TicketId!.Value, "attachment", ct);
+            }
+
             message.State = MessageStates.Completed;
             message.LastError = null;
             message.NextAttemptAt = null;

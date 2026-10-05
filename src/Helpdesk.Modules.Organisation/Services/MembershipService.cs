@@ -19,6 +19,7 @@ internal sealed class MembershipService(
     IUserDirectory users,
     ICurrentUser current,
     MembershipCache memberships,
+    IEnumerable<IAccessChangeListener> accessListeners,
     TimeProvider clock)
 {
     public async Task<IReadOnlyList<MemberDto>> ListAsync(Guid departmentId, CancellationToken ct)
@@ -86,6 +87,7 @@ internal sealed class MembershipService(
 
         await tx.CommitAsync(ct);
         memberships.Invalidate();
+        await NotifyAccessChangedAsync(userId, ct);
 
         var teamIds = await db.TeamMemberships.AsNoTracking().Where(m => m.DepartmentId == departmentId && m.UserId == userId)
             .Select(m => m.TeamId).OrderBy(id => id).ToListAsync(ct);
@@ -120,6 +122,15 @@ internal sealed class MembershipService(
         await audit.WriteAsync("membership.removed", "department_membership", userId, departmentId, new { role = membership.Role }, null, ct);
         await tx.CommitAsync(ct);
         memberships.Invalidate();
+        await NotifyAccessChangedAsync(userId, ct);
+    }
+
+    private async Task NotifyAccessChangedAsync(Guid userId, CancellationToken ct)
+    {
+        foreach (var listener in accessListeners)
+        {
+            await listener.AccessChangedAsync(userId, ct);
+        }
     }
 
     /// <summary>Serialises membership mutations per department so the last-admin rule cannot be raced.</summary>

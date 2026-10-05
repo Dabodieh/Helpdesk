@@ -2,6 +2,7 @@ using System.Globalization;
 using Helpdesk.Modules.Organisation.Contracts;
 using Helpdesk.Modules.Ticketing.Domain;
 using Helpdesk.Modules.Ticketing.Persistence;
+using Helpdesk.SharedKernel.Authorization;
 using Helpdesk.SharedKernel.Errors;
 using Helpdesk.SharedKernel.Paging;
 using Helpdesk.SharedKernel.Security;
@@ -18,7 +19,9 @@ internal sealed class TicketQueryService(
     IDepartmentScope scope,
     IOrganisationDirectory organisation,
     TicketProjection projection,
-    ICurrentUser current)
+    ICurrentUser current,
+    IAuthorizer authorizer,
+    SavedViewService views)
 {
     public const int DefaultLimit = 50;
     public const int MaxLimit = 100;
@@ -34,6 +37,17 @@ internal sealed class TicketQueryService(
 
     public async Task<PageDto<TicketListItemDto>> ListAsync(TicketListQuery query, CancellationToken ct)
     {
+        if (query.View is { } viewId)
+        {
+            // A saved view only supplies the filter; scope, validation and pagination are exactly those of the normal list.
+            var f = await views.FilterOfAsync(viewId, ct);
+            query = query with
+            {
+                Queue = f.Queue, DepartmentId = f.DepartmentId, Status = f.Status, Priority = f.Priority, TeamId = f.TeamId,
+                AssigneeUserId = f.AssigneeUserId, Unassigned = f.Unassigned, Q = f.Q, Sort = f.Sort,
+            };
+        }
+
         var errors = new Dictionary<string, string[]>();
         var queue = (query.Queue ?? "all").Trim().ToLowerInvariant();
         if (queue is not ("my" or "team" or "unassigned" or "all"))
@@ -123,12 +137,23 @@ internal sealed class TicketQueryService(
             tickets = tickets.Where(t => t.AssigneeUserId == null);
         }
 
+        // Search (trigram-indexed ILIKE): reference, subject, requester name/email, message text. Internal notes are searched only in
+        // departments where the caller may read notes, so a match can never reveal a note's existence or content.
+        string? like = null;
+        Guid[] notesDepartments = [];
         if (search is not null)
         {
             var escaped = TicketValidation.EscapeLike(search);
             var prefix = escaped + "%";
-            var contains = "%" + escaped + "%";
-            tickets = tickets.Where(t => EF.Functions.ILike(t.Reference, prefix, "\\") || EF.Functions.ILike(t.Subject, contains, "\\"));
+            like = "%" + escaped + "%";
+            var pattern = like;
+            var notes = notesDepartments = [.. await authorizer.AccessibleDepartmentsAsync(PermissionCodes.TicketsNotesRead, ct)];
+            tickets = tickets.Where(t =>
+                EF.Functions.ILike(t.Reference, prefix, "\\")
+                || EF.Functions.ILike(t.Subject, pattern, "\\")
+                || EF.Functions.ILike(t.Requester.DisplayName, pattern, "\\")
+                || EF.Functions.ILike(t.Requester.Email, pattern, "\\")
+                || db.Messages.Any(m => m.TicketId == t.Id && EF.Functions.ILike(m.Body, pattern, "\\") && (m.Kind == MessageKind.Public || notes.Contains(m.DepartmentId))));
         }
 
         var ordered = ApplyCursorAndOrder(tickets, sort, query.Cursor);
@@ -145,8 +170,63 @@ internal sealed class TicketQueryService(
             rows.RemoveAt(rows.Count - 1);
         }
 
-        var items = await projection.ListItemsAsync(rows, ct);
+        var matches = search is null ? null : await MatchesAsync(rows, search, like!, notesDepartments, ct);
+        var items = await projection.ListItemsAsync(rows, ct, matches);
         return new PageDto<TicketListItemDto>(items, hasMore ? EncodeCursor(sort, rows[^1]) : null);
+    }
+
+    /// <summary>Why each row matched, with a plain-text snippet for message hits. Snippets come only from visible messages and are never HTML.</summary>
+    private async Task<IReadOnlyDictionary<Guid, MatchDto>> MatchesAsync(IReadOnlyList<TicketRow> rows, string search, string like, Guid[] notesDepartments, CancellationToken ct)
+    {
+        var matches = new Dictionary<Guid, MatchDto>();
+        var needMessages = new List<Guid>();
+        foreach (var r in rows)
+        {
+            if (r.Reference.StartsWith(search, StringComparison.OrdinalIgnoreCase))
+            {
+                matches[r.Id] = new MatchDto("reference", null);
+            }
+            else if (r.Subject.Contains(search, StringComparison.OrdinalIgnoreCase))
+            {
+                matches[r.Id] = new MatchDto("subject", null);
+            }
+            else if (r.RequesterName.Contains(search, StringComparison.OrdinalIgnoreCase) || r.RequesterEmail.Contains(search, StringComparison.OrdinalIgnoreCase))
+            {
+                matches[r.Id] = new MatchDto("requester", null);
+            }
+            else
+            {
+                needMessages.Add(r.Id);
+            }
+        }
+
+        if (needMessages.Count > 0)
+        {
+            var ids = needMessages.ToArray();
+            var hits = await db.Messages.AsNoTracking()
+                .Where(m => ids.Contains(m.TicketId) && EF.Functions.ILike(m.Body, like, "\\") && (m.Kind == MessageKind.Public || notesDepartments.Contains(m.DepartmentId)))
+                .OrderByDescending(m => m.CreatedAt).Take(ids.Length * 3)
+                .Select(m => new { m.TicketId, m.Body, m.Kind })
+                .ToListAsync(ct);
+            foreach (var hit in hits)
+            {
+                if (!matches.ContainsKey(hit.TicketId))
+                {
+                    matches[hit.TicketId] = new MatchDto(hit.Kind == MessageKind.Internal ? "note" : "message", SnippetOf(hit.Body, search));
+                }
+            }
+        }
+
+        return matches;
+    }
+
+    internal static string SnippetOf(string body, string search)
+    {
+        var at = Math.Max(0, body.IndexOf(search, StringComparison.OrdinalIgnoreCase));
+        var start = Math.Max(0, at - 50);
+        var length = Math.Min(body.Length - start, 150);
+        var text = string.Join(' ', body.Substring(start, length).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return (start > 0 ? "…" : "") + text + (start + length < body.Length ? "…" : "");
     }
 
     public async Task<QueueCountsDto> QueueCountsAsync(CancellationToken ct)

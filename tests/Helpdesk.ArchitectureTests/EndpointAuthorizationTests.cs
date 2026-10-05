@@ -13,12 +13,24 @@ public sealed class EndpointAuthorizationTests(AppFixture app) : IClassFixture<A
 {
     private static readonly string[] ReviewedAuthenticatedOnly =
     [
+        // Realtime hub (server decides the groups; no client-callable methods) and personal/aggregate endpoints whose authorization is
+        // decided inside the service (owner-only views, per-row canned responses, per-ticket bulk checks).
+        "* /hubs/tickets",
+        "* /hubs/tickets/negotiate",
+        "DELETE /api/views/{viewId:guid}",
+        "GET /api/canned-responses",
         "GET /api/departments",
         "GET /api/me",
         "GET /api/tickets",
         "GET /api/tickets/queue-counts",
         "GET /api/users/lookup",
+        "GET /api/views",
+        "PATCH /api/canned-responses/{id:guid}",
+        "PATCH /api/views/{viewId:guid}",
         "POST /api/auth/logout",
+        "POST /api/canned-responses",
+        "POST /api/tickets/bulk",
+        "POST /api/views",
     ];
 
     private static readonly string[] AllowedAnonymous =

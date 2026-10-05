@@ -34,6 +34,12 @@ public interface IOrganisationDirectory
     /// </summary>
     Task<bool> IsEligibleAssigneeAsync(Guid departmentId, Guid userId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Departments in which <paramref name="userId"/> holds a CONTENT permission through a membership role (never through the platform-admin
+    /// flag), for an active user. Used by long-lived connections that have no request context.
+    /// </summary>
+    Task<IReadOnlyCollection<Guid>> GetDepartmentsWithPermissionAsync(Guid userId, string permission, CancellationToken cancellationToken = default);
+
     /// <summary>Ids of the teams the user belongs to, restricted to the given departments (team membership, never inferred from role).</summary>
     Task<IReadOnlyCollection<Guid>> GetTeamIdsOfUserAsync(Guid userId, IReadOnlyCollection<Guid> departmentIds, CancellationToken cancellationToken = default);
 }

@@ -23,6 +23,77 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.CannedResponse", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("body");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("department_id");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<Guid?>("OwnerUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_user_id");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("scope");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DepartmentId", "Title")
+                        .HasDatabaseName("ix_canned_department")
+                        .HasFilter("scope = 'Department'");
+
+                    b.HasIndex("OwnerUserId", "Title")
+                        .HasDatabaseName("ix_canned_owner")
+                        .HasFilter("scope = 'Personal'");
+
+                    b.ToTable("canned_responses", "ticketing", t =>
+                        {
+                            t.HasCheckConstraint("ck_canned_body", "length(btrim(body)) > 0 AND char_length(body) <= 5000");
+
+                            t.HasCheckConstraint("ck_canned_scope", "scope IN ('Personal','Department')");
+
+                            t.HasCheckConstraint("ck_canned_scope_shape", "(scope = 'Personal' AND owner_user_id IS NOT NULL AND department_id IS NULL) OR (scope = 'Department' AND department_id IS NOT NULL AND owner_user_id IS NULL)");
+
+                            t.HasCheckConstraint("ck_canned_title", "length(btrim(title)) BETWEEN 1 AND 120");
+                        });
+                });
+
             modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.DepartmentCounter", b =>
                 {
                     b.Property<Guid>("DepartmentId")
@@ -189,6 +260,56 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                             t.HasCheckConstraint("ck_requesters_display_name_not_blank", "length(btrim(display_name)) > 0");
 
                             t.HasCheckConstraint("ck_requesters_email_not_blank", "length(btrim(email)) > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.SavedView", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Filter")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("filter");
+
+                    b.Property<bool>("IsPinned")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_pinned");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_user_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerUserId", "CreatedAt")
+                        .HasDatabaseName("ix_saved_views_owner");
+
+                    b.ToTable("saved_views", "ticketing", t =>
+                        {
+                            t.HasCheckConstraint("ck_saved_views_name", "length(btrim(name)) BETWEEN 1 AND 80");
                         });
                 });
 

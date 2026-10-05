@@ -208,3 +208,58 @@ internal sealed class TicketParticipant
 
     public DateTimeOffset CreatedAt { get; set; }
 }
+
+/// <summary>
+/// A personal saved ticket view: a validated, structured filter definition (never a query language). Executing it goes through the
+/// normal list endpoint, so it can only ever return what the caller may see.
+/// </summary>
+internal sealed class SavedView
+{
+    public Guid Id { get; set; }
+
+    public Guid OwnerUserId { get; set; }
+
+    public string Name { get; set; } = "";
+
+    /// <summary>Normalised JSON of <see cref="Services.ViewFilter"/>.</summary>
+    public string Filter { get; set; } = "{}";
+
+    public bool IsPinned { get; set; }
+
+    public DateTimeOffset CreatedAt { get; set; }
+
+    public DateTimeOffset UpdatedAt { get; set; }
+
+    public uint Version { get; set; }
+}
+
+internal static class CannedScopes
+{
+    public const string Personal = "Personal";
+    public const string Department = "Department";
+}
+
+/// <summary>A reusable reply text. Personal: owned by one user (any department); Department: shared by the department's agents.</summary>
+internal sealed class CannedResponse
+{
+    public Guid Id { get; set; }
+
+    public string Scope { get; set; } = CannedScopes.Personal;
+
+    public Guid? DepartmentId { get; set; }
+
+    public Guid? OwnerUserId { get; set; }
+
+    public string Title { get; set; } = "";
+
+    /// <summary>Plain text, inserted into the composer (never sent automatically).</summary>
+    public string Body { get; set; } = "";
+
+    public bool IsActive { get; set; } = true;
+
+    public DateTimeOffset CreatedAt { get; set; }
+
+    public DateTimeOffset UpdatedAt { get; set; }
+
+    public uint Version { get; set; }
+}

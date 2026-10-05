@@ -38,6 +38,7 @@ internal sealed class TicketService(
     IMailboxDirectory mailboxes,
     IMailOutbox outbox,
     IAttachmentStore attachments,
+    ITicketEvents events,
     TimeProvider clock)
 {
     public const int DefaultMessageLimit = 100;
@@ -146,6 +147,7 @@ internal sealed class TicketService(
             await tx.CommitAsync(ct);
         }
 
+        await events.PublishAsync(departmentId, ticket.Id, ticket.Reference, TicketEventKinds.Created, current.UserId, ct);
         return await projection.DetailAsync(ticket, requester, ct);
     }
 
@@ -233,6 +235,16 @@ internal sealed class TicketService(
         }
 
         await tx.CommitAsync(ct);
+        foreach (var kind in changes.Select(c => c.Action switch
+        {
+            TicketAuditActions.StatusChanged => TicketEventKinds.Status,
+            TicketAuditActions.PriorityChanged => TicketEventKinds.Priority,
+            _ => TicketEventKinds.Updated,
+        }).Distinct())
+        {
+            await events.PublishAsync(ticket.DepartmentId, ticket.Id, ticket.Reference, kind, current.UserId, ct);
+        }
+
         return await projection.DetailAsync(ticket, ticket.Requester, ct);
     }
 
@@ -277,6 +289,11 @@ internal sealed class TicketService(
         }
 
         await tx.CommitAsync(ct);
+        if (changes.Count > 0)
+        {
+            await events.PublishAsync(ticket.DepartmentId, ticket.Id, ticket.Reference, TicketEventKinds.Assignment, current.UserId, ct);
+        }
+
         return await projection.DetailAsync(ticket, ticket.Requester, ct);
     }
 
@@ -359,6 +376,12 @@ internal sealed class TicketService(
             await outbox.NotifyQueuedAsync(queued, ct);
         }
 
+        await events.PublishAsync(ticket.DepartmentId, ticket.Id, ticket.Reference, kind == MessageKind.Internal ? TicketEventKinds.Note : TicketEventKinds.Message, current.UserId, ct);
+        if (statusChanged)
+        {
+            await events.PublishAsync(ticket.DepartmentId, ticket.Id, ticket.Reference, TicketEventKinds.Status, current.UserId, ct);
+        }
+
         var dto = new MessageDto(message.Id, message.TicketId, message.Kind.ToString(), message.AuthorType.ToString(),
             new MessageAuthorDto(current.UserId, current.DisplayName), message.Body, null, message.Source, message.DeliveryState.ToString(), message.DeliveryError, [], message.CreatedAt);
         return new PostedMessageDto(dto, await projection.DetailAsync(ticket, ticket.Requester, ct));
@@ -388,6 +411,7 @@ internal sealed class TicketService(
             new { messageId, delivery = nameof(DeliveryState.Failed) }, new { messageId, delivery = nameof(DeliveryState.Pending), reason = "retry" }, ct);
         await tx.CommitAsync(ct);
         await outbox.NotifyQueuedAsync(outboundId, ct);
+        await events.PublishAsync(key.DepartmentId, key.Id, route, TicketEventKinds.Delivery, current.UserId, ct);
 
         message.DeliveryState = DeliveryState.Pending;
         message.DeliveryError = null;
@@ -530,6 +554,134 @@ internal sealed class TicketService(
     }
 
     private static JsonNode? ToNode(JsonElement? element) => element is { } e ? JsonNode.Parse(e.GetRawText()) : null;
+
+    // ----- bulk -----
+
+    public const int MaxBulk = 100;
+
+    /// <summary>
+    /// Applies the same change to many tickets. Every ticket is authorised and validated on its own, in its own transaction, against its
+    /// own department: ids that are not visible are "not_found" (indistinguishable from missing), a lacking permission is "forbidden",
+    /// a department-inconsistent team/assignee is "invalid". One ticket failing never rolls back or blocks the others; the result lists
+    /// every outcome. Each applied change is audited like its single-ticket counterpart (with bulk = true).
+    /// </summary>
+    public async Task<BulkResultDto> BulkAsync(BulkRequest request, CancellationToken ct)
+    {
+        var errors = new Dictionary<string, string[]>();
+        var ids = (request.TicketIds ?? []).Distinct().ToArray();
+        if (ids.Length is 0 or > MaxBulk)
+        {
+            errors["ticketIds"] = [$"Provide between 1 and {MaxBulk} ticket ids."];
+        }
+
+        var status = TicketValidation.ParseEnum<TicketStatus>(errors, "status", request.Status);
+        var priority = TicketValidation.ParseEnum<TicketPriority>(errors, "priority", request.Priority);
+        if (status is null && priority is null && request.Team is null && request.Assignee is null)
+        {
+            errors["body"] = ["Provide at least one of status, priority, team, assignee."];
+        }
+
+        TicketValidation.ThrowIfAny(errors);
+        await scope.EnsureLoadedAsync(ct);
+
+        var results = new List<BulkItemDto>(ids.Length);
+        foreach (var id in ids)
+        {
+            db.ChangeTracker.Clear();
+            try
+            {
+                results.Add(await BulkOneAsync(id, status, priority, request.Team, request.Assignee, ct));
+            }
+            catch (NotFoundException)
+            {
+                results.Add(new BulkItemDto(id, null, "not_found", null));
+            }
+            catch (ForbiddenException)
+            {
+                results.Add(new BulkItemDto(id, null, "forbidden", null));
+            }
+            catch (ConflictException ex)
+            {
+                results.Add(new BulkItemDto(id, null, "invalid", ex.Code));
+            }
+        }
+
+        db.ChangeTracker.Clear();
+        return new BulkResultDto(
+            results,
+            results.Count(r => r.Outcome == "updated"),
+            results.Count(r => r.Outcome == "unchanged"),
+            results.Count(r => r.Outcome is "not_found" or "forbidden" or "invalid"));
+    }
+
+    private async Task<BulkItemDto> BulkOneAsync(Guid id, TicketStatus? status, TicketPriority? priority, IdChange? team, IdChange? assignee, CancellationToken ct)
+    {
+        // The scope filter makes an inaccessible ticket null here (same answer as a missing one).
+        var key = await db.Tickets.AsNoTracking().Where(t => t.Id == id).Select(t => new { t.Id, t.DepartmentId }).SingleOrDefaultAsync(ct) ?? throw new NotFoundException();
+        if (status is not null || priority is not null)
+        {
+            await authorizer.RequireAsync(PermissionCodes.TicketsUpdate, key.DepartmentId, ct);
+        }
+
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var ticket = await LockAndLoadAsync(key.Id, expectedVersion: null, ct);
+        var now = clock.GetUtcNowMicroseconds();
+        var changes = new List<(string Action, object Previous, object Next, string Kind)>();
+
+        var wantedTeam = team is null ? ticket.TeamId : team.Id;
+        var wantedAssignee = assignee is null ? ticket.AssigneeUserId : assignee.Id;
+        if (wantedTeam != ticket.TeamId || wantedAssignee != ticket.AssigneeUserId)
+        {
+            await RequireAssignmentRightsAsync(ticket.DepartmentId, wantedTeam, wantedAssignee, ticket, ct);
+            if (wantedTeam != ticket.TeamId)
+            {
+                await ValidateTeamAsync(ticket.DepartmentId, wantedTeam, ct);
+                changes.Add((TicketAuditActions.TeamChanged, new { teamId = ticket.TeamId }, new { teamId = wantedTeam, bulk = true }, TicketEventKinds.Assignment));
+                ticket.TeamId = wantedTeam;
+            }
+
+            if (wantedAssignee != ticket.AssigneeUserId)
+            {
+                await ValidateAssigneeAsync(ticket.DepartmentId, wantedAssignee, ct);
+                changes.Add((TicketAuditActions.AssigneeChanged, new { assigneeUserId = ticket.AssigneeUserId }, new { assigneeUserId = wantedAssignee, bulk = true }, TicketEventKinds.Assignment));
+                ticket.AssigneeUserId = wantedAssignee;
+            }
+        }
+
+        if (priority is { } newPriority && newPriority != ticket.Priority)
+        {
+            changes.Add((TicketAuditActions.PriorityChanged, new { priority = ticket.Priority.ToString() }, new { priority = newPriority.ToString(), bulk = true }, TicketEventKinds.Priority));
+            ticket.Priority = newPriority;
+        }
+
+        if (status is { } newStatus && newStatus != ticket.Status)
+        {
+            var previous = ticket.Status;
+            ticket.ApplyStatus(newStatus, now);
+            changes.Add((TicketAuditActions.StatusChanged, new { status = previous.ToString() }, new { status = newStatus.ToString(), bulk = true }, TicketEventKinds.Status));
+        }
+
+        if (changes.Count == 0)
+        {
+            await tx.RollbackAsync(ct);
+            return new BulkItemDto(ticket.Id, ticket.Reference, "unchanged", null);
+        }
+
+        ticket.UpdatedAt = now;
+        await SaveAsync(ct);
+        foreach (var (action, previous, next, _) in changes)
+        {
+            await audit.WriteAsync(action, TicketingAudit.TicketObject, ticket.Id, ticket.DepartmentId, previous, next, ct);
+        }
+
+        await tx.CommitAsync(ct);
+        foreach (var kind in changes.Select(c => c.Kind).Distinct())
+        {
+            await events.PublishAsync(ticket.DepartmentId, ticket.Id, ticket.Reference, kind, current.UserId, ct);
+        }
+
+        return new BulkItemDto(ticket.Id, ticket.Reference, "updated", null);
+    }
 
     // ----- shared helpers -----
 

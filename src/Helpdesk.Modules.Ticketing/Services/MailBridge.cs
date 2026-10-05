@@ -59,7 +59,7 @@ internal static class PeopleUpsert
 /// idempotent on <c>SourceRef</c> through the unique message index, so a retry after a crash returns the earlier result instead of
 /// creating a second ticket or message. Uses the named scope bypass and always filters by department itself.
 /// </summary>
-internal sealed class InboundTicketSink(TicketingDbContext db, TicketingAudit audit, IOrganisationDirectory organisation, TimeProvider clock) : IInboundTicketSink
+internal sealed class InboundTicketSink(TicketingDbContext db, TicketingAudit audit, IOrganisationDirectory organisation, ITicketEvents events, TimeProvider clock) : IInboundTicketSink
 {
     public async Task<InboundTicketResult> CreateTicketAsync(InboundTicketRequest request, CancellationToken cancellationToken = default)
     {
@@ -180,6 +180,7 @@ internal sealed class InboundTicketSink(TicketingDbContext db, TicketingAudit au
         }
 
         await tx.CommitAsync(cancellationToken);
+        await events.PublishAsync(request.DepartmentId, ticket.Id, ticket.Reference, TicketEventKinds.Created, null, cancellationToken);
         return new InboundTicketResult(ticket.Id, ticket.Reference, first.Id, Created: true, Reopened: false);
     }
 
@@ -269,6 +270,12 @@ internal sealed class InboundTicketSink(TicketingDbContext db, TicketingAudit au
         }
 
         await tx.CommitAsync(cancellationToken);
+        await events.PublishAsync(request.DepartmentId, ticket.Id, ticket.Reference, TicketEventKinds.Message, null, cancellationToken);
+        if (reopened)
+        {
+            await events.PublishAsync(request.DepartmentId, ticket.Id, ticket.Reference, TicketEventKinds.Status, null, cancellationToken);
+        }
+
         return new InboundTicketResult(ticket.Id, ticket.Reference, message.Id, Created: false, Reopened: reopened);
     }
 
@@ -279,6 +286,15 @@ internal sealed class InboundTicketSink(TicketingDbContext db, TicketingAudit au
             .Where(t => t.DepartmentId == departmentId && t.Reference == normalised)
             .Select(t => new TicketLookup(t.Id, t.Reference, t.Status.ToString()))
             .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task NotifyTicketChangedAsync(Guid departmentId, Guid ticketId, string kind, CancellationToken cancellationToken = default)
+    {
+        var reference = await db.Tickets.AsNoTracking().IgnoreDepartmentScope().Where(t => t.Id == ticketId && t.DepartmentId == departmentId).Select(t => t.Reference).SingleOrDefaultAsync(cancellationToken);
+        if (reference is not null)
+        {
+            await events.PublishAsync(departmentId, ticketId, reference, kind == "attachment" ? TicketEventKinds.Attachment : TicketEventKinds.Updated, null, cancellationToken);
+        }
     }
 
     private async Task<InboundTicketResult?> FindExistingAsync(Guid departmentId, string sourceRef, CancellationToken ct)
@@ -303,7 +319,7 @@ internal sealed class InboundTicketSink(TicketingDbContext db, TicketingAudit au
 }
 
 /// <summary><see cref="IDeliveryStateSink"/>: Mail reports how an agent's public reply ended. Only the delivery columns of that message change.</summary>
-internal sealed class DeliveryStateSink(TicketingDbContext db, TicketingAudit audit) : IDeliveryStateSink
+internal sealed class DeliveryStateSink(TicketingDbContext db, TicketingAudit audit, ITicketEvents events) : IDeliveryStateSink
 {
     public async Task SetAsync(Guid departmentId, Guid ticketMessageId, string state, string? failureCode, CancellationToken cancellationToken = default)
     {
@@ -332,5 +348,7 @@ internal sealed class DeliveryStateSink(TicketingDbContext db, TicketingAudit au
             TicketAuditActions.MessageDeliveryChanged, TicketingAudit.TicketObject, message.TicketId, departmentId,
             new { messageId = ticketMessageId, delivery = previous.ToString() }, new { messageId = ticketMessageId, delivery = target.ToString(), error }, cancellationToken);
         await tx.CommitAsync(cancellationToken);
+        var reference = await db.Tickets.AsNoTracking().IgnoreDepartmentScope().Where(t => t.Id == message.TicketId).Select(t => t.Reference).SingleOrDefaultAsync(cancellationToken);
+        await events.PublishAsync(departmentId, message.TicketId, reference ?? "", TicketEventKinds.Delivery, null, cancellationToken);
     }
 }

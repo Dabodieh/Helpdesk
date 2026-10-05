@@ -60,6 +60,19 @@ internal sealed class OrganisationDirectory(OrganisationDbContext db, IUserDirec
         return user is { IsActive: true };
     }
 
+    public async Task<IReadOnlyCollection<Guid>> GetDepartmentsWithPermissionAsync(Guid userId, string permission, CancellationToken cancellationToken = default)
+    {
+        var user = await users.FindAsync(userId, cancellationToken);
+        if (user is not { IsActive: true })
+        {
+            return [];
+        }
+
+        var rows = await db.DepartmentMemberships.AsNoTracking().Where(m => m.UserId == userId)
+            .Select(m => new { m.DepartmentId, m.Role }).ToListAsync(cancellationToken);
+        return [.. rows.Where(r => RoleCatalogue.RoleGrants(r.Role, permission)).Select(r => r.DepartmentId)];
+    }
+
     public async Task<IReadOnlyCollection<Guid>> GetTeamIdsOfUserAsync(Guid userId, IReadOnlyCollection<Guid> departmentIds, CancellationToken cancellationToken = default)
     {
         if (departmentIds.Count == 0)

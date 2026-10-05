@@ -104,6 +104,9 @@ public interface IInboundTicketSink
     Task<InboundTicketResult?> AddMessageAsync(InboundMessageRequest request, CancellationToken cancellationToken = default);
 
     Task<TicketLookup?> FindByReferenceAsync(Guid departmentId, string reference, CancellationToken cancellationToken = default);
+
+    /// <summary>Tells realtime clients that something about the ticket changed outside its own transaction (e.g. attachments were stored). <c>kind</c>: <c>attachment</c>.</summary>
+    Task NotifyTicketChangedAsync(Guid departmentId, Guid ticketId, string kind, CancellationToken cancellationToken = default);
 }
 
 public interface IDeliveryStateSink
