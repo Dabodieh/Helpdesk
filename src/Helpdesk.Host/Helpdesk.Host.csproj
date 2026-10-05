@@ -7,5 +7,12 @@
     <PackageReference Include="AspNetCore.HealthChecks.NpgSql" />
     <PackageReference Include="Npgsql" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Helpdesk.SharedKernel/Helpdesk.SharedKernel.csproj" />
+    <ProjectReference Include="../Helpdesk.Modules.Audit/Helpdesk.Modules.Audit.csproj" />
+    <ProjectReference Include="../Helpdesk.Modules.Identity/Helpdesk.Modules.Identity.csproj" />
+    <ProjectReference Include="../Helpdesk.Modules.Organisation/Helpdesk.Modules.Organisation.csproj" />
   </ItemGroup>
 </Project>

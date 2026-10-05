@@ -18,3 +18,7 @@
 - Dual control / notification for platform-admin self-granted memberships (D-11)
 - Exchange RBAC-for-Applications operator runbook (Phase 3)
 - Multi-tenant authentication design (only if ever required; not v1)
+- Department-scope EF query filter (PERMISSIONS rule 4) when ticket tables arrive (Phase 2)
+- Rate limiting (per-user API, per-IP anonymous/webhook)
+- Dedicated DB roles/grants (app role vs migration role); deployment step for `migrate`
+- Move `/api/me` permission-list logic into `IAuthorizer` so UI hints and enforcement share one source (Phase 2)

@@ -63,11 +63,14 @@ Linux + Docker + Docker Compose + PostgreSQL + S3-compatible object storage, beh
 
 ## Phase 1 structure (ADR-009)
 ```
-src/Helpdesk.SharedKernel      current-principal abstractions, clock, DB helpers
-src/Helpdesk.Modules.Identity  (Contracts/ + internals)
-src/Helpdesk.Modules.Organisation
-src/Helpdesk.Modules.Audit
-src/Helpdesk.Host              composition root, endpoint mapping, auth setup
-tests/Helpdesk.ArchitectureTests, tests/Helpdesk.Host.Tests (+ module test projects as needed)
+src/Helpdesk.SharedKernel      current-principal abstraction (ICurrentUser), authorization primitives (IAuthorizer, PermissionRequirement,
+                               DepartmentResource, permission codes, endpoint metadata), module migration runner, DB helpers, problem exceptions
+src/Helpdesk.Modules.Identity  (Contracts/ + internals) users, external identities, provisioning, cookie/OIDC/dev sign-in, CSRF, platform-user endpoints
+src/Helpdesk.Modules.Organisation  departments, teams, memberships, permission catalogue, roles, IAuthorizer implementation and handler
+src/Helpdesk.Modules.Audit     audit.audit_events, IAuditWriter, audit read endpoints
+src/Helpdesk.Host              composition root: AddXModule/MapXEndpoints wiring, middleware order, exception mapping, `migrate` command
+tests/Helpdesk.ArchitectureTests, tests/Helpdesk.Host.Tests (PostgreSQL-backed integration harness)
 ```
-Authentication/session setup lives in the Host; ASP.NET authorization (fallback policy = authenticated, `PermissionRequirement` handlers) is the single enforcement pipeline.
+Module dependency direction (project references, enforced by architecture tests): Audit -> SharedKernel; Identity -> SharedKernel, Audit.Contracts; Organisation -> SharedKernel, Audit.Contracts, Identity.Contracts. `IAuthorizer` and its primitives live in SharedKernel (implemented by Organisation) because Audit and Identity expose permission-protected endpoints but cannot reference Organisation without a cycle.
+
+The authentication scheme registration (cookie session, Entra OIDC, dev sign-in, antiforgery) is part of the Identity module and wired by the Host (`AddIdentityModule`, `UseIdentityModule`). ASP.NET authorization (fallback policy = authenticated, `PermissionRequirement` handler) is the single enforcement pipeline.

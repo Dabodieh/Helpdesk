@@ -19,3 +19,8 @@ Separate Permissions module (circular dependency with Organisation); one shared 
 
 ## Consequences
 + Atomic audit, small module count, database-enforced integrity. - Cross-schema FKs couple migrations (ordering handled by `migrate`); audit writer relies on callers using transactions (tested).
+
+## Amendment (Phase 1 implementation)
+- `IAuthorizer`, `PermissionRequirement`, `DepartmentResource` and `PermissionCodes` live in **SharedKernel**: Audit and Identity expose permission-protected endpoints and cannot reference Organisation without a project cycle. The permission catalogue, roles, authorization handler and `IAuthorizer` implementation stay in Organisation.
+- Authentication wiring lives in the **Identity module** (the Host calls `AddIdentityModule`/`UseIdentityModule`), not the Host.
+- Audit append-only is enforced by a database trigger (UPDATE/DELETE/TRUNCATE rejected for any role); separate DB roles and grants remain future work.

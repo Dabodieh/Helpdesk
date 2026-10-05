@@ -6,6 +6,22 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    services:
+      # Integration tests create a uniquely named database per test fixture on this server (throwaway CI credentials).
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: helpdesk
+          POSTGRES_PASSWORD: helpdesk_ci
+          POSTGRES_DB: helpdesk
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U helpdesk -d helpdesk"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      HELPDESK_TEST_DB: Host=localhost;Port=5432;Username=helpdesk;Password=helpdesk_ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4

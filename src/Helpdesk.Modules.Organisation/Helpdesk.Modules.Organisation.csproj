@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Helpdesk.SharedKernel/Helpdesk.SharedKernel.csproj" />
+    <ProjectReference Include="../Helpdesk.Modules.Audit/Helpdesk.Modules.Audit.csproj" />
+    <ProjectReference Include="../Helpdesk.Modules.Identity/Helpdesk.Modules.Identity.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Helpdesk.Host.Tests" />
+    <InternalsVisibleTo Include="Helpdesk.ArchitectureTests" />
+  </ItemGroup>
+</Project>

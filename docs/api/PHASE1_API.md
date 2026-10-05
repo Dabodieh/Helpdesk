@@ -63,3 +63,13 @@ All unsafe methods (POST/PUT/PATCH/DELETE) need header `X-CSRF-TOKEN` from `GET 
 
 ## Audit actions emitted (Phase 1)
 `department.created`, `department.updated`, `department.activated`, `department.deactivated`, `team.created`, `team.updated`, `team.deactivated`, `team.activated`, `membership.added`, `membership.role_changed`, `membership.removed`, `team_membership.added`, `team_membership.removed`, `user.provisioned`, `user.platform_admin_changed`, `auth.signin` is **not** audited per request (log only). Values are redacted (no tokens/claims dumps).
+
+## Clarifications (as implemented and tested)
+- **CSRF:** a missing/invalid token returns 400 problem details. The token is bound to the signed-in user; fetch `GET /api/csrf` again after sign-in/sign-out. Unauthenticated requests (including unmatched URLs) get 401 with no redirect. Failed Entra sign-in redirects to `/?authError=failed|inactive`.
+- **PATCH:** `version` is required (missing/malformed 400, mismatch 409). `description`: `null`/absent = unchanged, `""` clears. A PATCH with none of `name`, `description`, `isActive` is 400.
+- **Members:** `PUT .../members/{userId}` returns 200 with `{ userId, displayName, email, role, teamIds }`; `PUT .../teams/{t}/members/{u}` is idempotent, 204; DELETE is 204, or 404 if the membership does not exist.
+- **Inactive:** adding members/teams/team members to an inactive department, members to an inactive team, or an inactive user as a member is 409.
+- **Content probe:** a platform admin without membership gets 404 on `ticket-access-probe`.
+- **Audit events** additionally carry `category` and `departmentId`. Membership events: `objectType: department_membership`, `objectId: <userId>`, `selfGrant` inside `next`. Team membership events: `objectType: team_membership`, `objectId: <teamId>`, `{teamId, userId}` in previous/next. The department audit endpoint returns the `organisation` category only. The actor display name is a snapshot taken at write time.
+- **Platform users list** is ordered by id (creation order); the cursor is the last id; `search` and `limit` (default 50, max 200) are supported.
+- **Bootstrap admins:** a subject in `Authentication:BootstrapPlatformAdminSubjects` becomes platform admin at first provisioning, or at sign-in when no active platform admin exists (recovery); it is not re-applied on every sign-in.

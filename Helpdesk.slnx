@@ -1,8 +1,13 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Helpdesk.Host/Helpdesk.Host.csproj" />
+    <Project Path="src/Helpdesk.SharedKernel/Helpdesk.SharedKernel.csproj" />
+    <Project Path="src/Helpdesk.Modules.Audit/Helpdesk.Modules.Audit.csproj" />
+    <Project Path="src/Helpdesk.Modules.Identity/Helpdesk.Modules.Identity.csproj" />
+    <Project Path="src/Helpdesk.Modules.Organisation/Helpdesk.Modules.Organisation.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Helpdesk.Host.Tests/Helpdesk.Host.Tests.csproj" />
+    <Project Path="tests/Helpdesk.ArchitectureTests/Helpdesk.ArchitectureTests.csproj" />
   </Folder>
 </Solution>

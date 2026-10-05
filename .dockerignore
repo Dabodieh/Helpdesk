@@ -1,0 +1,12 @@
+# Keep the build context small and secret-free; images copy only what docker/*.Dockerfile asks for.
+.git
+.env
+.env.*
+!.env.example
+**/bin
+**/obj
+**/node_modules
+src/web/dist
+**/TestResults
+tests
+docs

@@ -7,11 +7,16 @@
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Npgsql" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Helpdesk.Host/Helpdesk.Host.csproj" />
+    <ProjectReference Include="../../src/Helpdesk.SharedKernel/Helpdesk.SharedKernel.csproj" />
+    <ProjectReference Include="../../src/Helpdesk.Modules.Audit/Helpdesk.Modules.Audit.csproj" />
+    <ProjectReference Include="../../src/Helpdesk.Modules.Identity/Helpdesk.Modules.Identity.csproj" />
+    <ProjectReference Include="../../src/Helpdesk.Modules.Organisation/Helpdesk.Modules.Organisation.csproj" />
   </ItemGroup>
 </Project>

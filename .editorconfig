@@ -14,3 +14,8 @@ indent_size = 2
 [tests/**.cs]
 # Descriptive snake_case test names are intentional
 dotnet_diagnostic.CA1707.severity = none
+
+[src/**/Migrations/*.cs]
+# EF Core generated migrations (with small hand-written SQL additions): exempt from style/perf analyzers
+generated_code = true
+dotnet_diagnostic.CA1861.severity = none

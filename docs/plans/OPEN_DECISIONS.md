@@ -8,6 +8,8 @@
 | D-09 | Data retention policy (periods, export, anonymisation, legal hold) | Organisational/compliance policy, **unresolved**. No automatic deletion, no age-based hard-delete. Schema must keep later retention/export/anonymisation possible. | PO / compliance |
 | D-11 | Platform-admin self-granting department membership | Currently allowed as an ordinary, audited membership change (flagged `selfGrant` in the audit event). Consider dual control or notification before production. | PO |
 | D-12 | Future audited emergency ("break-glass") ticket access | Not implemented. Constraints recorded in PERMISSIONS.md. | PO |
+| D-13 | Persist the ASP.NET Data Protection key ring (PostgreSQL or volume) | Today a container replacement invalidates all sessions and OIDC correlation cookies. Must be settled before any shared/production deployment. | Principal |
+| D-14 | User (de)activation API; do inactive users count toward last-admin rules | `is_active` is enforced per request but no endpoint changes it (Phase 1 contract has none). | Principal |
 
 ## Resolved
 | ID | Decision | Resolution |

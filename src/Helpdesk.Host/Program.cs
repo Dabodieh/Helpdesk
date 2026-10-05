@@ -1,5 +1,10 @@
-using Helpdesk.Host.Configuration;
+using Helpdesk.Host.Errors;
+using Helpdesk.Modules.Audit;
+using Helpdesk.Modules.Identity;
+using Helpdesk.Modules.Organisation;
+using Helpdesk.SharedKernel.Database;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -9,12 +14,16 @@ Log.Logger = new LoggerConfiguration().WriteTo.Console(formatProvider: System.Gl
 
 try
 {
-    var builder = WebApplication.CreateBuilder(args);
+    // `dotnet run --project src/Helpdesk.Host -- migrate` applies all module migrations and exits (no web server).
+    var migrateOnly = args.Length > 0 && string.Equals(args[0], "migrate", StringComparison.OrdinalIgnoreCase);
+    var builder = WebApplication.CreateBuilder(migrateOnly ? args[1..] : args);
 
     builder.Host.UseSerilog((ctx, services, cfg) => cfg
         .ReadFrom.Configuration(ctx.Configuration)
         .ReadFrom.Services(services)
-        .Enrich.FromLogContext());
+        .Enrich.FromLogContext(),
+        // Keep the bootstrap logger usable: several hosts per process (integration tests) must not freeze it.
+        preserveStaticLogger: true);
 
     builder.Services.AddOptions<DatabaseOptions>()
         .Bind(builder.Configuration.GetSection(DatabaseOptions.Section))
@@ -27,7 +36,12 @@ try
         .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"])
         .AddNpgSql(connectionString!, name: "postgres", tags: ["ready"]);
 
+    builder.Services.AddAuditModule();
+    builder.Services.AddIdentityModule(builder.Configuration, builder.Environment);
+    builder.Services.AddOrganisationModule();
+
     builder.Services.AddProblemDetails();
+    builder.Services.AddExceptionHandler<HelpdeskExceptionHandler>();
     builder.Services.AddOpenApi();
 
     builder.Services.Configure<ForwardedHeadersOptions>(o =>
@@ -54,17 +68,38 @@ try
 
     var app = builder.Build();
 
+    if (migrateOnly)
+    {
+        await app.Services.GetRequiredService<ModuleMigrationRunner>().RunAsync();
+        Log.Information("All module migrations applied");
+        return;
+    }
+
+    if (app.Services.GetRequiredService<IOptions<DatabaseOptions>>().Value.MigrateOnStartup)
+    {
+        await app.Services.GetRequiredService<ModuleMigrationRunner>().RunAsync();
+    }
+
     app.UseForwardedHeaders();
     app.UseExceptionHandler();
     app.UseSerilogRequestLogging();
 
-    app.MapHealthChecks("/health/live", new() { Predicate = h => h.Tags.Contains("live") });
-    app.MapHealthChecks("/health/ready", new() { Predicate = h => h.Tags.Contains("ready") });
+    app.UseRouting();
+    app.UseIdentityModule();   // authentication + CSRF validation
+    app.UseAuthorization();
+
+    // Probes and OpenAPI are anonymous on purpose; everything else falls under the authenticated-user fallback policy.
+    app.MapHealthChecks("/health/live", new() { Predicate = h => h.Tags.Contains("live") }).AllowAnonymous();
+    app.MapHealthChecks("/health/ready", new() { Predicate = h => h.Tags.Contains("ready") }).AllowAnonymous();
 
     if (app.Environment.IsDevelopment())
     {
-        app.MapOpenApi();
+        app.MapOpenApi().AllowAnonymous();
     }
+
+    app.MapIdentityEndpoints();
+    app.MapOrganisationEndpoints();
+    app.MapAuditEndpoints();
 
     app.Run();
 }
