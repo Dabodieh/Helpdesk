@@ -15,9 +15,12 @@ Direction, not a final schema. Each module refines its slice before implementing
 ## Permissions
 - **Role** (system roles in v1: DepartmentAdmin, TeamLead, Agent, Viewer) maps to a fixed set of **Permission** codes defined in code (`tickets.read`, `tickets.reply`, ...). Custom per-department roles are backlog; the schema stores role as a stable code so it can be generalised later. See PERMISSIONS.md.
 
-## Mail
-- **Mailbox**: department-owned; provider (`MicrosoftGraph`), address, display name, signature reference, Graph subscription state, delta token, `is_active`; unique address globally (one address cannot serve two departments).
-- **MailMessage** (stored email): direction, mailbox, department, provider message id, internet message id, in-reply-to, references, from/to/cc/bcc, subject, html/text body, received/sent time, raw reference in object storage, processing state. Unique `(mailbox_id, provider_message_id)` and a dedup key on `(mailbox_id, internet_message_id, direction)`.
+## Mail (Phase 3 tables; model fixed now)
+- **Mailbox**: `id`, `department_id` (NOT NULL, FK), `display_name`, `email_address` (globally unique, case-insensitive; one address can never serve two departments), `provider` (`MicrosoftGraph`), `provider_mailbox_id` (external identifier, e.g. Entra/Exchange object id), `is_enabled`, `inbound_enabled`, `outbound_enabled`, `is_default_for_department` (at most one per department, partial unique index), provider status metadata (subscription id/expiry, delta token, last sync, last error; may live in a child table), `created_at`, `updated_at`.
+  - **Shared mailboxes only (D-07).** A mailbox is an Exchange Online *shared* mailbox reached by the application's own Entra identity via Graph. No mailbox username, password or session is ever stored or required. Helpdesk agents need no Exchange FullAccess/SendAs/SendOnBehalf: helpdesk permissions alone govern what an agent may do.
+  - A department may have many mailboxes; each mailbox has its own outbound identity (address, display name, signature). Replies **never** fall back to a global/system sender.
+  - A **ticket records the mailbox** it arrived on (`ticket.mailbox_id`) and every email-backed message records its mailbox. A reply is sent from the ticket's mailbox (or another outbound-enabled mailbox of the **same** department, chosen explicitly). A composite FK `(mailbox_id, department_id)` → `mailboxes(id, department_id)` on tickets and mail messages makes using another department's mailbox impossible at the database level.
+- **MailMessage** (stored email): direction, mailbox, department, provider message id (+ immutable id), internet message id, in-reply-to, references, provider conversation id, from/to/cc/bcc, subject, html/text body, received/sent time, raw reference in object storage, processing state. Unique `(mailbox_id, provider_message_id)` and a dedup key on `(mailbox_id, internet_message_id, direction)`. `conversationId` is evidence for threading, **never** the ticket's identity.
 - **Signature**, **EmailTemplate**: department-owned (Phase 3/4).
 
 ## Tickets
@@ -40,6 +43,17 @@ BusinessHours, SlaPolicy, SlaInstance(ticket), AutomationRule (+ execution log):
 
 ## Ticket numbering
 Per-department monotonically increasing integer from a `departments`-keyed counter row updated in the ticket-creation transaction (`UPDATE ... RETURNING`), displayed as `KEY-1234`. Gaps are acceptable on rollback-free design; uniqueness enforced `(department_id, number)`.
+
+## Phase 1 organisation constraints (implemented)
+- `departments`: `key` unique (case-insensitive, immutable after creation), `name` unique (case-insensitive); departments and teams are **deactivated, never hard-deleted** (no soft-delete framework; an `is_active` flag). Optimistic concurrency via PostgreSQL `xmin`.
+- `teams`: unique `(department_id, lower(name))`; unique `(id, department_id)` to serve as a composite FK target.
+- `department_memberships`: PK `(user_id, department_id)`; role is constrained text; FK to `departments`; user reference to `identity.users`.
+- `team_memberships`: PK `(team_id, user_id)`, carries `department_id`; composite FK `(team_id, department_id)` → `teams(id, department_id)` and `(user_id, department_id)` → `department_memberships(user_id, department_id)` (`ON DELETE CASCADE`), so a team membership can neither cross departments nor outlive the department membership.
+- Identity: `identity.users` (internal id; display name, email, `is_active`, `is_platform_admin`) and `identity.external_identities` (`provider`, `issuer_tenant`, `subject` unique; subject = Entra `oid`). Email/UPN/display name are mutable attributes, never keys.
+- `audit.audit_events`: append-only (see ARCHITECTURE/SECURITY); the application DB role must not have UPDATE/DELETE on it.
+
+## Retention (D-09, unresolved)
+Retention is an organisational/compliance decision with no period chosen. Requirements on the schema: no age-based hard-deletes; business entities keep stable ids and creation timestamps so retention rules, export and anonymisation can be added later (e.g. requester/user PII isolated in few columns/tables); the audit log references objects by id and stores redacted values; object storage keys are derivable from rows so binaries can be purged/exported with their metadata.
 
 ## Open points
 See `docs/plans/OPEN_DECISIONS.md`.

@@ -31,9 +31,8 @@ Modules are introduced when their functionality is required, not pre-created.
 ## Planned modules (introduction phase)
 | Module | Phase | Responsibility |
 |---|---|---|
-| Identity | 1 | OIDC login, user records, sessions, current-user context |
-| Organisation | 1 | Departments, teams, memberships |
-| Permissions | 1 | Roles, permission catalogue, `IAuthorizer` / department-scoped access |
+| Identity | 1 | OIDC login, internal users, external-identity mapping, current-user context |
+| Organisation | 1 | Departments, teams, memberships, roles, permission catalogue and `IAuthorizer` (Permissions folded in, ADR-009) |
 | Audit | 1 | Append-only audit events, `IAuditWriter` |
 | Tickets (+Requesters, Conversations) | 2 | Tickets, messages, notes, participants |
 | Mail | 3 | `IMailProvider`, Graph provider, mailboxes, inbound/outbound pipeline |
@@ -58,3 +57,17 @@ SPA served separately in dev (Vite proxy to API) and as static assets behind the
 - **Config:** options pattern, env vars override, secrets never in repo (`docs/security/SECURITY.md`).
 - **Migrations:** EF migrations per module context, reversible where practical, applied by an explicit `migrate` command/job, not on web start in production.
 - **Deployment:** Docker images, Compose for dev; reverse-proxy friendly (forwarded headers configured, Caddy/Nginx).
+
+## Hosting target (D-10)
+Linux + Docker + Docker Compose + PostgreSQL + S3-compatible object storage, behind any reverse proxy. Cloud agnostic: nothing may depend on Azure hosting services; Entra ID and Microsoft Graph are integrations only. Must remain deployable to an internal Linux server, Azure, AWS or another Docker environment without redesign.
+
+## Phase 1 structure (ADR-009)
+```
+src/Helpdesk.SharedKernel      current-principal abstractions, clock, DB helpers
+src/Helpdesk.Modules.Identity  (Contracts/ + internals)
+src/Helpdesk.Modules.Organisation
+src/Helpdesk.Modules.Audit
+src/Helpdesk.Host              composition root, endpoint mapping, auth setup
+tests/Helpdesk.ArchitectureTests, tests/Helpdesk.Host.Tests (+ module test projects as needed)
+```
+Authentication/session setup lives in the Host; ASP.NET authorization (fallback policy = authenticated, `PermissionRequirement` handlers) is the single enforcement pipeline.

@@ -6,7 +6,7 @@ Status: Accepted (2026-10-05)
 Cross-department leakage is a critical defect.
 
 ## Decision
-Department is the isolation boundary; department_id on all scoped rows; central IAuthorizer; 404 for inaccessible objects; scoped EF query filters; fixed system roles with permission codes in v1; PlatformAdmin does not implicitly read tickets (D-02, pending PO confirmation); teams not a security boundary (D-03). See PERMISSIONS.md.
+Department is the isolation boundary; department_id on all scoped rows; central IAuthorizer; 404 for inaccessible objects; scoped EF query filters; fixed system roles with permission codes in v1; PlatformAdmin does not implicitly read tickets (D-02, confirmed); platform administration and ticket-data access are separate privileges, enforced by classifying permissions as administrative vs content; teams are not a security boundary (D-03, confirmed). See PERMISSIONS.md.
 
 ## Alternatives considered
 Separate database/schema per department (operationally heavy, hard cross-department features); frontend-only filtering (unacceptable).

@@ -23,6 +23,18 @@ Secure defaults, server-side authorization on every operation, least privilege, 
 | Supply chain | Central package management, lock files, Dependabot, minimal dependencies, pinned container base images |
 | Transport/headers | HTTPS behind proxy, HSTS, forwarded headers trusted only from configured proxies, security headers |
 
+## Mailbox access model (production target, not configured in this repository)
+```
+Helpdesk Entra application -> Microsoft Graph -> authorised helpdesk shared mailboxes only
+```
+- Department mailboxes are Exchange Online **shared mailboxes** (D-07). They are not interactive users; the application never stores or needs a mailbox password, never signs in as a mailbox, and never opens a mailbox user session.
+- The application uses its own Entra identity (application permissions, certificate credential preferred). Production access must be **scoped to only the helpdesk mailboxes**, using Exchange Online RBAC for Applications (current supported mechanism; legacy Application Access Policies are the older equivalent) with a management scope/group containing exactly the helpdesk shared mailboxes. Verify the current Microsoft guidance when this is configured. Never grant tenant-wide `Mail.ReadWrite`/`Mail.Send` without that scoping.
+- Agents need no Exchange FullAccess/SendAs/SendOnBehalf; helpdesk RBAC decides what they may do and the application sends as the mailbox.
+- Exchange configuration is **not** performed by this project's code or repository; it is an operator runbook (to be written in Phase 3) and is never applied to production by an agent session.
+
+## Attachment malware scanning (D-08)
+Required before any production release that accepts user attachments. Engine undecided. Design (introduced with attachments in Phase 3): `IAttachmentScanner.ScanAsync(...)` returning `Clean | Infected | Suspicious | ScanFailed | Unsupported`; attachments are **quarantined** (not downloadable or rendered) until `Clean`; `ScanFailed` retries then stays quarantined and visible to admins.
+
 ## Secret handling
 `.env` and user-secrets are for local dev only and git-ignored; `.env.example` contains placeholders. Production secrets come from the platform secret store/environment. CI runs secret scanning.
 

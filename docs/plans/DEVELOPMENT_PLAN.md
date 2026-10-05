@@ -13,6 +13,9 @@ Vertical slices; each phase leaves a runnable product. Phase order follows the b
 | 6 Self-service | Portal, KB, branding | |
 | 7 Reporting | Dashboards and reports | |
 
+## Phase 1 scope (active)
+Entra auth foundation + internal users, departments, teams, memberships/roles/permissions, server-side authorization, audit writer, minimal admin UI, department-isolation tests, migrations on PostgreSQL 18, Graph shared-mailbox threading spike (messaging specialist, documentation + tooling + mocks; real-tenant results only if a dev mailbox is supplied), practical verification of the Phase 0 runtime foundation. Contract: `docs/api/PHASE1_API.md`; design: ADR-009, PERMISSIONS.md. Phase 1 closes with `docs/reports/PHASE-1-IDENTITY-ORGANISATION.md`.
+
 ## Phase 0 work packages
 1. Repo scaffolding, conventions, CLAUDE.md, agent definitions (done in bootstrap).
 2. `src/Helpdesk.Host` skeleton: options pattern, Serilog, OTel, health, OpenAPI, problem details, forwarded headers.

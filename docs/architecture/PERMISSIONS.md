@@ -1,12 +1,30 @@
 # Permissions / RBAC
 
 ## Model
-- **Platform scope:** `PlatformAdmin` flag on User. Administers the installation (departments, users, global settings, identity). Does **not** implicitly read ticket content; ticket access needs a department membership (platform admins may grant themselves one, which is audited). *(Decision D-02, see ADR-005.)*
-- **Department scope:** `DepartmentMembership(user, department, role)`. No membership = no access, and the department's existence/objects must not be disclosed.
-- **Team scope:** teams refine assignment and queues inside a department. In v1 a team is **not** a security boundary (all department members with `tickets.read` see the department's tickets); team-restricted visibility is a backlog item. *(D-03)*
-- Permissions are fine-grained codes; roles are fixed bundles of codes in v1.
+- **Platform scope:** `PlatformAdmin` flag on User. Administers the installation: creates/deactivates departments, manages the department structure and memberships, manages platform admins, reads platform-level audit. **Platform administration and ticket-data access are separate privileges (D-02).** A platform admin has no ticket/content access to any department unless they hold a department membership whose role grants it. Granting oneself a membership is an ordinary membership change, audited and flagged as a self-grant (D-11).
+- **Administrative vs content permissions.** Each permission is classified. *Administrative* permissions (department structure, teams, memberships, department audit of configuration) may be satisfied by the platform-admin flag. *Content* permissions (`tickets.*` and all future ticket/message/attachment access) are satisfied **only** by a department membership. This classification is a property of the permission definition in code and is covered by tests.
+- **Department scope:** `DepartmentMembership(user, department, role)`. No membership = no access; the department's existence must not be disclosed (404).
+- **Team scope:** teams are **not** a security boundary in v1 (D-03). They provide assignment, routing, queues, organisation, workload management and reporting. A department member with the right permission sees tickets across all teams of the department. Team-level restrictions are a future option; do not hard-wire "all department members see everything" into storage (visibility is decided in the authorizer, not in the schema).
+- **Future emergency access (not implemented, D-12):** if ever added it must be explicit, strongly audited, temporary where practical, clearly distinguishable from ordinary access, and never available merely because someone is a platform administrator.
+- Permissions are fine-grained codes; roles are fixed bundles of codes in v1. Only permissions for existing resources are defined (no speculative permissions).
 
-## System roles (v1)
+## Phase 1 permission catalogue
+| Code | Kind | Granted by |
+|---|---|---|
+| `platform.departments.manage` | platform | PlatformAdmin |
+| `platform.users.manage` | platform | PlatformAdmin |
+| `platform.audit.read` | platform | PlatformAdmin (organisation/identity categories only, never ticket content) |
+| `department.read` | administrative | any department role; PlatformAdmin |
+| `department.manage` (rename, description) | administrative | DepartmentAdmin; PlatformAdmin |
+| `department.members.manage` | administrative | DepartmentAdmin; PlatformAdmin |
+| `teams.manage` | administrative | DepartmentAdmin; PlatformAdmin |
+| `department.audit.read` | administrative | TeamLead, DepartmentAdmin; PlatformAdmin |
+| `tickets.read` | **content** | Viewer, Agent, TeamLead, DepartmentAdmin (membership only) |
+Activation (`isActive`) of a department needs `platform.departments.manage`.
+Phase 1 has no ticket resource; `tickets.read` is exercised through a clearly marked probe endpoint (`GET /api/departments/{id}/ticket-access-probe`, returns 204/404/403 and no data) which Phase 2 replaces with real ticket endpoints and tests.
+TeamLead-scoped team management is deferred (backlog): in Phase 1 `teams.manage` is DepartmentAdmin only.
+
+## System roles (v1 target set; Phase 1 implements the catalogue above)
 | Permission | Viewer | Agent | TeamLead | DeptAdmin |
 |---|:-:|:-:|:-:|:-:|
 | tickets.read | x | x | x | x |
