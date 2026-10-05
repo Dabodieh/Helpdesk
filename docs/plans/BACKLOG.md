@@ -29,3 +29,11 @@
 - User lookup scope/privacy review (currently all active users)
 - Web Dockerfile / reverse-proxy config; CI step that builds the host image
 - Real Entra tenant sign-in verification (needs a dev tenant)
+- Database-level append-only guard (trigger or revoked grants) for `ticketing.messages`, like `audit_events`
+- Ticket event when a membership removal unassigns tickets (needs a cross-module notification)
+- Phase 3 mail: sanitise CR/LF in subjects and angle brackets in requester emails before header/template use
+- Per-department late-reply policy (reopen vs follow-up ticket) and auto-close timers (Phase 5)
+- Cross-department ticket move (reference alias rules defined in TICKETING.md)
+- SignalR push for open workspaces and queues (Phase 4); optimistic UI and a resizable split in the workspace
+- Multi-select priority filter and saved views in the queue (Phase 4)
+- Reverse-proxy security headers for the SPA (CSP, HSTS)

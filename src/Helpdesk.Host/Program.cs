@@ -83,6 +83,30 @@ try
     }
 
     app.UseForwardedHeaders();
+    if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Testing"))
+    {
+        app.UseHsts();
+    }
+
+    // Transport hardening for API responses (JSON that may contain user-supplied markup, never cacheable by shared caches).
+    app.Use(async (context, next) =>
+    {
+        context.Response.OnStarting(() =>
+        {
+            var headers = context.Response.Headers;
+            headers.XContentTypeOptions = "nosniff";
+            headers["Referrer-Policy"] = "no-referrer";
+            if (context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase))
+            {
+                headers.CacheControl = "no-store";
+                headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'";
+            }
+
+            return Task.CompletedTask;
+        });
+        await next();
+    });
+
     app.UseExceptionHandler();
     app.UseSerilogRequestLogging();
 

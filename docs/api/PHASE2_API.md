@@ -52,6 +52,8 @@ Page<T> { items: T[], nextCursor: string | null }
 | `POST /api/tickets/{ticket}/messages` | `tickets.reply` (kind `Public`) / `tickets.note` (kind `Internal`) | `{ kind, body, status? }`; `status` additionally needs `tickets.update` and is applied in the same transaction. Public: author `Agent`, delivery `NotDelivered`, refused with 409 `invalid_state` on a Closed ticket. Returns 201 `{ message: Message, ticket: TicketDetail }`. |
 | `GET /api/tickets/{ticket}/activity?cursor=&limit=` | `tickets.read` | Newest first, `limit` default 50 (max 200), from the audit stream. Includes message events (`ticket.message_added`, no body) so clients can interleave; clients should not show them twice. |
 
+Messages are not version-guarded (no `version` in the request), but posting one changes the ticket and therefore its `version`: an editor holding the previous version gets 409 `version_conflict` and reloads. `assign.self` lets an agent take a ticket that is currently assigned to someone else (decided: claiming is allowed; releasing or reassigning others needs `assign.any`).
+
 Authorization order for ticket-id routes: resolve the ticket through the department-scoped set (not found / no `tickets.read` = 404), then check the action permission against the ticket's persisted department (member lacking it = 403). The department id is never taken from the body or query.
 
 ### `GET /api/tickets` query

@@ -19,7 +19,9 @@
 | `department.members.manage` | administrative | DepartmentAdmin; PlatformAdmin |
 | `teams.manage` | administrative | DepartmentAdmin; PlatformAdmin |
 | `department.audit.read` | administrative | TeamLead, DepartmentAdmin; PlatformAdmin |
-| `tickets.read` | **content** | Viewer, Agent, TeamLead, DepartmentAdmin (membership only) |
+| `tickets.read`, `tickets.notes.read` | **content** | Viewer, Agent, TeamLead, DepartmentAdmin (membership only) |
+| `tickets.create`, `tickets.reply`, `tickets.note`, `tickets.update`, `tickets.assign.self` | **content** | Agent, TeamLead, DepartmentAdmin (membership only) |
+| `tickets.assign.any` | **content** | TeamLead, DepartmentAdmin (membership only) |
 Activation (`isActive`) of a department needs `platform.departments.manage`.
 Phase 2 adds the ticket resource and the ticket permission set (all *content* kind, membership only): `tickets.read`, `tickets.create`, `tickets.reply`, `tickets.note`, `tickets.notes.read`, `tickets.update`, `tickets.assign.self`, `tickets.assign.any`; role mapping and enforcement details in `TICKETING.md`. The Phase 1 probe endpoint was removed.
 TeamLead-scoped team management is deferred (backlog): in Phase 1 `teams.manage` is DepartmentAdmin only.
@@ -27,8 +29,8 @@ TeamLead-scoped team management is deferred (backlog): in Phase 1 `teams.manage`
 ## System roles (v1 target set; Phase 1 implements the catalogue above)
 | Permission | Viewer | Agent | TeamLead | DeptAdmin |
 |---|:-:|:-:|:-:|:-:|
-| tickets.read | x | x | x | x |
-| tickets.create / reply / note | | x | x | x |
+| tickets.read, tickets.notes.read | x | x | x | x |
+| tickets.create / reply / note / update (status, priority, subject) | | x | x | x |
 | tickets.assign.self | | x | x | x |
 | tickets.assign.any / reassign | | | x | x |
 | tickets.move (cross-department, needs target too) | | | | x |

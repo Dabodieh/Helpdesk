@@ -78,10 +78,29 @@ internal static partial class TicketValidation
     [GeneratedRegex(@"^[A-Za-z][A-Za-z0-9]{1,9}-[0-9]{1,9}$")]
     private static partial Regex ReferencePattern();
 
+    /// <summary>PostgreSQL text cannot hold U+0000; reject it as a validation error instead of a server error.</summary>
+    public static bool HasNul(string? value) => value is not null && value.Contains('\u0000', StringComparison.Ordinal);
+
+    private static bool RejectNul(IDictionary<string, string[]> errors, string field, string? value)
+    {
+        if (!HasNul(value))
+        {
+            return false;
+        }
+
+        errors[field] = [$"{field} contains invalid characters."];
+        return true;
+    }
+
     public static bool IsReference(string value) => ReferencePattern().IsMatch(value);
 
     public static void Subject(IDictionary<string, string[]> errors, string field, string? value)
     {
+        if (RejectNul(errors, field, value))
+        {
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(value))
         {
             errors[field] = [$"{field} is required."];
@@ -94,6 +113,11 @@ internal static partial class TicketValidation
 
     public static void Body(IDictionary<string, string[]> errors, string field, string? value)
     {
+        if (RejectNul(errors, field, value))
+        {
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(value))
         {
             errors[field] = [$"{field} is required."];
@@ -106,6 +130,11 @@ internal static partial class TicketValidation
 
     public static void Email(IDictionary<string, string[]> errors, string field, string? value)
     {
+        if (RejectNul(errors, field, value))
+        {
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(value))
         {
             errors[field] = [$"{field} is required."];
@@ -118,6 +147,11 @@ internal static partial class TicketValidation
 
     public static void DisplayName(IDictionary<string, string[]> errors, string field, string? value)
     {
+        if (RejectNul(errors, field, value))
+        {
+            return;
+        }
+
         if (value is not null && value.Trim().Length > MaxDisplayName)
         {
             errors[field] = [$"{field} must be at most {MaxDisplayName} characters."];

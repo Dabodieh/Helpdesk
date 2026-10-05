@@ -60,7 +60,7 @@ internal sealed class TicketQueryService(
         }
 
         var search = query.Q?.Trim();
-        if (query.Q is not null && (search!.Length is < 2 or > 100))
+        if (query.Q is not null && (search!.Length is < 2 or > 100 || TicketValidation.HasNul(search)))
         {
             errors["q"] = ["q must be between 2 and 100 characters."];
         }
@@ -303,7 +303,7 @@ internal sealed class RequesterService(TicketingDbContext db, IDepartmentScope s
     public async Task<IReadOnlyList<RequesterLookupDto>> LookupAsync(Guid departmentId, string? q, CancellationToken ct)
     {
         var term = q?.Trim();
-        if (term is null || term.Length is < 2 or > 100)
+        if (term is null || term.Length is < 2 or > 100 || TicketValidation.HasNul(term))
         {
             throw new RequestValidationException("q", "q must be between 2 and 100 characters.");
         }

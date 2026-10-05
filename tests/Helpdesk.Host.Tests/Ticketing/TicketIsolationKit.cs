@@ -130,7 +130,7 @@ public sealed class IsoWorld
         return new Fresh(t.Id, current.Json.Str("reference"), current.Version, subject, note, pub);
     }
 
-    public string RandomReference(string? key = null) => $"{key ?? ("Q" + Guid.NewGuid().ToString("N")[..6].ToUpperInvariant())}-{Random.Shared.Next(100000, 999999999)}";
+    public static string RandomReference(string? key = null) => $"{key ?? ("Q" + Guid.NewGuid().ToString("N")[..6].ToUpperInvariant())}-{Random.Shared.Next(100000, 999999999)}";
 }
 
 public static class IsoKit
@@ -170,10 +170,15 @@ public static class IsoKit
     }
 
     public static bool HasHeader(ApiResponse response, string name) =>
-        response.Message.Headers.Contains(name) || response.Message.Content.Headers.Contains(name);
+        response.Message.Headers.Concat(response.Message.Content.Headers).Any(h => string.Equals(h.Key, name, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Hash of every row the ticketing and audit modules hold for the departments: any change shows up.</summary>
-    public static Task<string?> SnapshotAsync(HelpdeskFixture fixture, params Guid[] departmentIds) =>
+    public static Task<string?> SnapshotAsync(HelpdeskFixture fixture, params Guid[] departmentIds) => SnapshotCoreAsync(fixture, departmentIds, true);
+
+    /// <summary>Snapshot of one department only (no global audit count), for "nothing of B changed" while A is being changed.</summary>
+    public static Task<string?> DepartmentSnapshotAsync(HelpdeskFixture fixture, Guid departmentId) => SnapshotCoreAsync(fixture, [departmentId], false);
+
+    private static Task<string?> SnapshotCoreAsync(HelpdeskFixture fixture, Guid[] departmentIds, bool includeGlobalAudit) =>
         fixture.ScalarAsync<string>(
             """
             SELECT md5(coalesce(string_agg(t, '|' ORDER BY t), '')) FROM (
@@ -183,10 +188,11 @@ public static class IsoKit
               UNION ALL SELECT 'r:'||id||':'||email_normalised||':'||display_name FROM ticketing.requesters WHERE department_id = ANY(@ids)
               UNION ALL SELECT 'c:'||department_id||':'||next_number::text FROM ticketing.department_counters WHERE department_id = ANY(@ids)
               UNION ALL SELECT 'a:'||count(*)::text FROM audit.audit_events WHERE department_id = ANY(@ids)
-              UNION ALL SELECT 'a2:'||count(*)::text FROM audit.audit_events WHERE category = 'ticketing'
+              UNION ALL SELECT 'a2:'||count(*)::text FROM audit.audit_events WHERE category = 'ticketing' AND @global
             ) x
             """,
-            new NpgsqlParameter("ids", departmentIds));
+            new NpgsqlParameter("ids", departmentIds),
+            new NpgsqlParameter("global", includeGlobalAudit));
 
     public static async Task<List<Guid>> GuidsAsync(HelpdeskFixture fixture, string sql, params NpgsqlParameter[] parameters)
     {
