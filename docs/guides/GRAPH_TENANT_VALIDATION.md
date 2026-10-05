@@ -1,6 +1,6 @@
 # Runbook: Microsoft Graph shared-mailbox validation (real test tenant)
 
-Purpose: run the experiments E-1..E-38 listed in `docs/architecture/EMAIL_ARCHITECTURE.md` ("Graph spike findings") against a **test** Microsoft 365 tenant, record observations, and then accept or amend ADR-011 and close or re-rate R-04.
+Purpose: run the experiments E-1..E-38 listed in `docs/architecture/EMAIL_ARCHITECTURE.md` ("Graph spike findings") against a **test** Microsoft 365 tenant, record observations, and then confirm or amend ADR-011 (accepted as design direction; this run closes its production validation gate) and close or re-rate R-04.
 
 Status: **not yet run**. Written from Microsoft documentation only. Nothing in this runbook was executed by the authors; request/response shapes may need small corrections on first contact.
 
@@ -101,7 +101,7 @@ Send 3 mails from the external accounts to mailbox A.
 - To list state: `GET /subscriptions`.
 
 ### F. Correlation and isolation end-to-end (E-36..E-38)
-- **E-36** Requester writes to A, CC B. Agent replies from A (Reply flow). Requester replies-all. Expected: A copy attaches to the A ticket via `In-Reply-To`; B copy (referencing A's outbound id) does **not** attach: it creates a new ticket in B's department and logs a cross-department match. Re-run with the requester changing the subject, and with a forward by a third person.
+- **E-36** Requester writes to A, CC B. Agent replies from A (Reply flow). Requester replies-all. Expected: A copy attaches to the A ticket via `In-Reply-To`; B copy (referencing A's outbound id) does **not** attach: it creates a new ticket in B's department and logs a cross-department match. Re-run with the requester changing the subject, and with a forward by a third person. Threading policy check: a mail that carries only the `[KEY-n]` subject reference of an existing ticket (no `In-Reply-To`/`References`, no outbound token, new conversation), including one sent by a known participant, must **not** attach; it becomes a new ticket / manual-correlation item with the ticket recorded as a suggestion. The subject reference is a hint only.
 - **E-37** Make a mailbox auto-forward/auto-reply to the other: confirm the own-address rule stops a loop and that `Auto-Submitted`/OOF replies are suppressed.
 - **E-38** Collect real header samples (OOF, DSN/bounce, mailing list) and confirm the `MailLoopGuard` header rules in `tests/Helpdesk.GraphSpike.Tests` match them; add them as fixtures.
 
@@ -148,4 +148,4 @@ Send 3 mails from the external accounts to mailbox A.
 | E-37 | loop stopped by own-address rule | | | |
 | E-38 | real header samples match guard rules | | | |
 
-Exit criteria: E-10, E-12, E-21..E-26 and E-36 observed and consistent with ADR-011 -> set ADR-011 to Accepted, mark R-04 mitigated (or re-rate), update EMAIL_ARCHITECTURE.md (move findings from [REAL] to [VERIFIED]) and resolve D-16. Any contradiction -> amend ADR-011 before Phase 3 mail work starts.
+Exit criteria: E-10, E-12, E-21..E-26 and E-36 observed and consistent with ADR-011 -> close the production validation gate of ADR-011 (status is already "Accepted as design direction"), mark R-04 mitigated (or re-rate), update EMAIL_ARCHITECTURE.md (move findings from [REAL] to validated, citing the run) and resolve D-16. Any contradiction -> amend ADR-011 before Phase 3 mail work starts.

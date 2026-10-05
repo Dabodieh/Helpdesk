@@ -11,7 +11,7 @@
 | D-13 | Persist the ASP.NET Data Protection key ring (PostgreSQL or volume) | Today a container replacement invalidates all sessions and OIDC correlation cookies. Must be settled before any shared/production deployment. | Principal |
 | D-14 | User (de)activation API; do inactive users count toward last-admin rules | `is_active` is enforced per request but no endpoint changes it (Phase 1 contract has none). | Principal |
 | D-15 | Behaviour when a late reply correlates to a closed ticket (reopen vs new linked ticket) | Raised by the Graph spike (ADR-011). Mail only reports the correlation; Ticketing decides. Needed before Phase 3 threading is finalised. | PO / Principal |
-| D-16 | Accept ADR-011 (Proposed) after real-tenant validation of the Graph checklist | Requires a test tenant + shared mailboxes + Exchange admin (runbook `docs/guides/GRAPH_TENANT_VALIDATION.md`). Blocks Phase 3 mail build, not Phase 2. Includes the "subject key attaches for known participants" vs "hint only" choice. | Principal / PO |
+| D-16 | Close the ADR-011 production validation gate (ADR is Accepted as design direction; production readiness conditional on real-tenant validation) | Requires a test tenant + shared mailboxes + Exchange admin (runbook `docs/guides/GRAPH_TENANT_VALIDATION.md`). Gate stays OPEN until the runbook has run successfully against an approved test mailbox. Blocks Phase 3 production email readiness, not Phase 2. | Principal / PO |
 | D-17 | Object-store image/provider for local dev and production (S3-compatible) | `minio/minio` is no longer pullable from Docker Hub; compose service moved behind the `storage` profile. Choose (pinned MinIO build, alternative S3-compatible store, or cloud bucket) before Phase 3 attachments. | Principal |
 
 ## Resolved

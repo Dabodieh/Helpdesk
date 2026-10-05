@@ -7,20 +7,20 @@ internal enum CorrelationMethod
     References,
     OutboundToken,
     ConversationId,
-    /// <summary>Weak: subject key + sender is a known participant of that ticket + same department.</summary>
-    SubjectTokenParticipant,
 }
 
 /// <param name="TicketId">Ticket to append to, or null = create a new ticket.</param>
-/// <param name="SubjectHintTicketId">Ticket named by a subject key in the receiving department; a hint only.</param>
+/// <param name="SubjectHintTicketId">Ticket named by a subject key in the receiving department. A suggestion only: never attaches.</param>
 /// <param name="CrossDepartmentMatchIgnored">Some evidence pointed into another department and was discarded (log it).</param>
 /// <param name="MailboxMismatch">Matched ticket lives on another mailbox of the same department (flag for review).</param>
+/// <param name="NeedsReview">No strong evidence, but the subject names a ticket in the receiving department: create a new ticket or route to manual correlation, recording SubjectHintTicketId as a suggestion.</param>
 internal sealed record CorrelationResult(
     string? TicketId,
     CorrelationMethod Method,
     string? SubjectHintTicketId,
     bool CrossDepartmentMatchIgnored,
-    bool MailboxMismatch);
+    bool MailboxMismatch,
+    bool NeedsReview = false);
 
 internal sealed class TicketInfo
 {
@@ -51,8 +51,9 @@ internal sealed record StoredMessage(
 /// <summary>
 /// Deterministic, ordered correlation of an inbound message to an existing ticket (spike version).
 /// Precedence: 1 In-Reply-To / References, 2 outbound token, 3 conversationId (same mailbox only),
-/// 4 subject key (weak hint; attaches only with a known-participant sender). Department comes from the receiving
-/// mailbox; evidence pointing into another department is discarded and reported, never followed.
+/// otherwise no attachment. A subject key (e.g. [IT-42]) is a hint only: it never attaches, not even for a known
+/// participant; it is returned as a suggestion (NeedsReview). Department comes from the receiving mailbox;
+/// evidence pointing into another department is discarded and reported, never followed.
 /// </summary>
 internal sealed class TicketCorrelator
 {
@@ -141,8 +142,9 @@ internal sealed class TicketCorrelator
             }
         }
 
-        // 4. Subject key: weak hint, never sole evidence. It attaches only when the sender is already a participant
-        //    of that ticket and the ticket is in the receiving department.
+        // 4. Subject key: hint only. Without strong evidence (steps 1-3) the safe outcome is NOT to attach; the
+        //    candidate in the receiving department is recorded as a suggestion for a new ticket / manual correlation.
+        //    A candidate in another department is discarded and reported.
         string? hint = null;
         var keyMatch = Patterns.SubjectKey().Match(message.Subject);
         if (keyMatch.Success)
@@ -152,11 +154,6 @@ internal sealed class TicketCorrelator
             if (inDepartment is not null)
             {
                 hint = inDepartment.TicketId;
-                if (message.FromAddress is not null && inDepartment.Participants.Contains(message.FromAddress))
-                {
-                    return new CorrelationResult(inDepartment.TicketId, CorrelationMethod.SubjectTokenParticipant, hint,
-                        crossIgnored, !Text.Eq(inDepartment.MailboxId, message.MailboxId));
-                }
             }
             else if (named.Count > 0)
             {
@@ -164,7 +161,7 @@ internal sealed class TicketCorrelator
             }
         }
 
-        return new CorrelationResult(null, CorrelationMethod.None, hint, crossIgnored, false);
+        return new CorrelationResult(null, CorrelationMethod.None, hint, crossIgnored, false, hint is not null);
     }
 
     private static List<(string Id, CorrelationMethod Method)> HeaderCandidates(SpikeMessage message)

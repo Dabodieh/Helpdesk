@@ -45,7 +45,7 @@ D-04 RLS (re-evaluate before Phase 2 ticket tables), D-08, D-09, D-11, D-12, D-1
 - UI: 409 and CSRF failures detected by message heuristics; platform-admin permission list hardcoded; no audit or platform-admin screens; no browser E2E; no visual/accessibility audit beyond semantic markup and unit tests.
 - User lookup searches all active users (id/name/email only).
 - No rate limiting, no separate DB roles, EF department query filter deferred to Phase 2.
-- ADR-011 spike deviation: the subject key attaches only for a known participant of the ticket in the same department (a weak, never-sole signal); revisit under D-16.
+- ADR-011 spike deviation (superseded in Phase 2): the spike let the subject key attach for known participants; Phase 2 decided a subject reference is a hint only and never attaches on its own (see EMAIL_ARCHITECTURE.md).
 - Backend tests could not be run on the host directly; they ran in a Docker SDK 10 container.
 
 ## Readiness for Phase 2

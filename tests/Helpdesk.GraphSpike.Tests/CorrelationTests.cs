@@ -94,21 +94,44 @@ public sealed class CorrelationTests
     }
 
     [Fact]
-    public void Forward_by_a_non_participant_creates_a_new_ticket_and_only_hints()
+    public void Subject_key_alone_is_a_suggestion_and_does_not_attach()
     {
         var result = _correlator.Correlate(Load("inbound-forwarded-it.json", It));
         Assert.Null(result.TicketId);
         Assert.Equal(CorrelationMethod.None, result.Method);
         Assert.Equal("t-it-42", result.SubjectHintTicketId);
+        Assert.True(result.NeedsReview);
     }
 
     [Fact]
-    public void Subject_key_attaches_only_for_a_known_participant_and_is_flagged_weak()
+    public void Subject_key_plus_known_participant_sender_still_does_not_attach()
     {
         var forwarded = Load("inbound-forwarded-it.json", It) with { FromAddress = "alice@fabrikam.example" };
         var result = _correlator.Correlate(forwarded);
+        Assert.Null(result.TicketId);
+        Assert.Equal(CorrelationMethod.None, result.Method);
+        Assert.Equal("t-it-42", result.SubjectHintTicketId);
+        Assert.True(result.NeedsReview);
+    }
+
+    [Fact]
+    public void Subject_key_plus_strong_evidence_attaches_by_the_strong_evidence()
+    {
+        var message = Load("inbound-forwarded-it.json", It) with { InReplyTo = "CAF1abc123@mail.fabrikam.example" };
+        var result = _correlator.Correlate(message);
         Assert.Equal("t-it-42", result.TicketId);
-        Assert.Equal(CorrelationMethod.SubjectTokenParticipant, result.Method);
+        Assert.Equal(CorrelationMethod.InReplyTo, result.Method);
+        Assert.False(result.NeedsReview);
+    }
+
+    [Fact]
+    public void Strong_evidence_wins_over_a_subject_key_naming_another_ticket()
+    {
+        _correlator.AddTicket(new TicketInfo("t-it-99", "dept-it", It, "IT-99", []));
+        var message = Load("inbound-reply-it.json", It) with { Subject = "Re: [IT-99] something else" };
+        var result = _correlator.Correlate(message);
+        Assert.Equal("t-it-42", result.TicketId);
+        Assert.Equal(CorrelationMethod.InReplyTo, result.Method);
     }
 
     [Fact]
@@ -123,11 +146,13 @@ public sealed class CorrelationTests
     }
 
     [Fact]
-    public void Cross_department_hit_is_reported_even_when_only_the_subject_key_points_there()
+    public void Wrong_department_subject_key_never_attaches_and_is_not_even_suggested()
     {
         var message = Load("inbound-forwarded-it.json", Hr);
         var result = _correlator.Correlate(message);
         Assert.Null(result.TicketId);
+        Assert.Null(result.SubjectHintTicketId);
+        Assert.False(result.NeedsReview);
         Assert.True(result.CrossDepartmentMatchIgnored);
     }
 

@@ -26,17 +26,18 @@ public interface IMailProvider
 
 Failures retry with backoff, then dead-letter into a visible "failed mail" admin list. Nothing is dropped silently.
 
-## Threading (in priority order)
-1. `In-Reply-To` / `References` matched against stored `internet_message_id` of messages in **the same department**.
-2. Provider conversation id (Graph `conversationId`) within the same mailbox.
-3. Ticket reference token in the subject (`[KEY-1234]`) **only if** the sender is a requester/participant of that ticket (prevents hijacking by guessing numbers), and the ticket is in the receiving mailbox's department.
-4. Otherwise a new ticket. A subject match alone never merges tickets.
-Cross-department threading never occurs: a match found in a different department is ignored (treated as new) and logged.
-The order above is refined by the spike (outbound token inserted before `conversationId`, `conversationId` restricted to the same mailbox): see "Graph spike findings" section 9 and ADR-011.
+## Threading
+**Policy (Principal decision): a ticket reference in the subject (`[IT-1042]`, `Re: [IT-1042] ...`) is a HINT ONLY.** It is never sufficient evidence to attach an inbound message, alone or combined with "sender is a known participant". Auto-threading requires strong deterministic evidence, in this order:
+1. `In-Reply-To` / `References` matched against stored `internet_message_id` of our messages in **the same department**.
+2. An opaque outbound correlation token we control (`x-helpdesk-token` header or `[hd:<token>]` body footer), looked up in our own table.
+3. Provider conversation id (Graph `conversationId`) within the **same mailbox** only.
+4. No strong evidence: do **not** attach. Create a new ticket, or route to manual correlation, and record the subject's candidate ticket reference (receiving department only) as a **suggestion** for the agent. Correspondence is never attached to a possibly wrong, sensitive ticket.
+The subject reference may narrow candidate lookup or corroborate steps 1-3, and must never cross departments. Cross-department threading never occurs: evidence pointing into a different department is discarded (treated as new) and logged; a subject reference into another department is not even suggested.
+Outbound subjects may still carry `[KEY-1234]` for human recognition; it is documented as a hint and is never relied on for inbound threading. Details: "Graph spike findings" section 9 and ADR-011.
 
 ## Outbound
 - A public reply is persisted as an outbound `MailMessage` (state `Queued`) in the same transaction as the ticket message (outbox), then sent by a job → provider `SendAsync` from the department mailbox identity (`From` = mailbox address/display name, department signature appended). Retry-safe: send is guarded by a unique outbound id and recorded provider message id; a job that crashed after sending reconciles by looking up the sent item rather than resending.
-- Graph constraint: custom `internetMessageHeaders` may only be `x-*`, so `In-Reply-To`/`References` cannot be set directly. Strategy: reply with Graph `createReply`/`createReplyAll` draft on the original message (Exchange sets the threading headers), falling back to `sendMail` plus `X-` headers and the subject token. Graph also documents a MIME form of `createReply` / draft creation where the caller supplies Internet message headers, which may be a second route to `In-Reply-To`/`References`. Status of R-04 and the open validation steps: see "Graph spike findings" below and ADR-011.
+- Graph constraint: custom `internetMessageHeaders` may only be `x-*`, so `In-Reply-To`/`References` cannot be set directly. Strategy: reply with Graph `createReply`/`createReplyAll` draft on the original message (Exchange sets the threading headers), falling back to `sendMail` plus `X-` headers (the subject may also carry `[KEY-1234]` for human recognition: a hint only, see Threading). Graph also documents a MIME form of `createReply` / draft creation where the caller supplies Internet message headers, which may be a second route to `In-Reply-To`/`References`. Status of R-04 and the open validation steps: see "Graph spike findings" below and ADR-011.
 - Record `internetMessageId` of the sent message (read from the draft/sent item) so the requester's reply threads.
 - Public replies only ever use the ticket department's mailbox; if the department has no active mailbox, sending fails visibly.
 - Internal notes never produce email.
@@ -53,7 +54,15 @@ Fake `IMailProvider` for integration tests (the MVP loop runs against it in CI);
 
 ## Graph spike findings (Phase 1)
 
-Status: spike **partially complete**. No Microsoft 365 tenant or test mailbox was available, so nothing below is an observed live result. Every finding is labelled with exactly one class:
+Status: spike **partially complete**. ADR-011 is **Accepted as design direction; production readiness conditional on real-tenant validation**. No Microsoft 365 tenant or test mailbox was available, so nothing below is an observed live result: behaviour validated against our tenant is currently **NONE**. The **production validation gate stays OPEN** until the shared-mailbox runbook (`docs/guides/GRAPH_TENANT_VALIDATION.md`) has been executed successfully against an approved test mailbox. Phase 2 is not blocked; Phase 3 production email readiness is.
+
+Four categories are kept distinct (none implies the next):
+1. **Architectural decision**: our choices (ADR-011), e.g. the threading policy below. A decision is not evidence that Exchange behaves as assumed.
+2. **Microsoft-documented behaviour**: [DOC] below.
+3. **Mock-tested assumptions**: [MOCK] below.
+4. **Behaviour validated against our tenant**: [REAL] below; currently none.
+
+Every finding is labelled with exactly one class:
 
 - **[DOC]** VERIFIED FROM DOCUMENTATION / API CONTRACT (Microsoft Learn, fetched 2026-10-05; URL cited). Documentation can lag or omit behaviour; treat as "contract", not "observed".
 - **[MOCK]** COVERED BY MOCKS/TESTS: our own rule, encoded as a pure test in `tests/Helpdesk.GraphSpike.Tests` against hand-built fixtures shaped like the documented payloads. Proves our logic, not Exchange's behaviour.
@@ -114,12 +123,12 @@ Evaluation order for an inbound message, always within the receiving mailbox's *
 1. `In-Reply-To`, then `References` (nearest ancestor first) matched against stored `internetMessageId` of our outbound **and** inbound messages (same mailbox preferred).
 2. Opaque outbound token (`x-helpdesk-token` header or `[hd:<token>]` body footer), looked up in our own table. Unguessable, unlike ticket numbers.
 3. `conversationId`, **same mailbox only**.
-4. Subject key `[KEY-n]`: a weak hint, never sole evidence. It attaches only if the ticket is in the receiving department **and** the sender is already a participant of that ticket; otherwise it is recorded as a hint on the new ticket for agent review.
-5. Otherwise a new ticket.
+4. Subject key `[KEY-n]`: **hint only, never attaches** (not alone, not with a known-participant sender). It may narrow candidate lookup or corroborate 1-3. Without 1-3 the message is not attached: the candidate ticket in the receiving department is recorded as a suggestion (`NeedsReview`, `SubjectHintTicketId`) on the new ticket / manual-correlation item; a candidate in another department is discarded and reported.
+5. Otherwise a new ticket (or manual correlation).
 
 Isolation: any evidence pointing at a ticket in another department is discarded, reported (`CrossDepartmentMatchIgnored`) and logged without bodies; the message becomes a new ticket in the receiving department. Evidence pointing to another mailbox of the *same* department attaches for headers/token but is flagged (`MailboxMismatch`); the ticket keeps its own mailbox for outbound identity (ADR-010).
 Idempotency keys: `(mailbox, immutable id)`; fallback `(mailbox, normalised internetMessageId)` plus fingerprint. Loop/noise hints (`MailLoopGuard`): own helpdesk address as sender (including other departments' mailboxes), `Auto-Submitted` != `no`, `Precedence: bulk|list|junk`, `X-Auto-Response-Suppress`, `List-Id`/`List-Unsubscribe`, `mailer-daemon`/`postmaster` senders, `multipart/report; report-type=delivery-status`. Note that Sent Items copies never arrive through the Inbox subscription/delta.
-- **[MOCK]** All of section 9 (`CorrelationTests`, `IngestionTests`), including: cross-mailbox/cross-department reply never attaches, header match outranks `conversationId`, subject key alone never merges.
+- **[MOCK]** All of section 9 (`CorrelationTests`, `IngestionTests`), including: cross-mailbox/cross-department reply never attaches, header match outranks `conversationId`, subject key alone never attaches (also not with a known-participant sender, and not across departments), subject key plus strong evidence attaches by the strong evidence.
 - **[REAL]** E-36 end-to-end scenario with two shared mailboxes (A, B) and a requester CC'ing both: the reply to A's outbound mail arrives in A (attaches) and in B (must become a *new* B ticket, not attach to A's); E-37 inter-mailbox auto-reply loop is stopped by the own-address rule; E-38 real `Auto-Submitted`/OOF/DSN header samples match the guard rules.
 
 ### 10. Undetermined (needs a decision or real data)
