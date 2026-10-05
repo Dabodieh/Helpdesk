@@ -7,6 +7,7 @@ using Helpdesk.Modules.Mail.Persistence;
 using Helpdesk.Modules.Mail.Providers;
 using Helpdesk.SharedKernel.Database;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using NpgsqlTypes;
@@ -90,14 +91,18 @@ internal sealed class MailOutbox(IMailJobScheduler scheduler, TimeProvider clock
         }
 
         var now = clock.GetUtcNowMicroseconds();
-        return await caller.Database.SqlQueryRaw<Guid>(
+        await using var command = caller.Database.GetDbConnection().CreateCommand();
+        command.Transaction = caller.Database.CurrentTransaction.GetDbTransaction();
+        command.CommandText =
             """
             UPDATE mail.messages SET state = 'Queued', attempts = 0, last_error = NULL, next_attempt_at = @now, delivery_reported_at = NULL, updated_at = @now
             WHERE department_id = @department_id AND ticket_message_id = @ticket_message_id AND direction = 'Outbound' AND state = 'Failed'
-            RETURNING id AS "Value"
-            """,
-            new NpgsqlParameter("now", now), new NpgsqlParameter("department_id", departmentId), new NpgsqlParameter("ticket_message_id", ticketMessageId))
-            .Select(id => (Guid?)id).FirstOrDefaultAsync(cancellationToken);
+            RETURNING id
+            """;
+        command.Parameters.Add(new NpgsqlParameter("now", now));
+        command.Parameters.Add(new NpgsqlParameter("department_id", departmentId));
+        command.Parameters.Add(new NpgsqlParameter("ticket_message_id", ticketMessageId));
+        return await command.ExecuteScalarAsync(cancellationToken) is Guid id ? id : null;
     }
 }
 

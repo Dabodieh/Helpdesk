@@ -48,6 +48,7 @@ internal sealed class FakeMailProvider : IMailProvider
     private readonly Dictionary<string, string> _clientStates = new(StringComparer.Ordinal);
     private int _sequence;
     private int _failNextSends;
+    private int _failNextAttachmentFetches;
     private bool _failNextSendPermanently;
 
     public string Kind => Contracts.MailProviderKinds.Fake;
@@ -165,6 +166,15 @@ internal sealed class FakeMailProvider : IMailProvider
         }
     }
 
+    /// <summary>Makes the next attachment downloads fail transiently (to exercise the retry path of the inbound pipeline).</summary>
+    public void FailNextAttachmentFetches(int count)
+    {
+        lock (_gate)
+        {
+            _failNextAttachmentFetches = count;
+        }
+    }
+
     public int SubscriptionCount
     {
         get
@@ -242,6 +252,12 @@ internal sealed class FakeMailProvider : IMailProvider
     {
         lock (_gate)
         {
+            if (_failNextAttachmentFetches > 0)
+            {
+                _failNextAttachmentFetches--;
+                throw new TransientProviderException("attachment_unavailable");
+            }
+
             var stored = StateOf(mailbox.Address).Inbox.FirstOrDefault(m => m.Email.ProviderMessageId == providerMessageId)
                 ?? throw new PermanentProviderException("message_not_found");
             return Task.FromResult(stored.AttachmentBytes.TryGetValue(providerAttachmentId, out var bytes)
