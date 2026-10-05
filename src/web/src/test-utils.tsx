@@ -127,6 +127,8 @@ export function makeDetail(over: Partial<TicketDetail> = {}): TicketDetail {
     closedAt: null,
     version: 'v1',
     requester: { id: 'r1', displayName: 'Rita Requester', email: 'rita@example.test', openTicketCount: 2, totalTicketCount: 5 },
+    mailbox: null,
+    participants: [],
     ...over,
   }
 }
@@ -141,6 +143,7 @@ export function makeMessage(over: Partial<Message> = {}): Message {
     body: 'The printer is jammed',
     source: 'manual',
     deliveryState: 'None',
+    attachments: [],
     createdAt: '2026-10-01T09:00:00Z',
     ...over,
   }

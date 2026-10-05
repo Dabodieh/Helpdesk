@@ -176,7 +176,7 @@ test('public reply: payload carries status-after and the entry says it was recor
   fireEvent.click(screen.getByRole('button', { name: 'Post public reply' }))
   await waitFor(() => expect(posts(calls, '/messages')).toHaveLength(1))
   expect(posts(calls, '/messages')[0]!.body).toEqual({ kind: 'Public', body: 'Try the other tray', status: 'Resolved' })
-  const label = await screen.findByText('Recorded, not emailed (email delivery is not enabled yet)')
+  const label = await screen.findByText('Recorded, not emailed (this department has no active mailbox to send from)')
   expect(label).toBeInTheDocument()
   // never claims a send
   expect(screen.queryByText(/\bsent\b/i)).not.toBeInTheDocument()

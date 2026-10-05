@@ -42,6 +42,19 @@ const paths: Record<string, ReactNode> = {
       <path d="M2.5 4.5L8 9l5.5-4.5M2 14L14 2" />
     </>
   ),
+  mail: (
+    <>
+      <rect x="2" y="3.5" width="12" height="9" rx="1" />
+      <path d="M2.5 4.5L8 9l5.5-4.5" />
+    </>
+  ),
+  clock: (
+    <>
+      <circle cx="8" cy="8" r="6" />
+      <path d="M8 4.5V8l2.5 1.5" />
+    </>
+  ),
+  attach: <path d="M11.5 7.5l-4 4a2.5 2.5 0 01-3.5-3.5l5-5a1.7 1.7 0 012.4 2.4l-5 5a.8.8 0 01-1.2-1.2l4-4" />,
   back: <path d="M10 3L5 8l5 5" />,
   edit: <path d="M3 13l1-3.5L11 2.5l2.5 2.5-7 7L3 13z" />,
   help: (

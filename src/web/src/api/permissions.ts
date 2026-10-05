@@ -6,6 +6,7 @@ const ADMINISTRATIVE = new Set([
   'department.manage',
   'department.members.manage',
   'teams.manage',
+  'department.mailboxes.manage',
   'department.audit.read',
 ])
 
@@ -31,7 +32,7 @@ export function canAdminister(me: Me) {
   return (
     me.platformPermissions.length > 0 ||
     me.memberships.some((m) =>
-      ['department.manage', 'department.members.manage', 'teams.manage'].some((c) => m.permissions.includes(c)),
+      ['department.manage', 'department.members.manage', 'teams.manage', 'department.mailboxes.manage'].some((c) => m.permissions.includes(c)),
     )
   )
 }

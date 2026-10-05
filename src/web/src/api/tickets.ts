@@ -75,6 +75,13 @@ export const listMessages = (ticket: string, cursor: string | null, limit = 50) 
 export const postMessage = (ticket: string, body: { kind: 'Public' | 'Internal'; body: string; status?: string }) =>
   api('POST', `${tk(ticket)}/messages`, { body, schema: postMessageResultSchema })
 
+export const retryDelivery = (ticket: string, messageId: string) =>
+  api('POST', `${tk(ticket)}/messages/${encodeURIComponent(messageId)}/retry-delivery`, { schema: messageSchema })
+
+/** Attachments are always downloaded (Content-Disposition: attachment), never rendered by the page. */
+export const attachmentHref = (ticketId: string, attachmentId: string) =>
+  `/api/tickets/${encodeURIComponent(ticketId)}/attachments/${encodeURIComponent(attachmentId)}`
+
 export const listActivity = (ticket: string, cursor: string | null, limit = 50) =>
   api('GET', cursorPath(`${tk(ticket)}/activity`, cursor, limit), { schema: pageSchema(activitySchema) })
 

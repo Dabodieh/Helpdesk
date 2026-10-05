@@ -122,7 +122,7 @@ export default function Composer({
         </p>
       ) : (
         <p className="mode-banner public-banner" role="note">
-          <Icon name="reply" /> Public reply — the requester is the audience. Email delivery is not enabled yet, so it is recorded only.
+          <Icon name="reply" /> Public reply — the requester is the audience. It is emailed from the department mailbox; with no active mailbox it is only recorded.
         </p>
       )}
       <textarea

@@ -208,6 +208,18 @@ function TicketHeader({
             </span>
           </dd>
         </div>
+        {t.participants.length > 0 && (
+          <div>
+            <dt>Cc</dt>
+            <dd>{t.participants.map((p) => p.displayName || p.email).join(', ')}</dd>
+          </div>
+        )}
+        {t.mailbox && (
+          <div>
+            <dt>Mailbox</dt>
+            <dd>{t.mailbox.address}</dd>
+          </div>
+        )}
         <div>
           <dt>Created</dt>
           <dd>{formatDateTime(t.createdAt)}</dd>

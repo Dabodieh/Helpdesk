@@ -5,6 +5,7 @@ import { canInDepartment, canPlatform } from '../api/permissions'
 import { useMe } from '../auth'
 import { ActiveBadge, ErrorNotice, Loading } from '../components/common'
 import EditForm from '../components/EditForm'
+import MailboxesSection from '../components/MailboxesSection'
 import MembersSection from '../components/MembersSection'
 import TeamsSection from '../components/TeamsSection'
 
@@ -58,6 +59,7 @@ export default function DepartmentPage() {
 
       <TeamsSection department={d} />
       <MembersSection department={d} />
+      <MailboxesSection department={d} />
     </>
   )
 }

@@ -30,6 +30,9 @@ export const ticketListItemSchema = z.object({
 })
 export type TicketListItem = z.infer<typeof ticketListItemSchema>
 
+export const mailboxRefSchema = z.object({ id: z.string(), address: z.string(), name: z.string() })
+export const participantSchema = z.object({ email: z.string(), displayName: z.string().nullable().optional() })
+
 export const ticketDetailSchema = ticketListItemSchema.extend({
   departmentName: z.string(),
   resolvedAt: z.string().nullable(),
@@ -42,8 +45,25 @@ export const ticketDetailSchema = ticketListItemSchema.extend({
     openTicketCount: z.number(),
     totalTicketCount: z.number(),
   }),
+  mailbox: mailboxRefSchema.nullable().optional(),
+  participants: z.array(participantSchema).default([]),
 })
 export type TicketDetail = z.infer<typeof ticketDetailSchema>
+
+export const attachmentSchema = z.object({
+  id: z.string(),
+  fileName: z.string(),
+  contentType: z.string(),
+  size: z.number(),
+  isInline: z.boolean(),
+  state: z.enum(['Stored', 'Blocked']),
+  blockReason: z.string().nullable().optional(),
+  scanState: z.string(),
+  downloadable: z.boolean(),
+})
+export type Attachment = z.infer<typeof attachmentSchema>
+
+export const DELIVERY_STATES = ['None', 'NotDelivered', 'Pending', 'Sent', 'Failed'] as const
 
 export const messageSchema = z.object({
   id: z.string(),
@@ -52,8 +72,12 @@ export const messageSchema = z.object({
   authorType: z.enum(['Agent', 'Requester', 'System']),
   author: z.object({ id: z.string().nullable(), displayName: z.string() }),
   body: z.string(),
+  /** Sanitised HTML of an email body (allow-list; never rendered inline in the page, only inside a sandboxed frame). */
+  bodyHtml: z.string().nullable().optional(),
   source: z.string(),
-  deliveryState: z.enum(['None', 'NotDelivered']),
+  deliveryState: z.enum(DELIVERY_STATES),
+  deliveryError: z.string().nullable().optional(),
+  attachments: z.array(attachmentSchema).default([]),
   createdAt: z.string(),
 })
 export type Message = z.infer<typeof messageSchema>

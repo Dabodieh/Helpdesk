@@ -885,6 +885,45 @@ ul.plain li {
   margin: 0.4rem 0 0;
   color: var(--muted);
 }
+/* Email delivery, attachments and the sandboxed formatted view */
+.delivery.failed {
+  color: var(--danger);
+}
+.delivery button {
+  font-size: inherit;
+}
+.attachments {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.attachments li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.linklike {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin-top: 0.3rem;
+  color: var(--accent, inherit);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.formatted {
+  display: block;
+  width: 100%;
+  height: 18rem;
+  margin-top: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+  resize: vertical;
+}
 .timeline {
   list-style: none;
   margin: 0;

@@ -34,7 +34,9 @@ export function describeActivity(a: Activity, names: NameLookup): string {
       const status = pick(a.next, 'status')
       const priority = pick(a.next, 'priority')
       const detail = [status, priority].filter(Boolean).join(', ')
-      return detail ? `created the ticket (${detail})` : 'created the ticket'
+      const fromEmail = pick(a.next, 'source') === 'email'
+      const base = fromEmail ? 'created the ticket from an email' : 'created the ticket'
+      return detail ? `${base} (${detail})` : base
     }
     case 'ticket.subject_changed':
       return `changed the subject from ${quote(pick(a.previous, 'subject'))} to ${quote(pick(a.next, 'subject'))}`
@@ -51,6 +53,13 @@ export function describeActivity(a: Activity, names: NameLookup): string {
       const to = pick(a.next, 'assigneeUserId', 'assignee')
       if (!to) return from ? `unassigned the ticket from ${who(from)}` : 'left the ticket unassigned'
       return from ? `reassigned the ticket from ${who(from)} to ${who(to)}` : `assigned the ticket to ${who(to)}`
+    }
+    case 'ticket.message_delivery_changed': {
+      const state = pick(a.next, 'delivery')
+      if (state === 'Sent') return 'sent a reply by email'
+      if (state === 'Failed') return 'could not send a reply by email'
+      if (state === 'Pending') return 'queued a reply to be sent by email'
+      return 'changed the delivery of a reply'
     }
     default:
       return `performed ${a.action.replace(/[._]/g, ' ')}`
