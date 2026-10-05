@@ -40,7 +40,7 @@ test('agent signs in, works a ticket and moves to the next one with the keyboard
   await ticket.locator('label', { hasText: 'Public reply' }).click()
   await ticket.getByRole('textbox', { name: 'Public reply' }).fill('We are sending a technician.')
   await ticket.getByRole('button', { name: 'Post public reply' }).click()
-  await expect(ticket.getByText('Recorded, not emailed (email delivery is not enabled yet)')).toBeVisible()
+  await expect(ticket.getByText('Recorded, not emailed (this department has no active mailbox to send from)')).toBeVisible()
 
   // History shows the changes as sentences.
   await ticket.getByRole('button', { name: 'History' }).click()

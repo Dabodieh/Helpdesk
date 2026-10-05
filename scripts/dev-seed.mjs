@@ -67,6 +67,30 @@ for (const [s, t] of [['alice', serviceDesk], ['bob', serviceDesk], ['carol', ne
   await admin.ok('PUT', `/api/departments/${it.id}/teams/${t.id}/members/${users[s].me.id}`)
 }
 
+// Email: a mailbox for IT (the in-process simulator in Development) and a few inbound emails, once.
+const mailboxes = await admin.ok('GET', `/api/departments/${it.id}/mailboxes`)
+if (mailboxes.length === 0) {
+  const address = 'it-desk@helpdesk.test'
+  await admin.ok('POST', `/api/departments/${it.id}/mailboxes`, { address, displayName: 'IT Service Desk', signature: 'Regards,\nIT Service Desk' })
+  const pdf = Buffer.from('%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n').toString('base64')
+  const inbound = (body) => admin.ok('POST', '/api/dev/mail/inbound', { mailbox: address, ...body })
+  await inbound({
+    from: 'dana.whitfield@contoso.test',
+    fromName: 'Dana Whitfield',
+    subject: 'Cannot print the quarterly report',
+    bodyText: 'Hi,\n\nThe quarterly report will not print from my laptop. See the attached PDF.\n\nThanks,\nDana',
+    cc: ['finance.lead@contoso.test'],
+    attachments: [{ name: 'quarterly-report.pdf', contentBase64: pdf, contentType: 'application/pdf', isInline: false }],
+  })
+  await inbound({
+    from: 'ravi.menon@contoso.test',
+    fromName: 'Ravi Menon',
+    subject: 'Shared drive access request',
+    bodyHtml: '<p>Hello team,</p><p>Could you please give me access to the <b>Finance-Reports</b> share?</p><p>Thank you,<br>Ravi</p>',
+  })
+  await inbound({ from: 'noreply@calendar.test', subject: 'Automatic reply: Out of office', bodyText: 'I am away.', headers: { 'Auto-Submitted': 'auto-replied' } })
+}
+
 const existing = await admin.ok('GET', `/api/tickets?departmentId=${it.id}&status=Open&status=Pending&status=Resolved&status=Closed&limit=1`)
 if (existing.items.length > 0) {
   console.log('Tickets already present; leaving data as is.')

@@ -255,7 +255,9 @@ internal sealed class OutboundSender(
     private static string OutboundSubject(MailMessage message)
     {
         // The reference is a human-recognition hint only; inbound threading never relies on it.
-        var subject = message.Subject.StartsWith("Re:", StringComparison.OrdinalIgnoreCase) ? message.Subject : "Re: " + message.Subject;
+        // Single line always (a ticket subject entered in the web UI may contain line breaks; never let them reach a mail header).
+        var single = message.Subject.ReplaceLineEndings(" ").Trim();
+        var subject = single.StartsWith("Re:", StringComparison.OrdinalIgnoreCase) ? single : "Re: " + single;
         return message.TicketReference is { } reference && !subject.Contains(reference, StringComparison.OrdinalIgnoreCase) ? $"{subject} [{reference}]" : subject;
     }
 
