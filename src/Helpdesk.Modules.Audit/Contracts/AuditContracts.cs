@@ -7,6 +7,7 @@ public static class AuditCategories
 {
     public const string Organisation = "organisation";
     public const string Identity = "identity";
+    public const string Mail = "mail";
     public const string Ticketing = "ticketing";
 }
 

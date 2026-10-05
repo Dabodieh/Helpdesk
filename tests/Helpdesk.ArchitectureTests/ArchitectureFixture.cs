@@ -1,6 +1,8 @@
 using System.Reflection;
+using Helpdesk.Modules.Attachments;
 using Helpdesk.Modules.Audit;
 using Helpdesk.Modules.Identity;
+using Helpdesk.Modules.Mail;
 using Helpdesk.Modules.Organisation;
 using Helpdesk.Modules.Ticketing;
 using Helpdesk.SharedKernel.Authorization;
@@ -16,9 +18,11 @@ internal static class Modules
     public static readonly Assembly Identity = typeof(IdentityModule).Assembly;
     public static readonly Assembly Organisation = typeof(OrganisationModule).Assembly;
     public static readonly Assembly Ticketing = typeof(TicketingModule).Assembly;
+    public static readonly Assembly Mail = typeof(MailModule).Assembly;
+    public static readonly Assembly Attachments = typeof(AttachmentsModule).Assembly;
     public static readonly Assembly Host = typeof(Program).Assembly;
 
-    public static readonly IReadOnlyList<Assembly> All = [Audit, Identity, Organisation, Ticketing];
+    public static readonly IReadOnlyList<Assembly> All = [Audit, Identity, Organisation, Ticketing, Mail, Attachments];
 
     public static string Root(Assembly module) => module.GetName().Name!; // e.g. Helpdesk.Modules.Identity
 
@@ -41,6 +45,9 @@ public sealed class AppFixture : IDisposable
         b.UseEnvironment("Testing");
         b.UseSetting("Database:ConnectionString", "Host=localhost;Database=unused;Username=x;Password=x");
         b.UseSetting("Authentication:DevSignIn:Enabled", "true");
+        b.UseSetting("Mail:Provider", "Fake");
+        b.UseSetting("Storage:Provider", "InMemory");
+        b.UseSetting("Jobs:Enabled", "false");
     });
 
     public IServiceProvider Services => _factory.Services;

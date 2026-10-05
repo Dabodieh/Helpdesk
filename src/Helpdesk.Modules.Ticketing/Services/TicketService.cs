@@ -1,8 +1,10 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Helpdesk.Modules.Attachments.Contracts;
 using Helpdesk.Modules.Audit.Contracts;
 using Helpdesk.Modules.Identity.Contracts;
+using Helpdesk.Modules.Mail.Contracts;
 using Helpdesk.Modules.Organisation.Contracts;
 using Helpdesk.Modules.Ticketing.Domain;
 using Helpdesk.Modules.Ticketing.Persistence;
@@ -33,6 +35,9 @@ internal sealed class TicketService(
     IOrganisationDirectory organisation,
     IUserDirectory users,
     IAuditReader auditReader,
+    IMailboxDirectory mailboxes,
+    IMailOutbox outbox,
+    IAttachmentStore attachments,
     TimeProvider clock)
 {
     public const int DefaultMessageLimit = 100;
@@ -304,6 +309,8 @@ internal sealed class TicketService(
             throw new ConflictException("The ticket is closed. Reopen it before replying to the requester.", ProblemCodes.InvalidState);
         }
 
+        // A public reply leaves from the ticket's mailbox (or the department default); with no active mailbox it is only recorded.
+        var replyMailbox = kind == MessageKind.Public ? await mailboxes.FindReplyMailboxAsync(ticket.DepartmentId, ticket.MailboxId, ct) : null;
         var now = clock.GetUtcNowMicroseconds();
         var message = new Message
         {
@@ -316,8 +323,8 @@ internal sealed class TicketService(
             Body = request.Body!,
             Source = MessageSources.Web,
 
-            // Phase 2 has no mail transport: a public reply is recorded, never sent, and the state says so.
-            DeliveryState = kind == MessageKind.Public ? DeliveryState.NotDelivered : DeliveryState.None,
+            // Truthful states only: Pending once queued in the outbox; NotDelivered when no mailbox exists to send it from.
+            DeliveryState = kind != MessageKind.Public ? DeliveryState.None : replyMailbox is null ? DeliveryState.NotDelivered : DeliveryState.Pending,
             CreatedAt = now,
         };
         db.Messages.Add(message);
@@ -335,10 +342,67 @@ internal sealed class TicketService(
                 new { status = previousStatus.ToString() }, new { status = ticket.Status.ToString() }, ct);
         }
 
+        Guid? outboundId = null;
+        if (replyMailbox is not null)
+        {
+            var cc = await db.Participants.AsNoTracking().Where(p => p.TicketId == ticket.Id)
+                .Select(p => new MailParticipant(p.Email, p.DisplayName)).ToListAsync(ct);
+            outboundId = await outbox.QueueReplyAsync(
+                new OutboundReplyRequest(
+                    ticket.DepartmentId, replyMailbox.MailboxId, ticket.Id, message.Id, ticket.Reference, ticket.Subject,
+                    new MailParticipant(ticket.Requester.Email, ticket.Requester.DisplayName), cc, message.Body, current.UserId), db, ct);
+        }
+
         await tx.CommitAsync(ct);
+        if (outboundId is { } queued)
+        {
+            await outbox.NotifyQueuedAsync(queued, ct);
+        }
+
         var dto = new MessageDto(message.Id, message.TicketId, message.Kind.ToString(), message.AuthorType.ToString(),
-            new MessageAuthorDto(current.UserId, current.DisplayName), message.Body, message.Source, message.DeliveryState.ToString(), message.CreatedAt);
+            new MessageAuthorDto(current.UserId, current.DisplayName), message.Body, null, message.Source, message.DeliveryState.ToString(), message.DeliveryError, [], message.CreatedAt);
         return new PostedMessageDto(dto, await projection.DetailAsync(ticket, ticket.Requester, ct));
+    }
+
+    /// <summary>Puts a failed public reply back in the mail outbox. Baseline permission tickets.read (endpoint), tickets.reply here.</summary>
+    public async Task<MessageDto> RetryDeliveryAsync(string route, Guid messageId, CancellationToken ct)
+    {
+        var key = await resolver.FindAsync(route, ct) ?? throw new NotFoundException();
+        await authorizer.RequireAsync(PermissionCodes.TicketsReply, key.DepartmentId, ct);
+
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var message = await db.Messages.SingleOrDefaultAsync(
+            m => m.Id == messageId && m.TicketId == key.Id && m.DepartmentId == key.DepartmentId && m.Kind == MessageKind.Public && m.AuthorType == AuthorType.Agent, ct)
+            ?? throw new NotFoundException();
+        if (message.DeliveryState != DeliveryState.Failed)
+        {
+            throw new ConflictException("Only a failed delivery can be retried.", ProblemCodes.InvalidState);
+        }
+
+        var outboundId = await outbox.RetryAsync(key.DepartmentId, messageId, db, ct)
+            ?? throw new ConflictException("There is no failed email to retry for this message.", ProblemCodes.InvalidState);
+        await db.Messages.Where(m => m.Id == messageId).ExecuteUpdateAsync(
+            s => s.SetProperty(m => m.DeliveryState, DeliveryState.Pending).SetProperty(m => m.DeliveryError, (string?)null), ct);
+        await audit.WriteAsync(
+            TicketAuditActions.MessageDeliveryChanged, TicketingAudit.TicketObject, key.Id, key.DepartmentId,
+            new { messageId, delivery = nameof(DeliveryState.Failed) }, new { messageId, delivery = nameof(DeliveryState.Pending), reason = "retry" }, ct);
+        await tx.CommitAsync(ct);
+        await outbox.NotifyQueuedAsync(outboundId, ct);
+
+        message.DeliveryState = DeliveryState.Pending;
+        message.DeliveryError = null;
+        var files = await attachments.ListForMessagesAsync(key.DepartmentId, [message.Id], ct);
+        return new MessageDto(
+            message.Id, message.TicketId, message.Kind.ToString(), message.AuthorType.ToString(), new MessageAuthorDto(message.AuthorUserId, current.DisplayName),
+            message.Body, message.BodyHtml, message.Source, message.DeliveryState.ToString(), message.DeliveryError, files.TryGetValue(message.Id, out var list) ? list : [], message.CreatedAt);
+    }
+
+    /// <summary>Opens an attachment of this ticket for download (department checked twice: ticket scope, then the attachment's own department filter).</summary>
+    public async Task<AttachmentOpenResult> OpenAttachmentAsync(string route, Guid attachmentId, CancellationToken ct)
+    {
+        var key = await resolver.FindAsync(route, ct) ?? throw new NotFoundException();
+        var result = await attachments.OpenAsync(key.DepartmentId, key.Id, attachmentId, ct);
+        return result.NotFound ? throw new NotFoundException() : result;
     }
 
     public async Task<PageDto<MessageDto>> ListMessagesAsync(string route, string? cursor, int? limit, CancellationToken ct)
@@ -382,6 +446,7 @@ internal sealed class TicketService(
             ? []
             : await db.Requesters.AsNoTracking().Where(r => requesterIds.Contains(r.Id)).ToDictionaryAsync(r => r.Id, r => r.DisplayName, ct);
 
+        var files = await attachments.ListForMessagesAsync(key.DepartmentId, rows.Select(m => m.Id).ToArray(), ct);
         var items = rows.Select(m => new MessageDto(
             m.Id,
             m.TicketId,
@@ -389,8 +454,11 @@ internal sealed class TicketService(
             m.AuthorType.ToString(),
             AuthorOf(m, people, requesters),
             m.Body,
+            m.BodyHtml,
             m.Source,
             m.DeliveryState.ToString(),
+            m.DeliveryError,
+            files.TryGetValue(m.Id, out var list) ? list : [],
             m.CreatedAt)).ToList();
         var next = hasMore ? Cursor.Encode(string.Create(CultureInfo.InvariantCulture, $"{rows[^1].CreatedAt.UtcTicks}|{rows[^1].Id}")) : null;
         return new PageDto<MessageDto>(items, next);

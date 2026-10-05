@@ -6,6 +6,8 @@
     <Project Path="src/Helpdesk.Modules.Identity/Helpdesk.Modules.Identity.csproj" />
     <Project Path="src/Helpdesk.Modules.Organisation/Helpdesk.Modules.Organisation.csproj" />
     <Project Path="src/Helpdesk.Modules.Ticketing/Helpdesk.Modules.Ticketing.csproj" />
+    <Project Path="src/Helpdesk.Modules.Attachments/Helpdesk.Modules.Attachments.csproj" />
+    <Project Path="src/Helpdesk.Modules.Mail/Helpdesk.Modules.Mail.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Helpdesk.Host.Tests/Helpdesk.Host.Tests.csproj" />

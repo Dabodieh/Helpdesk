@@ -205,13 +205,17 @@ public sealed class TicketMessageTests(HelpdeskFixture fixture) : IClassFixture<
         var agent = d.Agent.Id.ToString();
         var req = requesterId.ToString();
         await Rejected("Internal", "Requester", null, req, "None", "ck_messages_internal_never_requester_or_delivered");
-        await Rejected("Internal", "Agent", agent, null, "NotDelivered", "ck_messages_internal_never_requester_or_delivered");
+        await Rejected("Internal", "Agent", agent, null, "NotDelivered", "ck_messages_delivery_only_agent_public");
         await Rejected("Public", "Agent", null, null, "NotDelivered", "ck_messages_author_matches_type");
         await Rejected("Public", "Requester", agent, null, "None", "ck_messages_author_matches_type");
         await Rejected("Public", "System", agent, null, "None", "ck_messages_author_matches_type");
         await Rejected("Secret", "Agent", agent, null, "None", "ck_messages_kind");
-        await Rejected("Public", "Agent", agent, null, "Sent", "ck_messages_delivery_state");
-        await Rejected("Public", "Agent", agent, null, "None", "ck_messages_source", source: "email");
+        await Rejected("Public", "Agent", agent, null, "Bounced", "ck_messages_delivery_state");
+        await Rejected("Public", "Agent", agent, null, "None", "ck_messages_source", source: "sms");
+        // Only an agent's public reply has a delivery state (Pending/Sent/Failed come from the mail outbox).
+        await Rejected("Public", "Requester", null, req, "Pending", "ck_messages_delivery_only_agent_public");
+        await Rejected("Public", "System", null, null, "Sent", "ck_messages_delivery_only_agent_public");
+        await Rejected("Internal", "Agent", agent, null, "Failed", "ck_messages_delivery_only_agent_public");
         await Rejected("Public", "Agent", agent, null, "None", "ck_messages_body", body: "   ");
         await Rejected("Public", "Agent", agent, null, "None", "ck_messages_body", body: new string('x', 20001));
 

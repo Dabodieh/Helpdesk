@@ -1,3 +1,4 @@
+using Helpdesk.Modules.Mail.Contracts;
 using Helpdesk.Modules.Ticketing.Contracts;
 using Helpdesk.Modules.Ticketing.Endpoints;
 using Helpdesk.Modules.Ticketing.Persistence;
@@ -26,6 +27,8 @@ public static class TicketingModule
         services.AddScoped<TicketQueryService>();
         services.AddScoped<RequesterService>();
         services.AddScoped<ITicketIngress, TicketIngressService>();
+        services.AddScoped<IInboundTicketSink, InboundTicketSink>();
+        services.AddScoped<IDeliveryStateSink, DeliveryStateSink>();
         return services;
     }
 

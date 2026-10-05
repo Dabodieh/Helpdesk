@@ -87,6 +87,26 @@ internal static class TicketEndpoints
             .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsRead, Route)
             .WithTags("Tickets");
 
+        // Baseline tickets.read; the service requires tickets.reply.
+        app.MapPost("/api/tickets/{ticket}/messages/{messageId:guid}/retry-delivery",
+                async (string ticket, Guid messageId, TicketService tickets, CancellationToken ct) =>
+                    TypedResults.Ok(await tickets.RetryDeliveryAsync(ticket, messageId, ct)))
+            .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsRead, Route)
+            .WithTags("Tickets");
+
+        // Always an attachment download (never rendered inline); blocked or not-yet-scanned items are refused.
+        app.MapGet("/api/tickets/{ticket}/attachments/{attachmentId:guid}",
+                async (string ticket, Guid attachmentId, TicketService tickets, CancellationToken ct) =>
+                {
+                    var result = await tickets.OpenAttachmentAsync(ticket, attachmentId, ct);
+                    return result.Download is { } file
+                        ? Results.File(file.Content, file.ContentType, file.FileName, enableRangeProcessing: false)
+                        : throw new Helpdesk.SharedKernel.Errors.ConflictException(
+                            $"The attachment cannot be downloaded ({result.BlockedReason}).", Helpdesk.SharedKernel.Errors.ProblemCodes.InvalidState);
+                })
+            .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsRead, Route)
+            .WithTags("Tickets");
+
         app.MapGet("/api/tickets/{ticket}/activity",
                 async (string ticket, string? cursor, int? limit, TicketService tickets, CancellationToken ct) =>
                     TypedResults.Ok(await tickets.ActivityAsync(ticket, cursor, limit, ct)))

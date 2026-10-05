@@ -26,6 +26,10 @@ internal sealed record TicketListItemDto(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt);
 
+internal sealed record MailboxRefDto(Guid Id, string Address, string Name);
+
+internal sealed record ParticipantDto(string Email, string? DisplayName);
+
 internal sealed record TicketDetailDto(
     Guid Id,
     string Reference,
@@ -42,7 +46,9 @@ internal sealed record TicketDetailDto(
     DateTimeOffset UpdatedAt,
     DateTimeOffset? ResolvedAt,
     DateTimeOffset? ClosedAt,
-    string Version);
+    string Version,
+    MailboxRefDto? Mailbox,
+    IReadOnlyList<ParticipantDto> Participants);
 
 internal sealed record MessageAuthorDto(Guid? Id, string DisplayName);
 
@@ -53,8 +59,11 @@ internal sealed record MessageDto(
     string AuthorType,
     MessageAuthorDto Author,
     string Body,
+    string? BodyHtml,
     string Source,
     string DeliveryState,
+    string? DeliveryError,
+    IReadOnlyList<Helpdesk.Modules.Attachments.Contracts.AttachmentSummary> Attachments,
     DateTimeOffset CreatedAt);
 
 internal sealed record PostedMessageDto(MessageDto Message, TicketDetailDto Ticket);

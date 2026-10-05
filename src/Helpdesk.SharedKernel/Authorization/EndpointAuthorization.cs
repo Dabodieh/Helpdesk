@@ -53,3 +53,9 @@ public static class EndpointAuthorizationExtensions
         return builder;
     }
 }
+
+/// <summary>
+/// Endpoint metadata: the endpoint is called by an external system with no browser session (a signed webhook), so it is exempt from
+/// the CSRF token requirement. It must authenticate the caller itself (client-state secret) and is listed in the architecture tests.
+/// </summary>
+public sealed record IgnoreCsrfMetadata;

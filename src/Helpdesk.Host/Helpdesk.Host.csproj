@@ -6,6 +6,8 @@
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
     <PackageReference Include="AspNetCore.HealthChecks.NpgSql" />
     <PackageReference Include="Npgsql" />
+    <PackageReference Include="Hangfire.AspNetCore" />
+    <PackageReference Include="Hangfire.PostgreSql" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
   </ItemGroup>
@@ -15,5 +17,7 @@
     <ProjectReference Include="../Helpdesk.Modules.Identity/Helpdesk.Modules.Identity.csproj" />
     <ProjectReference Include="../Helpdesk.Modules.Organisation/Helpdesk.Modules.Organisation.csproj" />
     <ProjectReference Include="../Helpdesk.Modules.Ticketing/Helpdesk.Modules.Ticketing.csproj" />
+    <ProjectReference Include="../Helpdesk.Modules.Attachments/Helpdesk.Modules.Attachments.csproj" />
+    <ProjectReference Include="../Helpdesk.Modules.Mail/Helpdesk.Modules.Mail.csproj" />
   </ItemGroup>
 </Project>

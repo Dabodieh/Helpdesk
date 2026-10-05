@@ -101,7 +101,7 @@ namespace Helpdesk.Modules.Audit.Persistence.Migrations
 
                     b.ToTable("audit_events", "audit", t =>
                         {
-                            t.HasCheckConstraint("ck_audit_events_category", "category IN ('organisation','identity','ticketing')");
+                            t.HasCheckConstraint("ck_audit_events_category", "category IN ('organisation','identity','ticketing','mail')");
                         });
                 });
 #pragma warning restore 612, 618

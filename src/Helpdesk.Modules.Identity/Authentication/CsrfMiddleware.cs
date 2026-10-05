@@ -1,3 +1,4 @@
+using Helpdesk.SharedKernel.Authorization;
 using Helpdesk.SharedKernel.Errors;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Http;
@@ -15,7 +16,8 @@ internal sealed class CsrfMiddleware(RequestDelegate next, IAntiforgery antiforg
     {
         var method = context.Request.Method;
         var unsafeMethod = !(HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method) || HttpMethods.IsTrace(method));
-        if (unsafeMethod && context.GetEndpoint() is not null)
+        var endpoint = context.GetEndpoint();
+        if (unsafeMethod && endpoint is not null && endpoint.Metadata.GetMetadata<IgnoreCsrfMetadata>() is null)
         {
             try
             {

@@ -1,4 +1,5 @@
 using Helpdesk.Modules.Identity.Contracts;
+using Helpdesk.Modules.Mail.Contracts;
 using Helpdesk.Modules.Organisation.Contracts;
 using Helpdesk.Modules.Ticketing.Domain;
 using Helpdesk.Modules.Ticketing.Persistence;
@@ -25,7 +26,7 @@ internal sealed record TicketRow(
     DateTimeOffset UpdatedAt);
 
 /// <summary>Builds API shapes from tickets: resolves team, assignee and department names through the module contracts, in batches.</summary>
-internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirectory organisation, IUserDirectory users)
+internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirectory organisation, IUserDirectory users, IMailboxDirectory mailboxes)
 {
     public async Task<TicketDetailDto> DetailAsync(Ticket ticket, Requester requester, CancellationToken ct)
     {
@@ -54,6 +55,16 @@ internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirec
             })
             .SingleOrDefaultAsync(ct);
 
+        MailboxRefDto? mailbox = null;
+        if (ticket.MailboxId is { } mailboxId)
+        {
+            var found = await mailboxes.GetManyAsync(ticket.DepartmentId, [mailboxId], ct);
+            mailbox = found.TryGetValue(mailboxId, out var m) ? new MailboxRefDto(m.MailboxId, m.Address, m.Name) : null;
+        }
+
+        var participants = await db.Participants.AsNoTracking().Where(p => p.TicketId == ticket.Id).OrderBy(p => p.CreatedAt).ThenBy(p => p.EmailNormalised)
+            .Select(p => new ParticipantDto(p.Email, p.DisplayName)).ToListAsync(ct);
+
         return new TicketDetailDto(
             ticket.Id,
             ticket.Reference,
@@ -70,7 +81,9 @@ internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirec
             ticket.UpdatedAt,
             ticket.ResolvedAt,
             ticket.ClosedAt,
-            ConcurrencyVersion.ToToken(ticket.Version));
+            ConcurrencyVersion.ToToken(ticket.Version),
+            mailbox,
+            participants);
     }
 
     public async Task<IReadOnlyList<TicketListItemDto>> ListItemsAsync(IReadOnlyList<TicketRow> rows, CancellationToken ct)

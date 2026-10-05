@@ -30,17 +30,26 @@ internal enum AuthorType
     System,
 }
 
+/// <summary>
+/// Delivery of an agent's PUBLIC reply. None: not applicable (notes, requester mail). NotDelivered: recorded but no mailbox could send it.
+/// Pending/Sent/Failed: tracked through the mail outbox. Never "Sent" unless the provider accepted the message.
+/// </summary>
 internal enum DeliveryState
 {
     None,
     NotDelivered,
+    Pending,
+    Sent,
+    Failed,
 }
 
 internal static class MessageSources
 {
     public const string Web = "web";
     public const string Manual = "manual";
+    public const string Email = "email";
 
+    /// <summary>Sources a caller of <c>ITicketIngress</c> may name (email enters through the mail sink only).</summary>
     public static bool IsValid(string? source) => source is Web or Manual;
 }
 
@@ -100,6 +109,9 @@ internal sealed class Ticket
 
     /// <summary>Null = created by the system (ingestion).</summary>
     public Guid? CreatedByUserId { get; set; }
+
+    /// <summary>The mailbox the ticket arrived through (replies leave from it while it is active); null for tickets created in the web UI.</summary>
+    public Guid? MailboxId { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
 
@@ -168,6 +180,31 @@ internal sealed class Message
     public string Source { get; set; } = MessageSources.Web;
 
     public DeliveryState DeliveryState { get; set; }
+
+    /// <summary>Short machine code of a failed delivery (never provider text or content).</summary>
+    public string? DeliveryError { get; set; }
+
+    /// <summary>Idempotency key of the producer (the mail message id for email); unique per department and source.</summary>
+    public string? SourceRef { get; set; }
+
+    /// <summary>Sanitised HTML of an email body (allow-list, no scripts or remote content); null for plain-text messages. The original stays in Mail.</summary>
+    public string? BodyHtml { get; set; }
+
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>A person copied on the ticket (CC from email). Replies are copied to them. Department-scoped like the ticket.</summary>
+internal sealed class TicketParticipant
+{
+    public Guid TicketId { get; set; }
+
+    public Guid DepartmentId { get; set; }
+
+    public string EmailNormalised { get; set; } = "";
+
+    public string Email { get; set; } = "";
+
+    public string? DisplayName { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
 }

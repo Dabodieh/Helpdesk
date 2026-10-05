@@ -66,9 +66,18 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         .HasColumnType("text")
                         .HasColumnName("body");
 
+                    b.Property<string>("BodyHtml")
+                        .HasColumnType("text")
+                        .HasColumnName("body_html");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
+
+                    b.Property<string>("DeliveryError")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("delivery_error");
 
                     b.Property<string>("DeliveryState")
                         .IsRequired()
@@ -92,6 +101,11 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         .HasColumnType("character varying(16)")
                         .HasColumnName("source");
 
+                    b.Property<string>("SourceRef")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("source_ref");
+
                     b.Property<Guid>("TicketId")
                         .HasColumnType("uuid")
                         .HasColumnName("ticket_id");
@@ -99,6 +113,11 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("TicketId", "DepartmentId");
+
+                    b.HasIndex("DepartmentId", "Source", "SourceRef")
+                        .IsUnique()
+                        .HasDatabaseName("ux_messages_source_ref")
+                        .HasFilter("source_ref IS NOT NULL");
 
                     b.HasIndex("TicketId", "CreatedAt", "Id")
                         .IsDescending(false, true, true)
@@ -112,13 +131,15 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_messages_body", "length(btrim(body)) > 0 AND char_length(body) <= 20000");
 
-                            t.HasCheckConstraint("ck_messages_delivery_state", "delivery_state IN ('None','NotDelivered')");
+                            t.HasCheckConstraint("ck_messages_delivery_only_agent_public", "delivery_state = 'None' OR (kind = 'Public' AND author_type = 'Agent')");
+
+                            t.HasCheckConstraint("ck_messages_delivery_state", "delivery_state IN ('None','NotDelivered','Pending','Sent','Failed')");
 
                             t.HasCheckConstraint("ck_messages_internal_never_requester_or_delivered", "kind <> 'Internal' OR (author_type <> 'Requester' AND delivery_state = 'None')");
 
                             t.HasCheckConstraint("ck_messages_kind", "kind IN ('Public','Internal')");
 
-                            t.HasCheckConstraint("ck_messages_source", "source IN ('web','manual')");
+                            t.HasCheckConstraint("ck_messages_source", "source IN ('web','manual','email')");
                         });
                 });
 
@@ -196,6 +217,10 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                     b.Property<Guid>("DepartmentId")
                         .HasColumnType("uuid")
                         .HasColumnName("department_id");
+
+                    b.Property<Guid?>("MailboxId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("mailbox_id");
 
                     b.Property<int>("Number")
                         .HasColumnType("integer")
@@ -299,6 +324,46 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.TicketParticipant", b =>
+                {
+                    b.Property<Guid>("TicketId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ticket_id");
+
+                    b.Property<string>("EmailNormalised")
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("email_normalised");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("department_id");
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("display_name");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("email");
+
+                    b.HasKey("TicketId", "EmailNormalised");
+
+                    b.HasIndex("TicketId", "DepartmentId");
+
+                    b.ToTable("ticket_participants", "ticketing", t =>
+                        {
+                            t.HasCheckConstraint("ck_ticket_participants_email", "length(btrim(email)) > 0");
+                        });
+                });
+
             modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.Message", b =>
                 {
                     b.HasOne("Helpdesk.Modules.Ticketing.Domain.Ticket", null)
@@ -321,6 +386,17 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         .HasConstraintName("fk_tickets_requester_department");
 
                     b.Navigation("Requester");
+                });
+
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.TicketParticipant", b =>
+                {
+                    b.HasOne("Helpdesk.Modules.Ticketing.Domain.Ticket", null)
+                        .WithMany()
+                        .HasForeignKey("TicketId", "DepartmentId")
+                        .HasPrincipalKey("Id", "DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_ticket_participants_ticket_department");
                 });
 #pragma warning restore 612, 618
         }

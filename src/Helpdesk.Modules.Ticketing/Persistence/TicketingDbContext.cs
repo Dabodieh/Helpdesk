@@ -17,6 +17,8 @@ internal sealed class TicketingDbContext(DbContextOptions<TicketingDbContext> op
 
     public DbSet<Message> Messages => Set<Message>();
 
+    public DbSet<TicketParticipant> Participants => Set<TicketParticipant>();
+
     /// <summary>Read by the global query filters on every query (EF evaluates context members per query). Empty = nothing visible.</summary>
     internal Guid[] ScopedDepartmentIds => scope.DepartmentIds;
 
@@ -76,6 +78,7 @@ internal sealed class TicketingDbContext(DbContextOptions<TicketingDbContext> op
             e.Property(x => x.TeamId).HasColumnName("team_id");
             e.Property(x => x.AssigneeUserId).HasColumnName("assignee_user_id");
             e.Property(x => x.CreatedByUserId).HasColumnName("created_by_user_id");
+            e.Property(x => x.MailboxId).HasColumnName("mailbox_id");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
             e.Property(x => x.ResolvedAt).HasColumnName("resolved_at");
@@ -107,8 +110,11 @@ internal sealed class TicketingDbContext(DbContextOptions<TicketingDbContext> op
             {
                 t.HasCheckConstraint("ck_messages_kind", "kind IN ('Public','Internal')");
                 t.HasCheckConstraint("ck_messages_author_type", "author_type IN ('Agent','Requester','System')");
-                t.HasCheckConstraint("ck_messages_source", "source IN ('web','manual')");
-                t.HasCheckConstraint("ck_messages_delivery_state", "delivery_state IN ('None','NotDelivered')");
+                t.HasCheckConstraint("ck_messages_source", "source IN ('web','manual','email')");
+                t.HasCheckConstraint("ck_messages_delivery_state", "delivery_state IN ('None','NotDelivered','Pending','Sent','Failed')");
+
+                // Only an agent's public reply has a delivery state; requester mail and notes are always None.
+                t.HasCheckConstraint("ck_messages_delivery_only_agent_public", "delivery_state = 'None' OR (kind = 'Public' AND author_type = 'Agent')");
                 t.HasCheckConstraint("ck_messages_body", "length(btrim(body)) > 0 AND char_length(body) <= 20000");
                 // An internal note is never authored by, or addressed to, a requester and never carries a delivery state.
                 t.HasCheckConstraint("ck_messages_internal_never_requester_or_delivered", "kind <> 'Internal' OR (author_type <> 'Requester' AND delivery_state = 'None')");
@@ -129,10 +135,31 @@ internal sealed class TicketingDbContext(DbContextOptions<TicketingDbContext> op
             e.Property(x => x.Body).HasColumnName("body");
             e.Property(x => x.Source).HasColumnName("source").HasMaxLength(16);
             e.Property(x => x.DeliveryState).HasColumnName("delivery_state").HasMaxLength(16).HasConversion<string>();
+            e.Property(x => x.DeliveryError).HasColumnName("delivery_error").HasMaxLength(200);
+            e.Property(x => x.SourceRef).HasColumnName("source_ref").HasMaxLength(512);
+            e.Property(x => x.BodyHtml).HasColumnName("body_html");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.HasOne<Ticket>().WithMany().HasForeignKey(x => new { x.TicketId, x.DepartmentId })
                 .HasPrincipalKey(t => new { t.Id, t.DepartmentId }).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_messages_ticket_department");
             e.HasIndex(x => new { x.TicketId, x.CreatedAt, x.Id }).IsDescending(false, true, true).HasDatabaseName("ix_messages_ticket_created");
+
+            // Idempotency of producers (email ingestion): the same source reference can never create a second message.
+            e.HasIndex(x => new { x.DepartmentId, x.Source, x.SourceRef }).IsUnique().HasFilter("source_ref IS NOT NULL").HasDatabaseName("ux_messages_source_ref");
+            e.HasQueryFilter(x => ScopedDepartmentIds.Contains(x.DepartmentId));
+        });
+
+        modelBuilder.Entity<TicketParticipant>(e =>
+        {
+            e.ToTable("ticket_participants", t => t.HasCheckConstraint("ck_ticket_participants_email", "length(btrim(email)) > 0"));
+            e.HasKey(x => new { x.TicketId, x.EmailNormalised });
+            e.Property(x => x.TicketId).HasColumnName("ticket_id");
+            e.Property(x => x.DepartmentId).HasColumnName("department_id");
+            e.Property(x => x.EmailNormalised).HasColumnName("email_normalised").HasMaxLength(320);
+            e.Property(x => x.Email).HasColumnName("email").HasMaxLength(320);
+            e.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(200);
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.HasOne<Ticket>().WithMany().HasForeignKey(x => new { x.TicketId, x.DepartmentId })
+                .HasPrincipalKey(t => new { t.Id, t.DepartmentId }).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_ticket_participants_ticket_department");
             e.HasQueryFilter(x => ScopedDepartmentIds.Contains(x.DepartmentId));
         });
     }

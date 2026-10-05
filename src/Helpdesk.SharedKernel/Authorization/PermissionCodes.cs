@@ -13,6 +13,7 @@ public static class PermissionCodes
     public const string DepartmentManage = "department.manage";
     public const string DepartmentMembersManage = "department.members.manage";
     public const string TeamsManage = "teams.manage";
+    public const string DepartmentMailboxesManage = "department.mailboxes.manage";
     public const string DepartmentAuditRead = "department.audit.read";
     public const string TicketsRead = "tickets.read";
     public const string TicketsCreate = "tickets.create";

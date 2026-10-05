@@ -19,6 +19,12 @@ public sealed class HelpdeskFactory(string connectionString) : WebApplicationFac
         builder.UseSetting("Database:MigrateOnStartup", "false");
         builder.UseSetting("Authentication:DevSignIn:Enabled", "true");
         builder.UseSetting("Authentication:BootstrapPlatformAdminSubjects:0", PlatformAdminSubject);
+
+        // Email loop without a tenant: the in-process mailbox simulator, in-memory object store, no background server (tests drive the job runner).
+        builder.UseSetting("Mail:Provider", "Fake");
+        builder.UseSetting("Storage:Provider", "InMemory");
+        builder.UseSetting("Attachments:RequireCleanScan", "false");
+        builder.UseSetting("Jobs:Enabled", "false");
     }
 }
 

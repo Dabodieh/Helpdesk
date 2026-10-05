@@ -24,6 +24,24 @@ public sealed class ModuleBoundaryTests
         { "Audit", "Ticketing" },
         { "Identity", "Ticketing" },
         { "Organisation", "Ticketing" },
+        { "Ticketing", "Mail" },
+        { "Ticketing", "Attachments" },
+        { "Mail", "Audit" },
+        { "Mail", "Identity" },
+        { "Mail", "Organisation" },
+        { "Mail", "Attachments" },
+        { "Mail", "Ticketing" },
+        { "Attachments", "Audit" },
+        { "Attachments", "Identity" },
+        { "Attachments", "Organisation" },
+        { "Attachments", "Mail" },
+        { "Attachments", "Ticketing" },
+        { "Audit", "Mail" },
+        { "Audit", "Attachments" },
+        { "Identity", "Mail" },
+        { "Identity", "Attachments" },
+        { "Organisation", "Mail" },
+        { "Organisation", "Attachments" },
     };
 
     private static Assembly ByName(string name) => name switch
@@ -32,6 +50,8 @@ public sealed class ModuleBoundaryTests
         "Identity" => Modules.Identity,
         "Organisation" => Modules.Organisation,
         "Ticketing" => Modules.Ticketing,
+        "Mail" => Modules.Mail,
+        "Attachments" => Modules.Attachments,
         _ => throw new ArgumentOutOfRangeException(nameof(name)),
     };
 
@@ -61,14 +81,20 @@ public sealed class ModuleBoundaryTests
     [Fact]
     public void Project_references_follow_the_module_dag()
     {
-        // Audit -> SharedKernel; Identity -> SharedKernel, Audit; Organisation -> SharedKernel, Audit, Identity; Ticketing -> all three (nothing depends on Ticketing but the Host).
+        // Audit -> SharedKernel; Identity -> Audit; Organisation -> Audit, Identity; Attachments -> (nothing); Mail -> Audit, Organisation, Attachments;
+        // Ticketing -> Audit, Identity, Organisation, Attachments, Mail (nothing depends on Ticketing but the Host: Mail reaches Ticketing only through
+        // interfaces that Ticketing implements, ADR-013).
         static IEnumerable<string> ModuleRefs(Assembly a) =>
             a.GetReferencedAssemblies().Select(r => r.Name!).Where(n => n.StartsWith("Helpdesk.Modules.", StringComparison.Ordinal));
 
         Assert.Empty(ModuleRefs(Modules.Audit));
         Assert.Equal(["Helpdesk.Modules.Audit"], ModuleRefs(Modules.Identity).Order());
         Assert.Equal(["Helpdesk.Modules.Audit", "Helpdesk.Modules.Identity"], ModuleRefs(Modules.Organisation).Order());
-        Assert.Equal(["Helpdesk.Modules.Audit", "Helpdesk.Modules.Identity", "Helpdesk.Modules.Organisation"], ModuleRefs(Modules.Ticketing).Order());
+        Assert.Empty(ModuleRefs(Modules.Attachments));
+        Assert.Equal(["Helpdesk.Modules.Attachments", "Helpdesk.Modules.Audit", "Helpdesk.Modules.Organisation"], ModuleRefs(Modules.Mail).Order());
+        Assert.Equal(
+            ["Helpdesk.Modules.Attachments", "Helpdesk.Modules.Audit", "Helpdesk.Modules.Identity", "Helpdesk.Modules.Mail", "Helpdesk.Modules.Organisation"],
+            ModuleRefs(Modules.Ticketing).Order());
         Assert.Empty(ModuleRefs(Modules.SharedKernel));
     }
 
@@ -84,6 +110,8 @@ public sealed class ModuleBoundaryTests
     [InlineData("Identity")]
     [InlineData("Organisation")]
     [InlineData("Ticketing")]
+    [InlineData("Mail")]
+    [InlineData("Attachments")]
     public void Only_contracts_and_the_module_registration_class_are_public(string module)
     {
         var assembly = ByName(module);
@@ -102,6 +130,7 @@ public sealed class ModuleBoundaryTests
     [InlineData("Identity")]
     [InlineData("Organisation")]
     [InlineData("Ticketing")]
+    [InlineData("Mail")]
     public void Module_registration_exposes_the_agreed_entry_points(string module)
     {
         var type = ByName(module).GetType($"{Modules.Root(ByName(module))}.{module}Module")!;

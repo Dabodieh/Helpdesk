@@ -1,6 +1,9 @@
 using Helpdesk.Host.Errors;
+using Helpdesk.Host.Jobs;
+using Helpdesk.Modules.Attachments;
 using Helpdesk.Modules.Audit;
 using Helpdesk.Modules.Identity;
+using Helpdesk.Modules.Mail;
 using Helpdesk.Modules.Organisation;
 using Helpdesk.Modules.Ticketing;
 using Helpdesk.SharedKernel.Database;
@@ -40,6 +43,9 @@ try
     builder.Services.AddAuditModule();
     builder.Services.AddIdentityModule(builder.Configuration, builder.Environment);
     builder.Services.AddOrganisationModule();
+    builder.Services.AddAttachmentsModule(builder.Configuration);
+    builder.Services.AddMailModule(builder.Configuration, builder.Environment);
+    builder.Services.AddBackgroundJobs(builder.Configuration);
     builder.Services.AddTicketingModule();
 
     builder.Services.AddProblemDetails();
@@ -113,6 +119,7 @@ try
     app.UseRouting();
     app.UseIdentityModule();   // authentication + CSRF validation
     app.UseAuthorization();
+    app.UseJobDashboard(builder.Configuration);
 
     // Probes and OpenAPI are anonymous on purpose; everything else falls under the authenticated-user fallback policy.
     app.MapHealthChecks("/health/live", new() { Predicate = h => h.Tags.Contains("live") }).AllowAnonymous();
@@ -126,6 +133,7 @@ try
     app.MapIdentityEndpoints();
     app.MapOrganisationEndpoints();
     app.MapTicketingEndpoints();
+    app.MapMailEndpoints(app.Environment);
     app.MapAuditEndpoints();
 
     app.Run();

@@ -12,7 +12,8 @@ namespace Helpdesk.ArchitectureTests;
 public sealed class DepartmentScopeBypassTests
 {
     /// <summary>System work with an explicit department (ingestion). Add a type here only after review.</summary>
-    private static readonly Type[] AllowedBypassCallers = [typeof(TicketIngressService)];
+    private static readonly Type[] AllowedBypassCallers =
+        [typeof(TicketIngressService), typeof(InboundTicketSink), typeof(DeliveryStateSink), typeof(PeopleUpsert)];
 
     private static readonly BindingFlags AllMembers =
         BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;

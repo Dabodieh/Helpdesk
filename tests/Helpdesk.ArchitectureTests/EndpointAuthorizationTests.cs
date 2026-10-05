@@ -28,7 +28,12 @@ public sealed class EndpointAuthorizationTests(AppFixture app) : IClassFixture<A
         "/api/csrf",
         "/api/auth/login",
         "/api/auth/dev-login",
+        "/api/mail/graph/notifications",
+        "/api/mail/graph/lifecycle",
     ];
+
+    /// <summary>Webhooks called by Microsoft Graph: anonymous and CSRF-exempt, authenticated by the per-subscription client state (reviewed).</summary>
+    private static readonly string[] CsrfExemptWebhooks = ["/api/mail/graph/notifications", "/api/mail/graph/lifecycle"];
 
     private List<RouteEndpoint> Endpoints() =>
         app.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>().ToList();
@@ -142,9 +147,18 @@ public sealed class EndpointAuthorizationTests(AppFixture app) : IClassFixture<A
     {
         var offenders = Endpoints()
             .Where(e => e.Metadata.GetMetadata<IAllowAnonymous>() is not null)
+            .Where(e => !CsrfExemptWebhooks.Contains(e.RoutePattern.RawText))
             .Where(e => (e.Metadata.GetMetadata<IHttpMethodMetadata>()?.HttpMethods ?? []).Any(m => m is not ("GET" or "HEAD" or "OPTIONS")))
             .Select(Describe).ToList();
         Assert.Empty(offenders);
+    }
+
+    [Fact]
+    public void Only_the_reviewed_webhooks_are_exempt_from_csrf()
+    {
+        var exempt = Endpoints().Where(e => e.Metadata.GetMetadata<IgnoreCsrfMetadata>() is not null).Select(e => e.RoutePattern.RawText!).Distinct().Order().ToList();
+        Assert.Equal(CsrfExemptWebhooks.Order(), exempt);
+        Assert.All(Endpoints().Where(e => e.Metadata.GetMetadata<IgnoreCsrfMetadata>() is not null), e => Assert.NotNull(e.Metadata.GetMetadata<IAllowAnonymous>()));
     }
 
     [Fact]
