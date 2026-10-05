@@ -14,20 +14,20 @@ services:
       timeout: 3s
       retries: 10
 
-  # Not needed before Phase 3 (attachments). Opt-in: `docker compose --profile storage up -d`.
-  # The public minio/minio image is no longer published on Docker Hub; pick the object-store image/provider (OPEN_DECISIONS D-15) before Phase 3.
-  minio:
+  # S3-compatible object storage for LOCAL DEVELOPMENT only (SeaweedFS). Not needed before Phase 3 (attachments), so opt-in:
+  # `docker compose --profile storage up -d`. The application only knows "an S3-compatible endpoint" (never SeaweedFS-specific APIs);
+  # production storage is deployment-configurable (D-17).
+  objectstore:
     profiles: [storage]
-    image: minio/minio:latest
-    command: server /data --console-address ":9001"
+    image: chrislusf/seaweedfs:latest
+    command: server -dir=/data -s3 -s3.port=8333 -master.volumeSizeLimitMB=256
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-helpdesk-minio}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?copy .env.example to .env}
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:?copy .env.example to .env}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:?copy .env.example to .env}
     ports:
-      - "127.0.0.1:${MINIO_API_PORT:-9000}:9000"
-      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
-    volumes: ["miniodata:/data"]
+      - "127.0.0.1:${S3_PORT:-8333}:8333"
+    volumes: ["objectdata:/data"]
 
 volumes:
   pgdata:
-  miniodata:
+  objectdata:

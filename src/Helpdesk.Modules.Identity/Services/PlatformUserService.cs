@@ -92,7 +92,7 @@ internal sealed class PlatformUserService(IdentityDbContext db, IAuditWriter aud
                 var otherActiveAdmins = await db.Users.CountAsync(u => u.IsPlatformAdmin && u.IsActive && u.Id != userId, ct);
                 if (otherActiveAdmins == 0)
                 {
-                    throw new ConflictException("The last platform administrator cannot be removed.");
+                    throw new ConflictException("The last platform administrator cannot be removed.", ProblemCodes.LastAdmin);
                 }
             }
 

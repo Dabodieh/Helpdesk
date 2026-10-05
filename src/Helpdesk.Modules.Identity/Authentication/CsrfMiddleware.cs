@@ -1,3 +1,4 @@
+using Helpdesk.SharedKernel.Errors;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Http;
 
@@ -22,7 +23,10 @@ internal sealed class CsrfMiddleware(RequestDelegate next, IAntiforgery antiforg
             }
             catch (AntiforgeryValidationException)
             {
-                await Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "Invalid or missing CSRF token").ExecuteAsync(context);
+                await Results.Problem(
+                    statusCode: StatusCodes.Status400BadRequest,
+                    title: "Invalid or missing CSRF token",
+                    extensions: new Dictionary<string, object?> { ["code"] = ProblemCodes.CsrfInvalid }).ExecuteAsync(context);
                 return;
             }
         }

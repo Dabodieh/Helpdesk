@@ -58,12 +58,12 @@ internal sealed class MembershipService(
             var user = await users.FindAsync(userId, ct) ?? throw new NotFoundException();
             if (!user.IsActive)
             {
-                throw new ConflictException("The user is inactive.");
+                throw new ConflictException("The user is inactive.", ProblemCodes.Inactive);
             }
 
             if (!department.IsActive)
             {
-                throw new ConflictException("The department is inactive.");
+                throw new ConflictException("The department is inactive.", ProblemCodes.Inactive);
             }
 
             db.DepartmentMemberships.Add(new DepartmentMembership { UserId = userId, DepartmentId = departmentId, Role = role, CreatedAt = now, UpdatedAt = now });
@@ -135,7 +135,7 @@ internal sealed class MembershipService(
             m => m.DepartmentId == departmentId && m.Role == DepartmentRoles.DepartmentAdmin && m.UserId != excludingUserId, ct);
         if (others == 0)
         {
-            throw new ConflictException("The last DepartmentAdmin of a department cannot be demoted or removed.");
+            throw new ConflictException("The last DepartmentAdmin of a department cannot be demoted or removed.", ProblemCodes.LastAdmin);
         }
     }
 }

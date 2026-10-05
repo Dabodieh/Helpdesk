@@ -108,7 +108,7 @@ internal sealed class DepartmentService(
         var department = await db.Departments.SingleOrDefaultAsync(d => d.Id == id, ct) ?? throw new NotFoundException();
         if (department.Version != version)
         {
-            throw new ConflictException("The department was changed by someone else. Reload and retry.");
+            throw new ConflictException("The department was changed by someone else. Reload and retry.", ProblemCodes.VersionConflict);
         }
 
         db.Entry(department).Property(d => d.Version).OriginalValue = version;
@@ -169,7 +169,7 @@ internal sealed class DepartmentService(
         }
         catch (DbUpdateConcurrencyException)
         {
-            throw new ConflictException("The department was changed by someone else. Reload and retry.");
+            throw new ConflictException("The department was changed by someone else. Reload and retry.", ProblemCodes.VersionConflict);
         }
         catch (DbUpdateException ex) when (PostgresErrors.IsUniqueViolation(ex, out var constraint))
         {
@@ -178,7 +178,7 @@ internal sealed class DepartmentService(
                 "ux_departments_key_lower" => "A department with this key already exists.",
                 "ux_departments_name_lower" => "A department with this name already exists.",
                 _ => "A department with these values already exists.",
-            });
+            }, ProblemCodes.Duplicate);
         }
     }
 

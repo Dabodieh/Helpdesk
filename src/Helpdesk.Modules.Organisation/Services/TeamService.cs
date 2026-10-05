@@ -43,7 +43,7 @@ internal sealed class TeamService(OrganisationDbContext db, OrganisationAudit au
         var department = await db.Departments.AsNoTracking().SingleOrDefaultAsync(d => d.Id == departmentId, ct) ?? throw new NotFoundException();
         if (!department.IsActive)
         {
-            throw new ConflictException("The department is inactive.");
+            throw new ConflictException("The department is inactive.", ProblemCodes.Inactive);
         }
 
         var now = clock.GetUtcNow();
@@ -86,7 +86,7 @@ internal sealed class TeamService(OrganisationDbContext db, OrganisationAudit au
         var team = await FindAsync(departmentId, teamId, track: true, ct);
         if (team.Version != version)
         {
-            throw new ConflictException("The team was changed by someone else. Reload and retry.");
+            throw new ConflictException("The team was changed by someone else. Reload and retry.", ProblemCodes.VersionConflict);
         }
 
         db.Entry(team).Property(t => t.Version).OriginalValue = version;
@@ -157,7 +157,7 @@ internal sealed class TeamService(OrganisationDbContext db, OrganisationAudit au
         var team = await FindAsync(departmentId, teamId, track: false, ct);
         if (!team.IsActive)
         {
-            throw new ConflictException("The team is inactive.");
+            throw new ConflictException("The team is inactive.", ProblemCodes.Inactive);
         }
 
         if (await db.TeamMemberships.AnyAsync(m => m.TeamId == teamId && m.UserId == userId, ct))
@@ -171,7 +171,7 @@ internal sealed class TeamService(OrganisationDbContext db, OrganisationAudit au
         var isMember = await db.DepartmentMemberships.AnyAsync(m => m.UserId == userId && m.DepartmentId == departmentId, ct);
         if (!isMember)
         {
-            throw new ConflictException("The user must be a member of the department first.");
+            throw new ConflictException("The user must be a member of the department first.", ProblemCodes.InvalidState);
         }
 
         db.TeamMemberships.Add(new TeamMembership { TeamId = teamId, UserId = userId, DepartmentId = departmentId, CreatedAt = clock.GetUtcNow() });
@@ -207,11 +207,11 @@ internal sealed class TeamService(OrganisationDbContext db, OrganisationAudit au
         }
         catch (DbUpdateConcurrencyException)
         {
-            throw new ConflictException("The team was changed by someone else. Reload and retry.");
+            throw new ConflictException("The team was changed by someone else. Reload and retry.", ProblemCodes.VersionConflict);
         }
         catch (DbUpdateException ex) when (PostgresErrors.IsUniqueViolation(ex, out _))
         {
-            throw new ConflictException("A team with this name already exists in the department.");
+            throw new ConflictException("A team with this name already exists in the department.", ProblemCodes.Duplicate);
         }
     }
 

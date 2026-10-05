@@ -9,6 +9,16 @@ namespace Helpdesk.Host.Errors;
 /// <summary>Maps domain/authorization exceptions to RFC 9457 problem details (one place, so every module answers identically).</summary>
 internal sealed class HelpdeskExceptionHandler(IProblemDetailsService problemDetails) : IExceptionHandler
 {
+    private static ProblemDetails WithCode(ProblemDetails problem, string? code)
+    {
+        if (code is not null)
+        {
+            problem.Extensions["code"] = code;
+        }
+
+        return problem;
+    }
+
     public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
     {
         ProblemDetails? problem = exception switch
@@ -18,8 +28,8 @@ internal sealed class HelpdeskExceptionHandler(IProblemDetailsService problemDet
                 Status = v.StatusCode,
                 Title = v.Title,
             },
-            HelpdeskException h => new ProblemDetails { Status = h.StatusCode, Title = h.Title, Detail = h.Detail },
-            DbUpdateConcurrencyException => new ProblemDetails { Status = StatusCodes.Status409Conflict, Title = "Conflict", Detail = "The resource was changed by someone else. Reload and retry." },
+            HelpdeskException h => WithCode(new ProblemDetails { Status = h.StatusCode, Title = h.Title, Detail = h.Detail }, h.Code),
+            DbUpdateConcurrencyException => WithCode(new ProblemDetails { Status = StatusCodes.Status409Conflict, Title = "Conflict", Detail = "The resource was changed by someone else. Reload and retry." }, ProblemCodes.VersionConflict),
             BadHttpRequestException => new ProblemDetails { Status = StatusCodes.Status400BadRequest, Title = "Bad request" },
             _ => null,
         };
