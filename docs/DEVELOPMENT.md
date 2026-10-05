@@ -6,7 +6,7 @@
 ## First run
 ```bash
 cp .env.example .env                 # local-only placeholder secrets
-docker compose up -d                 # PostgreSQL 18 (5432), MinIO (9000 API, 9001 console)
+docker compose up -d                 # PostgreSQL 18 (5432); object storage is opt-in: `--profile storage`
 dotnet run --project src/Helpdesk.Host   # http://localhost:5080  (Development config uses compose defaults)
 npm --prefix src/web ci && npm --prefix src/web run dev   # http://localhost:5173 (proxies /api and /health)
 ```
@@ -85,14 +85,14 @@ npm --prefix src/web run e2e                      # add -- --headed to watch
 The config does not start a web server. `E2E_BASE_URL` overrides the target (default `http://localhost:5173`). The spec seeds its own data through the API with dev-login users (a new department with a unique key, a team, a TeamLead and an Agent, two tickets) and needs the `dev-admin` bootstrap platform admin, so it never touches existing data and can be rerun.
 
 ## Local object storage
-MinIO console at http://localhost:9001 (credentials from `.env`). Used from Phase 3.
+SeaweedFS (S3-compatible, local dev only) is opt-in: `docker compose --profile storage up -d` exposes the S3 API on `127.0.0.1:${S3_PORT:-8333}` with the access/secret keys from `.env` (`S3_ACCESS_KEY`, `S3_SECRET_KEY`). The application only needs an S3-compatible endpoint; nothing uses it before Phase 3.
 
 ## Debugging
 Serilog writes structured logs to the console. Set `OTEL_EXPORTER_OTLP_ENDPOINT` to export traces.
 
 ## Local environment notes (verified Phase 1)
 - If host port 5432 is taken, set `POSTGRES_PORT` in `.env` (e.g. 5433) and use the same port in `Database__ConnectionString` / `HELPDESK_TEST_DB`.
-- MinIO is opt-in (`docker compose --profile storage up -d`): the public `minio/minio` image is no longer pullable, and nothing before Phase 3 uses it (D-17).
+- Object storage (SeaweedFS) is opt-in (`--profile storage`); the old public `minio/minio` image is no longer pullable (D-17 resolved).
 - Host image: `docker build -f docker/host.Dockerfile -t helpdesk-host:local .`; migrate with `docker run --rm --network <compose-net> -e Database__ConnectionString=... helpdesk-host:local migrate`. In `Development` inside a container also set `Urls=http://+:8080` (appsettings.Development.json binds localhost:5080).
 - No local .NET 10 SDK? Run any dotnet command in `mcr.microsoft.com/dotnet/sdk:10.0` with the repo mounted and the compose network attached (set `HELPDESK_TEST_DB` to the compose service host).
 - Expected noise: `migrate` logs EF "Failed executing DbCommand" at ERR for the history-table probe on a fresh database, and Npgsql may print `libgssapi_krb5.so.2` on slim images; both are harmless.

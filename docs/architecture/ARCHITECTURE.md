@@ -4,7 +4,7 @@
 Modular monolith, one deployable ASP.NET Core host (ADR-001). One PostgreSQL database (ADR-002). Background work runs in the same host initially via Hangfire (ADR-006), hosted as a separately-scalable role of the same image (`ROLE=web|worker|all`).
 
 ## Stack
-React 19 + TypeScript + Vite + React Router + TanStack Query + Zod | C# / .NET 10 / ASP.NET Core / EF Core | PostgreSQL 18 | SignalR | Hangfire (PostgreSQL storage) | Entra ID OIDC | Microsoft Graph | S3-compatible object storage (MinIO locally) | Serilog + OpenTelemetry | xUnit + Playwright.
+React 19 + TypeScript + Vite + React Router + TanStack Query + Zod | C# / .NET 10 / ASP.NET Core / EF Core | PostgreSQL 18 | SignalR | Hangfire (PostgreSQL storage) | Entra ID OIDC | Microsoft Graph | S3-compatible object storage (SeaweedFS locally; production provider is deployment-configurable) | Serilog + OpenTelemetry | xUnit + Playwright.
 
 ## Repository layout
 ```
@@ -34,7 +34,7 @@ Modules are introduced when their functionality is required, not pre-created.
 | Identity | 1 | OIDC login, internal users, external-identity mapping, current-user context |
 | Organisation | 1 | Departments, teams, memberships, roles, permission catalogue and `IAuthorizer` (Permissions folded in, ADR-009) |
 | Audit | 1 | Append-only audit events, `IAuditWriter` |
-| Tickets (+Requesters, Conversations) | 2 | Tickets, messages, notes, participants |
+| Ticketing (requesters, tickets, conversation) | 2 | Tickets, department-scoped requesters, public messages and internal notes, per-department references, queues; `ITicketIngress` for Phase 3 (ADR-012, `TICKETING.md`) |
 | Mail | 3 | `IMailProvider`, Graph provider, mailboxes, inbound/outbound pipeline |
 | Attachments | 3 | `IObjectStore`, scanning/validation, metadata |
 | Notifications, Search, SLA, BusinessHours, Automation | 4–5 | as named |
@@ -77,3 +77,6 @@ The authentication scheme registration (cookie session, Entra OIDC, dev sign-in,
 
 ## Phase 1 web (admin UI)
 `src/web` is an authenticated SPA shell over the Phase 1 API: `api/` (fetch wrapper with CSRF handling, zod schemas, error mapping, permission helpers), `pages/` (departments, department detail, team detail, sign-in, status), `components/` (route guard, teams/members sections, shared widgets). Controls are shown or disabled from `/api/me` permissions as a UX hint only; every request is still authorised by the API and 401/403/404 are handled in the UI. Platform administrators without a membership see departments as administrative metadata only. Known gaps are tracked in `docs/plans/BACKLOG.md`.
+
+## Phase 2 structure
+`src/Helpdesk.Modules.Ticketing` (schema `ticketing`, migration order 40) depends on SharedKernel, Audit.Contracts, Identity.Contracts and Organisation.Contracts (`IOrganisationDirectory`). Ticket history is the audit stream read through `IAuditReader`. Ticket-id routes use resource-scoped authorization (`RequireResourcePermission`) over a fail-closed department-scoped query filter. The web app has two areas: the agent workspace (queues, split ticket view; `docs/design/agent-workspace/UX.md`) and Administration under `/admin`. Realtime (SignalR) is deferred to Phase 4; workspaces poll.

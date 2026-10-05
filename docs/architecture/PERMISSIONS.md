@@ -21,7 +21,7 @@
 | `department.audit.read` | administrative | TeamLead, DepartmentAdmin; PlatformAdmin |
 | `tickets.read` | **content** | Viewer, Agent, TeamLead, DepartmentAdmin (membership only) |
 Activation (`isActive`) of a department needs `platform.departments.manage`.
-Phase 1 has no ticket resource; `tickets.read` is exercised through a clearly marked probe endpoint (`GET /api/departments/{id}/ticket-access-probe`, returns 204/404/403 and no data) which Phase 2 replaces with real ticket endpoints and tests.
+Phase 2 adds the ticket resource and the ticket permission set (all *content* kind, membership only): `tickets.read`, `tickets.create`, `tickets.reply`, `tickets.note`, `tickets.notes.read`, `tickets.update`, `tickets.assign.self`, `tickets.assign.any`; role mapping and enforcement details in `TICKETING.md`. The Phase 1 probe endpoint was removed.
 TeamLead-scoped team management is deferred (backlog): in Phase 1 `teams.manage` is DepartmentAdmin only.
 
 ## System roles (v1 target set; Phase 1 implements the catalogue above)
@@ -58,4 +58,4 @@ Policy-style authorization handlers sit behind `IAuthorizer`; endpoint filters m
 
 ## Phase 1 implementation notes
 - The frontend infers a platform admin's administrative permissions for departments without a membership from the permission catalogue (a hardcoded list in `src/web/src/api/permissions.ts`); this is UX only and tracked in BACKLOG ("single source for UI hints").
-- Enforcement rule 4 (EF department query filter) is deferred until ticket tables exist (Phase 2); Phase 1 org tables are protected by authorizer checks and, for lists, by query-level filtering.
+- Enforcement rule 4 is implemented for ticketing (Phase 2): a fail-closed EF global query filter on tickets, messages and requesters, plus per-action `IAuthorizer` checks and composite foreign keys (see `TICKETING.md`). Organisation tables keep authorizer checks and query-level filtering.

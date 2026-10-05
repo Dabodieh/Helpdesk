@@ -17,6 +17,6 @@ Targeted tests only for the area changed. Full suite only at milestones, release
 Backend: `dotnet test tests/<Project> --filter ...`. Frontend: `npm --prefix src/web test -- <path>`.
 
 ## Commands
-- Deps: `docker compose up -d` (PostgreSQL, MinIO)
+- Deps: `docker compose up -d` (PostgreSQL; object store opt-in via `--profile storage`)
 - API: `dotnet run --project src/Helpdesk.Host`
 - Web: `npm --prefix src/web run dev`

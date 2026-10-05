@@ -24,6 +24,7 @@ Direction, not a final schema. Each module refines its slice before implementing
 - **Signature**, **EmailTemplate**: department-owned (Phase 3/4).
 
 ## Tickets
+> Implemented in Phase 2 as specified in `TICKETING.md` (the authoritative description). Fields listed here that are not in that document (source, due date, mailbox, participants, HTML bodies, attachments) belong to later phases.
 - **Requester**: external or internal person who raises tickets. Department-scoped identity record (`department_id`, email unique per department) so one department's requester history is invisible to another. Optional link to a `User`.
 - **Ticket**: department_id, number (`{DEPT_KEY}-{seq}`), subject, status, priority, requester, assignee (user), team, source (email/web/agent), due date, mailbox (originating), created/updated/resolved/closed times, row version.
 - **TicketParticipant**: (ticket, email/requester or user, kind: CC | Follower).
