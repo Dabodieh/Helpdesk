@@ -20,7 +20,7 @@ export default function DepartmentPage() {
       <>
         <ErrorNotice error={dept.error} onRetry={() => void dept.refetch()} />
         <p>
-          <Link to="/">Back to departments</Link>
+          <Link to="/admin">Back to departments</Link>
         </p>
       </>
     )
@@ -31,7 +31,7 @@ export default function DepartmentPage() {
   return (
     <>
       <p>
-        <Link to="/">Departments</Link> / {d.key}
+        <Link to="/admin">Departments</Link> / {d.key}
       </p>
       <h1>
         {d.name} <ActiveBadge active={d.isActive} />

@@ -3,7 +3,7 @@ import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { fieldErrors } from '../api/errors'
 import { createDepartment, listDepartments } from '../api/organisation'
-import { canPlatform } from '../api/permissions'
+import { canPlatform, hasAnyPermission } from '../api/permissions'
 import { DEPARTMENT_KEY } from '../api/schemas'
 import { useMe } from '../auth'
 import { ActiveBadge, ErrorNotice, Field, Loading } from '../components/common'
@@ -21,7 +21,7 @@ function CreateDepartment() {
     onSuccess: async (dept) => {
       await qc.invalidateQueries({ queryKey: ['departments'] })
       await qc.invalidateQueries({ queryKey: ['me'] })
-      void navigate(`/departments/${dept.id}`)
+      void navigate(`/admin/departments/${dept.id}`)
     },
   })
 
@@ -68,10 +68,12 @@ export default function DepartmentsPage() {
   return (
     <>
       <h1>Departments</h1>
-      {me.isPlatformAdmin && me.memberships.length === 0 && (
-        <p className="muted">
-          As a platform administrator you see all departments as administrative information only. Department content
-          requires a department membership.
+      {!hasAnyPermission(me, 'tickets.read') && (
+        <p className="notice info" role="note">
+          You have no access to tickets: ticket queues need a department membership with ticket permissions.
+          {me.isPlatformAdmin
+            ? ' As a platform administrator you manage departments, teams and members here, but department content stays private.'
+            : ''}
         </p>
       )}
       {list.isPending && <Loading />}
@@ -93,7 +95,7 @@ export default function DepartmentsPage() {
               <tr key={d.id}>
                 <td>{d.key}</td>
                 <td>
-                  <Link to={`/departments/${d.id}`}>{d.name}</Link>
+                  <Link to={`/admin/departments/${d.id}`}>{d.name}</Link>
                 </td>
                 <td>
                   <ActiveBadge active={d.isActive} />

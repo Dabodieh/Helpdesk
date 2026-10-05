@@ -114,7 +114,7 @@ export default function TeamPage() {
       <>
         <ErrorNotice error={failure} onRetry={() => void Promise.all([team.refetch(), dept.refetch()])} />
         <p>
-          <Link to={`/departments/${departmentId}`}>Back to department</Link>
+          <Link to={`/admin/departments/${departmentId}`}>Back to department</Link>
         </p>
       </>
     )
@@ -125,7 +125,7 @@ export default function TeamPage() {
   return (
     <>
       <p>
-        <Link to="/">Departments</Link> / <Link to={`/departments/${departmentId}`}>{dept.data.name}</Link> / Team
+        <Link to="/admin">Departments</Link> / <Link to={`/admin/departments/${departmentId}`}>{dept.data.name}</Link> / Team
       </p>
       <h1>
         {t.name} <ActiveBadge active={t.isActive} />

@@ -1,0 +1,296 @@
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { afterEach, expect, test, vi } from 'vitest'
+import {
+  agentMe,
+  json,
+  leadMe,
+  makeDetail,
+  makeMessage,
+  mockFetch,
+  page,
+  problem,
+  renderApp,
+  viewerMe,
+  workspaceRoutes,
+  type Call,
+} from '../test-utils'
+
+afterEach(() => vi.unstubAllGlobals())
+
+const TICKET = makeDetail({ id: 't1', reference: 'IT-1', subject: 'Printer jam' })
+const ticketRoutes = (me = agentMe(), detail = TICKET) => ({
+  ...workspaceRoutes(me),
+  'GET /api/tickets/IT-1': () => detail,
+  'GET /api/tickets/t1/messages': () => page([makeMessage()]),
+  'GET /api/tickets/t1/activity': () => page([]),
+})
+const openTicket = async () => {
+  renderApp('/queue/my/IT-1')
+  await screen.findByRole('heading', { name: 'Printer jam', level: 2 })
+}
+/** Controls of the open ticket (the queue toolbar has same-named filters). */
+const pane = () => within(screen.getByRole('region', { name: 'Ticket' }))
+const posts = (calls: Call[], suffix: string) => calls.filter((c) => c.method === 'POST' && c.path.endsWith(suffix))
+
+test('permission-aware controls: a viewer sees values only, no composer and no edit controls', async () => {
+  mockFetch(ticketRoutes(viewerMe()))
+  await openTicket()
+  expect(pane().queryByRole('combobox', { name: 'Status' })).not.toBeInTheDocument()
+  expect(pane().queryByRole('combobox', { name: 'Priority' })).not.toBeInTheDocument()
+  expect(pane().queryByRole('combobox', { name: 'Team' })).not.toBeInTheDocument()
+  expect(pane().queryByRole('combobox', { name: 'Assignee' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /Edit subject/ })).not.toBeInTheDocument()
+  expect(screen.getByText(/You can read this ticket but not reply/)).toBeInTheDocument()
+  expect(screen.queryByRole('textbox', { name: /reply|note/i })).not.toBeInTheDocument()
+})
+
+test('permission-aware controls: an agent edits status and priority, but team needs assign.any', async () => {
+  mockFetch(ticketRoutes(agentMe()))
+  await openTicket()
+  expect(pane().getByRole('combobox', { name: 'Status' })).toBeEnabled()
+  expect(pane().getByRole('combobox', { name: 'Priority' })).toBeEnabled()
+  expect(pane().queryByRole('combobox', { name: 'Team' })).not.toBeInTheDocument()
+  // unassigned ticket: assign.self allows taking it
+  const assignee = pane().getByRole('combobox', { name: 'Assignee' })
+  expect(within(assignee).getByRole('option', { name: /\(me\)/ })).toBeInTheDocument()
+})
+
+test('permission-aware controls: assign.self cannot reassign a ticket owned by someone else', async () => {
+  mockFetch(ticketRoutes(agentMe(), makeDetail({ assignee: { id: 'u9', displayName: 'Other Agent' } })))
+  await openTicket()
+  expect(pane().queryByRole('combobox', { name: 'Assignee' })).not.toBeInTheDocument()
+  expect(screen.getAllByText('Other Agent').length).toBeGreaterThan(0)
+})
+
+test('status and priority changes are PATCHed with the loaded version', async () => {
+  const calls = mockFetch({
+    ...ticketRoutes(),
+    'PATCH /api/tickets/t1': (c) => makeDetail({ ...(c.body as object), version: 'v2' }),
+  })
+  await openTicket()
+  fireEvent.change(pane().getByRole('combobox', { name: 'Status' }), { target: { value: 'Pending' } })
+  await waitFor(() => expect(calls.find((c) => c.method === 'PATCH')?.body).toEqual({ version: 'v1', status: 'Pending' }))
+  await waitFor(() => expect(pane().getByRole('combobox', { name: 'Status' })).toHaveValue('Pending'))
+  fireEvent.change(pane().getByRole('combobox', { name: 'Priority' }), { target: { value: 'Urgent' } })
+  await waitFor(() => expect(calls.filter((c) => c.method === 'PATCH').at(-1)?.body).toEqual({ version: 'v2', priority: 'Urgent' }))
+})
+
+test('a team lead replaces team and assignee through PUT assignment with version', async () => {
+  const calls = mockFetch({
+    ...ticketRoutes(leadMe()),
+    'GET /api/departments/d1/teams': () => [{ id: 'tm1', name: 'Tier 1', isActive: true, version: 'a' }],
+    'GET /api/departments/d1/members': () => [
+      { userId: 'u9', displayName: 'Other Agent', email: null, role: 'Agent', teamIds: [] },
+      { userId: 'u8', displayName: 'View Only', email: null, role: 'Viewer', teamIds: [] },
+    ],
+    'PUT /api/tickets/t1/assignment': (c) => makeDetail({ ...(c.body as object), version: 'v2' }),
+  })
+  await openTicket()
+  const assignee = pane().getByRole('combobox', { name: 'Assignee' })
+  await waitFor(() => expect(within(assignee).getByRole('option', { name: 'Other Agent' })).toBeInTheDocument())
+  expect(within(assignee).queryByRole('option', { name: 'View Only' })).not.toBeInTheDocument()
+  fireEvent.change(assignee, { target: { value: 'u9' } })
+  await waitFor(() =>
+    expect(calls.find((c) => c.method === 'PUT')?.body).toEqual({ version: 'v1', teamId: null, assigneeUserId: 'u9' }),
+  )
+  const team = pane().getByRole('combobox', { name: 'Team' })
+  await waitFor(() => expect(within(team).getByRole('option', { name: 'Tier 1' })).toBeInTheDocument())
+})
+
+test('composer: internal mode shows the banner and submits kind Internal', async () => {
+  const calls = mockFetch({
+    ...ticketRoutes(),
+    'POST /api/tickets/t1/messages': (c) =>
+      json(
+        {
+          message: makeMessage({
+            id: 'm2',
+            kind: 'Internal',
+            authorType: 'Agent',
+            author: { id: 'u1', displayName: 'Test User' },
+            body: (c.body as { body: string }).body,
+          }),
+          ticket: makeDetail({ version: 'v2' }),
+        },
+        201,
+      ),
+  })
+  await openTicket()
+  expect(screen.getByRole('radio', { name: 'Public reply' })).toBeChecked()
+  expect(screen.queryByText('Internal note — not visible to the requester')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Post public reply' })).toBeDisabled()
+
+  fireEvent.click(screen.getByRole('radio', { name: 'Internal note' }))
+  expect(screen.getByText('Internal note — not visible to the requester')).toBeInTheDocument()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Internal note' }), { target: { value: 'Checked the fuser\nlooks worn' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Add internal note' }))
+  await waitFor(() => expect(posts(calls, '/messages')).toHaveLength(1))
+  expect(posts(calls, '/messages')[0]!.body).toEqual({ kind: 'Internal', body: 'Checked the fuser\nlooks worn' })
+  expect(posts(calls, '/messages')[0]!.headers['X-CSRF-TOKEN']).toBe('tok')
+  await waitFor(() => expect(screen.getByRole('textbox', { name: 'Internal note' })).toHaveValue(''))
+})
+
+test('keyboard: r focuses the public reply, n the internal note; Esc leaves the box', async () => {
+  mockFetch(ticketRoutes())
+  await openTicket()
+  fireEvent.keyDown(document.body, { key: 'n' })
+  const note = screen.getByRole('textbox', { name: 'Internal note' })
+  expect(note).toHaveFocus()
+  fireEvent.keyDown(note, { key: 'r' }) // typing: ignored
+  expect(screen.getByRole('textbox', { name: 'Internal note' })).toHaveFocus()
+  fireEvent.keyDown(note, { key: 'Escape' })
+  expect(note).not.toHaveFocus()
+  fireEvent.keyDown(document.body, { key: 'r' })
+  expect(screen.getByRole('textbox', { name: 'Public reply' })).toHaveFocus()
+})
+
+test('public reply: payload carries status-after and the entry says it was recorded, not emailed', async () => {
+  const calls = mockFetch({
+    ...ticketRoutes(),
+    'POST /api/tickets/t1/messages': (c) =>
+      json(
+        {
+          message: makeMessage({
+            id: 'm2',
+            authorType: 'Agent',
+            author: { id: 'u1', displayName: 'Test User' },
+            body: (c.body as { body: string }).body,
+            deliveryState: 'NotDelivered',
+          }),
+          ticket: makeDetail({ status: 'Resolved', version: 'v2' }),
+        },
+        201,
+      ),
+    'GET /api/tickets/t1/messages': [
+      () => page([makeMessage()]),
+      () =>
+        page([
+          makeMessage({ id: 'm2', authorType: 'Agent', author: { id: 'u1', displayName: 'Test User' }, body: 'Try the other tray', deliveryState: 'NotDelivered' }),
+          makeMessage(),
+        ]),
+    ],
+  })
+  await openTicket()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Public reply' }), { target: { value: 'Try the other tray' } })
+  fireEvent.change(pane().getByRole('combobox', { name: /Set status after/ }), { target: { value: 'Resolved' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Post public reply' }))
+  await waitFor(() => expect(posts(calls, '/messages')).toHaveLength(1))
+  expect(posts(calls, '/messages')[0]!.body).toEqual({ kind: 'Public', body: 'Try the other tray', status: 'Resolved' })
+  const label = await screen.findByText('Recorded, not emailed (email delivery is not enabled yet)')
+  expect(label).toBeInTheDocument()
+  // never claims a send
+  expect(screen.queryByText(/\bsent\b/i)).not.toBeInTheDocument()
+  expect(screen.queryByText(/delivered to/i)).not.toBeInTheDocument()
+})
+
+test('conversation: ascending order, load earlier follows the cursor, bodies are plain text with line breaks', async () => {
+  const m1 = makeMessage({ id: 'm1', body: 'first message', createdAt: '2026-10-01T09:00:00Z' })
+  const m2 = makeMessage({ id: 'm2', body: '<b>second</b>\nline two', createdAt: '2026-10-01T10:00:00Z' })
+  const m3 = makeMessage({ id: 'm3', kind: 'Internal', authorType: 'Agent', author: { id: 'u2', displayName: 'Ann Agent' }, body: 'private thought', createdAt: '2026-10-01T11:00:00Z' })
+  const calls = mockFetch({
+    ...ticketRoutes(),
+    'GET /api/tickets/t1/messages': (c) =>
+      new URL(c.path, 'http://x').searchParams.get('cursor') === 'older' ? page([m1]) : page([m3, m2], 'older'),
+  })
+  await openTicket()
+  await screen.findByText('private thought')
+  const articles = screen.getAllByRole('article')
+  expect(articles.map((a) => a.textContent)).toEqual([
+    expect.stringContaining('<b>second</b>'),
+    expect.stringContaining('private thought'),
+  ])
+  // plain text: the markup is shown literally, nothing is parsed
+  expect(document.querySelector('.msg-body b')).toBeNull()
+  expect(articles[1]).toHaveAttribute('aria-label', 'Internal note from Ann Agent')
+  expect(within(articles[1]!).getByText('Not visible to the requester')).toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Load earlier messages' }))
+  await screen.findByText('first message')
+  expect(new URL(calls.filter((c) => c.path.includes('/messages?')).at(-1)!.path, 'http://x').searchParams.get('cursor')).toBe('older')
+  expect(screen.getAllByRole('article')[0]).toHaveTextContent('first message')
+})
+
+test('version conflict: banner with reload; the typed draft survives and the ticket is refetched', async () => {
+  let fresh = false
+  const calls = mockFetch({
+    ...ticketRoutes(),
+    'GET /api/tickets/IT-1': () => (fresh ? makeDetail({ status: 'Resolved', version: 'v9' }) : TICKET),
+    'PATCH /api/tickets/t1': () => problem(409, 'Conflict', { code: 'version_conflict', detail: 'whatever text' }),
+  })
+  await openTicket()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Public reply' }), { target: { value: 'my half written reply' } })
+  fireEvent.change(pane().getByRole('combobox', { name: 'Status' }), { target: { value: 'Pending' } })
+  const alert = await screen.findByText(/Someone else changed this ticket/)
+  expect(alert).toBeInTheDocument()
+
+  fresh = true
+  fireEvent.click(screen.getByRole('button', { name: 'Reload latest' }))
+  await waitFor(() => expect(pane().getByRole('combobox', { name: 'Status' })).toHaveValue('Resolved'))
+  expect(screen.queryByText(/Someone else changed this ticket/)).not.toBeInTheDocument()
+  expect(screen.getByRole('textbox', { name: 'Public reply' })).toHaveValue('my half written reply')
+  expect(calls.filter((c) => c.method === 'GET' && c.path === '/api/tickets/IT-1').length).toBeGreaterThan(1)
+})
+
+test('invalid_state on a reply shows the server message and keeps the draft', async () => {
+  mockFetch({
+    ...ticketRoutes(),
+    'POST /api/tickets/t1/messages': () =>
+      problem(409, 'Conflict', { code: 'invalid_state', detail: 'Reopen the ticket before replying.' }),
+  })
+  await openTicket()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Public reply' }), { target: { value: 'hello' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Post public reply' }))
+  expect(await screen.findByText('Reopen the ticket before replying.')).toBeInTheDocument()
+  expect(screen.getByRole('textbox', { name: 'Public reply' })).toHaveValue('hello')
+})
+
+test('closed ticket: public reply is unavailable, internal notes still are', async () => {
+  mockFetch(ticketRoutes(agentMe(), makeDetail({ status: 'Closed' })))
+  await openTicket()
+  expect(screen.getByRole('radio', { name: 'Public reply' })).toBeDisabled()
+  expect(screen.getByRole('radio', { name: 'Internal note' })).toBeChecked()
+})
+
+test('history: human sentences from action/previous/next, message events are not duplicated', async () => {
+  mockFetch({
+    ...ticketRoutes(),
+    'GET /api/tickets/t1/activity': () =>
+      page([
+        { id: 'a3', occurredAt: '2026-10-01T12:00:00Z', actor: { id: 'u1', displayName: 'Ann Agent' }, action: 'ticket.status_changed', previous: { status: 'Open' }, next: { status: 'Pending' } },
+        { id: 'a2', occurredAt: '2026-10-01T11:00:00Z', actor: { id: 'u1', displayName: 'Ann Agent' }, action: 'ticket.message_added', previous: null, next: { messageId: 'm2', kind: 'Public', authorType: 'Agent' } },
+        { id: 'a1', occurredAt: '2026-10-01T09:00:00Z', actor: null, action: 'ticket.created', previous: null, next: { reference: 'IT-1', status: 'Open', priority: 'Normal' } },
+      ]),
+  })
+  await openTicket()
+  fireEvent.click(screen.getByRole('button', { name: 'History' }))
+  expect(await screen.findByText(/changed status from Open to Pending/)).toBeInTheDocument()
+  expect(screen.getByText('Ann Agent')).toBeInTheDocument()
+  expect(screen.getByText(/created the ticket \(Open, Normal\)/)).toBeInTheDocument()
+  expect(screen.queryByText(/message added/i)).not.toBeInTheDocument()
+  expect(screen.getAllByRole('listitem').filter((li) => li.closest('.timeline'))).toHaveLength(2)
+})
+
+test('new ticket: requester email, subject, description and priority are posted; opens the new ticket', async () => {
+  const calls = mockFetch({
+    ...ticketRoutes(),
+    'GET /api/departments/d1/requesters/lookup': () => [],
+    'POST /api/departments/d1/tickets': () => json(makeDetail({ id: 't7', reference: 'IT-7', subject: 'Brand new' }), 201),
+    'GET /api/tickets/IT-7': () => makeDetail({ id: 't7', reference: 'IT-7', subject: 'Brand new' }),
+    'GET /api/tickets/t7/messages': () => page([]),
+  })
+  renderApp('/queue/my')
+  fireEvent.click(await screen.findByRole('button', { name: 'New ticket' }))
+  const dialog = await screen.findByRole('dialog', { name: 'New ticket' })
+  fireEvent.change(within(dialog).getByLabelText('Requester email'), { target: { value: 'new@example.test' } })
+  fireEvent.change(within(dialog).getByLabelText('Subject'), { target: { value: 'Brand new' } })
+  fireEvent.change(within(dialog).getByLabelText('Description'), { target: { value: 'It broke' } })
+  fireEvent.change(within(dialog).getByLabelText('Priority'), { target: { value: 'High' } })
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Create ticket' }))
+  expect(await screen.findByRole('heading', { name: 'Brand new', level: 2 })).toBeInTheDocument()
+  expect(calls.find((c) => c.method === 'POST')?.body).toEqual({
+    subject: 'Brand new',
+    description: 'It broke',
+    requester: { email: 'new@example.test' },
+    priority: 'High',
+  })
+})

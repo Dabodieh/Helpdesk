@@ -18,3 +18,20 @@ export function canInDepartment(me: Me, code: string, departmentId: string) {
   if (me.isPlatformAdmin && ADMINISTRATIVE.has(code)) return true
   return me.memberships.some((m) => m.departmentId === departmentId && m.permissions.includes(code))
 }
+
+/** Content permissions come from department membership only (never the platform-admin flag). UX hint; the server decides. */
+export function canTicket(me: Me, code: string, departmentId: string) {
+  return me.memberships.some((m) => m.departmentId === departmentId && m.permissions.includes(code))
+}
+
+export const hasAnyPermission = (me: Me, code: string) => me.memberships.some((m) => m.permissions.includes(code))
+
+/** Does /api/me show anything the user can administer? Controls only whether the Administration entry is offered. */
+export function canAdminister(me: Me) {
+  return (
+    me.platformPermissions.length > 0 ||
+    me.memberships.some((m) =>
+      ['department.manage', 'department.members.manage', 'teams.manage'].some((c) => m.permissions.includes(c)),
+    )
+  )
+}

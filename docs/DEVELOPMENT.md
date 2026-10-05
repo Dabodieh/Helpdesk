@@ -71,6 +71,18 @@ Writing integration tests: use `HelpdeskFixture` (`tests/Helpdesk.Host.Tests/Inf
 
 Run the full suite only at milestones (see `docs/plans/DEVELOPMENT_PLAN.md`).
 
+### Browser end-to-end tests (Playwright)
+`src/web/e2e` holds Playwright specs for the agent workspace. They are **not** part of `npm test` (vitest only collects `src/**/*.test.*`) and they need the real stack:
+```bash
+docker compose up -d
+dotnet run --project src/Helpdesk.Host            # Development: dev sign-in enabled, bootstrap platform admin dev-admin
+npm --prefix src/web run dev                      # http://localhost:5173 (proxies /api)
+npm --prefix src/web ci                           # once
+npm --prefix src/web exec playwright install chromium   # once
+npm --prefix src/web run e2e                      # add -- --headed to watch
+```
+The config does not start a web server. `E2E_BASE_URL` overrides the target (default `http://localhost:5173`). The spec seeds its own data through the API with dev-login users (a new department with a unique key, a team, a TeamLead and an Agent, two tickets) and needs the `dev-admin` bootstrap platform admin, so it never touches existing data and can be rerun.
+
 ## Local object storage
 MinIO console at http://localhost:9001 (credentials from `.env`). Used from Phase 3.
 

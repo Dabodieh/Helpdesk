@@ -51,7 +51,7 @@ function TeamRow({ departmentId, team, canManage }: { departmentId: string; team
     <>
       <tr>
         <td>
-          <Link to={`/departments/${departmentId}/teams/${team.id}`}>{team.name}</Link>
+          <Link to={`/admin/departments/${departmentId}/teams/${team.id}`}>{team.name}</Link>
         </td>
         <td>{team.description}</td>
         <td>{team.memberCount ?? ''}</td>

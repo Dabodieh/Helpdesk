@@ -1,13 +1,29 @@
 import { QueryClientProvider, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, NavLink, Outlet, Route, Routes } from 'react-router-dom'
 import { setUnauthorizedHandler } from './api/http'
 import { createQueryClient, endSession } from './queryClient'
 import RequireAuth from './components/RequireAuth'
 import DepartmentPage from './pages/DepartmentPage'
 import DepartmentsPage from './pages/DepartmentsPage'
+import Landing from './pages/Landing'
 import StatusPage from './pages/StatusPage'
 import TeamPage from './pages/TeamPage'
+import WorkspacePage from './pages/WorkspacePage'
+
+function AdminLayout() {
+  return (
+    <div className="page">
+      <nav className="subnav" aria-label="Administration">
+        <NavLink to="/admin" end>
+          Departments
+        </NavLink>
+        <NavLink to="/admin/status">System status</NavLink>
+      </nav>
+      <Outlet />
+    </div>
+  )
+}
 
 export function AppRoutes() {
   const qc = useQueryClient()
@@ -20,11 +36,24 @@ export function AppRoutes() {
   return (
     <Routes>
       <Route element={<RequireAuth />}>
-        <Route index element={<DepartmentsPage />} />
-        <Route path="departments/:departmentId" element={<DepartmentPage />} />
-        <Route path="departments/:departmentId/teams/:teamId" element={<TeamPage />} />
-        <Route path="status" element={<StatusPage />} />
-        <Route path="*" element={<p>Page not found.</p>} />
+        <Route index element={<Landing />} />
+        <Route path="queue/:queue/:ticket?" element={<WorkspacePage mode="queue" />} />
+        <Route path="tickets/:ticket" element={<WorkspacePage mode="ticket" />} />
+        <Route path="search/:ticket?" element={<WorkspacePage mode="search" />} />
+        <Route path="admin" element={<AdminLayout />}>
+          <Route index element={<DepartmentsPage />} />
+          <Route path="departments/:departmentId" element={<DepartmentPage />} />
+          <Route path="departments/:departmentId/teams/:teamId" element={<TeamPage />} />
+          <Route path="status" element={<StatusPage />} />
+        </Route>
+        <Route
+          path="*"
+          element={
+            <div className="page">
+              <p>Page not found.</p>
+            </div>
+          }
+        />
       </Route>
     </Routes>
   )

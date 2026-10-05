@@ -6,12 +6,15 @@ export class ApiError extends Error {
   title: string
   detail?: string
   errors?: Record<string, string[]>
-  constructor(status: number, title: string, detail?: string, errors?: Record<string, string[]>) {
+  /** Structured problem code (e.g. version_conflict, csrf_invalid); see docs/api/PHASE2_API.md. */
+  code?: string
+  constructor(status: number, title: string, detail?: string, errors?: Record<string, string[]>, code?: string) {
     super(detail ?? title)
     this.status = status
     this.title = title
     this.detail = detail
     this.errors = errors
+    this.code = code
   }
 }
 
@@ -39,7 +42,7 @@ async function parse<T>(res: Response, schema?: z.ZodType<T>): Promise<T> {
 }
 
 async function toError(res: Response): Promise<ApiError> {
-  let body: { title?: unknown; detail?: unknown; errors?: unknown } = {}
+  let body: { title?: unknown; detail?: unknown; errors?: unknown; code?: unknown } = {}
   try {
     body = await res.json()
   } catch {
@@ -51,11 +54,12 @@ async function toError(res: Response): Promise<ApiError> {
     typeof body.title === 'string' ? body.title : res.statusText || 'Request failed',
     typeof body.detail === 'string' ? body.detail : undefined,
     errors.success ? errors.data : undefined,
+    typeof body.code === 'string' ? body.code : undefined,
   )
 }
 
 function isCsrfFailure(e: ApiError) {
-  return e.status === 400 && !e.errors && /csrf/i.test(e.title)
+  return e.code === 'csrf_invalid'
 }
 
 async function getCsrf(): Promise<Csrf> {

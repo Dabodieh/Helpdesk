@@ -1,12 +1,25 @@
 import { ApiError } from './http'
 
-export function isVersionConflict(e: unknown) {
-  return e instanceof ApiError && e.status === 409 && /changed by someone else|reload/i.test(e.detail ?? '')
-}
+/** Structured problem codes (docs/api/PHASE2_API.md). Clients branch on `code`, never on message text. */
+export const isVersionConflict = (e: unknown) => e instanceof ApiError && e.code === 'version_conflict'
 
 /** Human-readable message for an API failure. 404 deliberately does not say which of "missing" or "no access" applies. */
 export function describeError(e: unknown): string {
   if (!(e instanceof ApiError)) return 'Something went wrong. Please try again.'
+  switch (e.code) {
+    case 'version_conflict':
+      return 'This item was changed by someone else. Reload the latest version and try again.'
+    case 'csrf_invalid':
+      return 'Your security token expired. Please try again.'
+    case 'duplicate':
+      return e.detail ?? 'An item with these details already exists.'
+    case 'last_admin':
+      return e.detail ?? 'This would remove the last administrator, which is not allowed.'
+    case 'inactive':
+      return e.detail ?? 'This cannot be done because a related item is inactive.'
+    case 'invalid_state':
+      return e.detail ?? 'This is not allowed in the current state.'
+  }
   switch (e.status) {
     case 0:
       return e.detail ?? e.title
@@ -22,10 +35,6 @@ export function describeError(e: unknown): string {
       return 'You do not have permission to do this.'
     case 404:
       return 'Not found, or you do not have access to it.'
-    case 409:
-      return isVersionConflict(e)
-        ? 'This item was changed by someone else. Reload the latest version and try again.'
-        : (e.detail ?? e.title)
     default:
       return e.detail ?? (e.status >= 500 ? 'The server had a problem. Please try again.' : e.title)
   }

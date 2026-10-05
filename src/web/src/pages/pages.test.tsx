@@ -38,7 +38,7 @@ test('create department: invalid key is rejected client-side without calling the
     'GET /api/departments': () => [],
     ...csrfHandler,
   })
-  renderApp('/')
+  renderApp('/admin')
   type(await screen.findByLabelText(/^Key/), 'a-b')
   type(screen.getByLabelText('Name'), 'Facilities')
   fireEvent.click(screen.getByRole('button', { name: 'Create department' }))
@@ -56,7 +56,7 @@ test('create department: valid input posts key and name', async () => {
     'GET /api/departments/d9/members': () => [],
     ...csrfHandler,
   })
-  renderApp('/')
+  renderApp('/admin')
   type(await screen.findByLabelText(/^Key/), 'fac')
   type(screen.getByLabelText('Name'), 'Facilities')
   fireEvent.click(screen.getByRole('button', { name: 'Create department' }))
@@ -66,14 +66,14 @@ test('create department: valid input posts key and name', async () => {
 
 test('users without platform.departments.manage get no create form', async () => {
   mockFetch({ 'GET /api/me': () => adminMe, 'GET /api/departments': () => [DEPT] })
-  renderApp('/')
+  renderApp('/admin')
   expect(await screen.findByRole('link', { name: 'IT Support' })).toBeInTheDocument()
   expect(screen.queryByRole('heading', { name: 'New department' })).not.toBeInTheDocument()
 })
 
 test('permission-aware controls: an Agent sees read-only details and no management controls', async () => {
   mockFetch(deptRoutes(agentMe))
-  renderApp('/departments/d1')
+  renderApp('/admin/departments/d1')
   expect(await screen.findByLabelText('Name')).toHaveAttribute('readonly')
   expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument()
   expect(screen.getByLabelText('Active')).toBeDisabled()
@@ -85,7 +85,7 @@ test('permission-aware controls: an Agent sees read-only details and no manageme
 
 test('department admin can edit details but the Active toggle stays disabled without the platform permission', async () => {
   mockFetch(deptRoutes())
-  renderApp('/departments/d1')
+  renderApp('/admin/departments/d1')
   expect(await screen.findByLabelText('Name')).not.toHaveAttribute('readonly')
   expect(screen.getByLabelText('Active')).toBeDisabled()
   expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled()
@@ -98,10 +98,10 @@ test('version conflict: shows a reload message and reloading picks up the latest
     'GET /api/departments/d1': () => ({ ...DEPT, name: version === 'v1' ? 'IT Support' : 'Renamed elsewhere', version }),
     'PATCH /api/departments/d1': () => {
       version = 'v2'
-      return problem(409, 'Conflict', { detail: 'The department was changed by someone else. Reload and retry.' })
+      return problem(409, 'Conflict', { code: 'version_conflict', detail: 'unused wording' })
     },
   })
-  renderApp('/departments/d1')
+  renderApp('/admin/departments/d1')
   const name = await screen.findByLabelText('Name')
     type(name, 'Mine')
   fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
@@ -114,7 +114,7 @@ test('version conflict: shows a reload message and reloading picks up the latest
 
 test('404 and 403 on a department are shown distinctly', async () => {
   mockFetch({ 'GET /api/me': () => adminMe, 'GET /api/departments/nope': () => problem(404, 'Not Found') })
-  renderApp('/departments/nope')
+  renderApp('/admin/departments/nope')
   expect(await screen.findByText(/not found, or you do not have access/i)).toBeInTheDocument()
 })
 
@@ -130,7 +130,7 @@ test('member add flow: lookup requires 3 characters, then adds with the chosen r
       teamIds: [],
     }),
   })
-  renderApp('/departments/d1')
+  renderApp('/admin/departments/d1')
   const search = await screen.findByLabelText('Find user by name or email')
   type(search, 'al')
   expect(screen.getByRole('button', { name: 'Search' })).toBeDisabled()
@@ -155,7 +155,7 @@ test('team members: only department members that are not yet in the team are sel
       { userId: 'u3', displayName: 'Bob Jones', email: 'b@example.test', role: 'Agent', teamIds: [] },
     ],
   })
-  renderApp('/departments/d1/teams/t1')
+  renderApp('/admin/departments/d1/teams/t1')
   const select = await screen.findByLabelText('Add department member')
   await waitFor(() => expect(within(select).getByRole('option', { name: 'Bob Jones' })).toBeInTheDocument())
   expect(within(select).queryByRole('option', { name: 'Test User' })).not.toBeInTheDocument()
