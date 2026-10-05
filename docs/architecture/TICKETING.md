@@ -67,15 +67,18 @@ There is no mail transport. A public agent reply is stored as `kind=Public, auth
 ## Queues
 Queues are filtered views over `tickets`, never separate stores. `my` = assignee is the caller; `team` = ticket team is one of the caller's teams (team memberships, in departments where they hold `tickets.read`); `unassigned` = no assignee; `all` = every ticket in accessible departments (optionally one department). Lists use keyset pagination on `(sort key, id)`; no totals except `queue-counts` (Open tickets, accessible departments only). Batch lookups resolve team and assignee names (two queries per page, no N+1).
 
-## Indexing intent (document final choices in the migration)
-- `tickets (department_id, status, updated_at DESC, id DESC)` general queue and department filter.
-- Partial `tickets (assignee_user_id, updated_at DESC, id DESC) WHERE assignee_user_id IS NOT NULL` for My Queue.
-- `tickets (team_id, status, updated_at DESC, id DESC) WHERE team_id IS NOT NULL` for Team Queue.
-- Partial `tickets (department_id, updated_at DESC, id DESC) WHERE assignee_user_id IS NULL` for Unassigned.
-- `tickets (reference)` unique; `tickets (requester_id, created_at DESC)`.
-- `messages (ticket_id, created_at DESC, id DESC)`.
-- `audit.audit_events (object_id, occurred_at DESC, id DESC)` for ticket activity.
-- Text search in Phase 2 is `reference` prefix or subject substring on the already-scoped set; real full-text search is Phase 4.
+## Indexing (final choices, as in the `Initial` migration)
+- `ux_tickets_reference` (unique) and `ux_tickets_department_number` (unique): reference lookup (`{ticket}` accepts `IT-1042`) and the numbering backstop.
+- `ix_tickets_department_status_updated (department_id, status, updated_at DESC, id DESC)`: general queue, department filter, queue-counts.
+- Partial `ix_tickets_assignee_updated (assignee_user_id, updated_at DESC, id DESC) WHERE assignee_user_id IS NOT NULL`: My Queue; also serves the `SET NULL` of the assignee FK.
+- Partial `ix_tickets_team_status_updated (team_id, status, updated_at DESC, id DESC) WHERE team_id IS NOT NULL`: Team Queue.
+- Partial `ix_tickets_unassigned_updated (department_id, updated_at DESC, id DESC) WHERE assignee_user_id IS NULL`: Unassigned.
+- `ix_tickets_requester_created (requester_id, created_at DESC)`: requester counts and history. `ux_requesters_department_email`: requester upsert by normalised email.
+- `ix_messages_ticket_created (ticket_id, created_at DESC, id DESC)`: message list newest first.
+- `audit.ix_audit_events_object_time (object_id, occurred_at DESC, id DESC)` (Audit migration `TicketingSupport`): ticket activity.
+- EF also generates two FK indexes (`IX_messages_ticket_id_department_id`, `IX_tickets_requester_id_department_id`); kept as generated.
+- `priority_desc` and `created_*` sorts run over the scoped set without a dedicated index (not hot; revisit with real data). Priority is stored as `smallint` (1 Low .. 4 Urgent) so the sort is a plain column order.
+- Text search in Phase 2 is `reference` prefix or subject substring (`ILIKE`, wildcards escaped) on the already-scoped set; real full-text search is Phase 4.
 
 ## Realtime
 SignalR is deferred to Phase 4 (plan unchanged). Phase 2 workspaces poll with TanStack Query (focus refetch + short interval for the open ticket and queue counts) and rely on `version` conflicts to avoid silent overwrites. The mutation response always returns the new ticket state so a future push channel can reuse the same payload.

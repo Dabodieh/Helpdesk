@@ -11,6 +11,16 @@ namespace Helpdesk.ArchitectureTests;
 /// </summary>
 public sealed class EndpointAuthorizationTests(AppFixture app) : IClassFixture<AppFixture>
 {
+    private static readonly string[] ReviewedAuthenticatedOnly =
+    [
+        "GET /api/departments",
+        "GET /api/me",
+        "GET /api/tickets",
+        "GET /api/tickets/queue-counts",
+        "GET /api/users/lookup",
+        "POST /api/auth/logout",
+    ];
+
     private static readonly string[] AllowedAnonymous =
     [
         "/health/live",
@@ -30,7 +40,7 @@ public sealed class EndpointAuthorizationTests(AppFixture app) : IClassFixture<A
     public void There_are_endpoints_to_check()
     {
         var all = Endpoints();
-        Assert.True(all.Count >= 27, $"Only {all.Count} endpoints found; discovery is broken.");
+        Assert.True(all.Count >= 36, $"Only {all.Count} endpoints found; discovery is broken.");
     }
 
     [Fact]
@@ -55,9 +65,10 @@ public sealed class EndpointAuthorizationTests(AppFixture app) : IClassFixture<A
     {
         var offenders = Endpoints()
             .Where(e => e.Metadata.GetMetadata<IAllowAnonymous>() is null)
-            .Where(e => e.Metadata.GetMetadata<PermissionMetadata>() is null && e.Metadata.GetMetadata<AuthenticatedOnlyMetadata>() is null)
+            .Where(e => e.Metadata.GetMetadata<PermissionMetadata>() is null && e.Metadata.GetMetadata<ResourcePermissionMetadata>() is null
+                && e.Metadata.GetMetadata<AuthenticatedOnlyMetadata>() is null)
             .Select(Describe).ToList();
-        Assert.True(offenders.Count == 0, "Endpoints with neither a permission nor an authenticated-only marker: " + string.Join("; ", offenders));
+        Assert.True(offenders.Count == 0, "Endpoints with neither a permission, a resource permission nor an authenticated-only marker: " + string.Join("; ", offenders));
     }
 
     [Fact]
@@ -65,9 +76,36 @@ public sealed class EndpointAuthorizationTests(AppFixture app) : IClassFixture<A
     {
         var authenticatedOnly = Endpoints().Where(e => e.Metadata.GetMetadata<AuthenticatedOnlyMetadata>() is not null)
             .Select(Describe).Order().ToList();
-        Assert.Equal(
-            ["GET /api/departments", "GET /api/me", "GET /api/users/lookup", "POST /api/auth/logout"],
-            authenticatedOnly);
+        // The two ticket lists are scoped by the query itself (accessible departments), see TICKETING.md "Department scope".
+        Assert.Equal(ReviewedAuthenticatedOnly.Order(), authenticatedOnly);
+    }
+
+    [Fact]
+    public void Resource_permissions_are_content_permissions_with_an_existing_route_parameter_and_a_resolver()
+    {
+        var resourceEndpoints = Endpoints().Where(e => e.Metadata.GetMetadata<ResourcePermissionMetadata>() is not null).ToList();
+        Assert.NotEmpty(resourceEndpoints);
+        foreach (var endpoint in resourceEndpoints)
+        {
+            var meta = endpoint.Metadata.GetMetadata<ResourcePermissionMetadata>()!;
+            var definition = Helpdesk.Modules.Organisation.Authorization.PermissionCatalogue.Get(meta.Permission);
+            Assert.True(
+                definition.Kind == Helpdesk.Modules.Organisation.Authorization.PermissionKind.Content,
+                $"{Describe(endpoint)}: resource permissions must be content permissions (never satisfied by the platform-admin flag)");
+            Assert.Contains(endpoint.RoutePattern.Parameters, p => p.Name == meta.ResourceRouteParameter);
+            Assert.True(typeof(IResourceDepartmentResolver).IsAssignableFrom(meta.ResolverType), $"{Describe(endpoint)}: resolver type");
+            Assert.Null(endpoint.Metadata.GetMetadata<PermissionMetadata>()); // exactly one declaration style per endpoint
+        }
+    }
+
+    [Fact]
+    public void Ticket_id_routes_always_use_the_resource_permission_declaration()
+    {
+        var offenders = Endpoints()
+            .Where(e => e.RoutePattern.Parameters.Any(p => p.Name == "ticket"))
+            .Where(e => e.Metadata.GetMetadata<ResourcePermissionMetadata>() is null)
+            .Select(Describe).ToList();
+        Assert.Empty(offenders);
     }
 
     [Fact]

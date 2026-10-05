@@ -1,0 +1,145 @@
+using Helpdesk.Modules.Ticketing.Domain;
+using Helpdesk.SharedKernel.Database;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Design;
+
+namespace Helpdesk.Modules.Ticketing.Persistence;
+
+internal sealed class TicketingDbContext(DbContextOptions<TicketingDbContext> options, IDepartmentScope scope) : DbContext(options)
+{
+    public const string Schema = "ticketing";
+
+    public DbSet<Requester> Requesters => Set<Requester>();
+
+    public DbSet<DepartmentCounter> DepartmentCounters => Set<DepartmentCounter>();
+
+    public DbSet<Ticket> Tickets => Set<Ticket>();
+
+    public DbSet<Message> Messages => Set<Message>();
+
+    /// <summary>Read by the global query filters on every query (EF evaluates context members per query). Empty = nothing visible.</summary>
+    internal Guid[] ScopedDepartmentIds => scope.DepartmentIds;
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.HasDefaultSchema(Schema);
+
+        modelBuilder.Entity<Requester>(e =>
+        {
+            e.ToTable("requesters", t =>
+            {
+                t.HasCheckConstraint("ck_requesters_email_not_blank", "length(btrim(email)) > 0");
+                t.HasCheckConstraint("ck_requesters_display_name_not_blank", "length(btrim(display_name)) > 0");
+            });
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            e.Property(x => x.DepartmentId).HasColumnName("department_id");
+            e.Property(x => x.Email).HasColumnName("email").HasMaxLength(320);
+            e.Property(x => x.EmailNormalised).HasColumnName("email_normalised").HasMaxLength(320);
+            e.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(200);
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.HasAlternateKey(x => new { x.Id, x.DepartmentId }).HasName("ux_requesters_id_department");
+            e.HasIndex(x => new { x.DepartmentId, x.EmailNormalised }).IsUnique().HasDatabaseName("ux_requesters_department_email");
+            e.HasQueryFilter(x => ScopedDepartmentIds.Contains(x.DepartmentId));
+        });
+
+        modelBuilder.Entity<DepartmentCounter>(e =>
+        {
+            e.ToTable("department_counters", t => t.HasCheckConstraint("ck_department_counters_next_number", "next_number >= 1"));
+            e.HasKey(x => x.DepartmentId);
+            e.Property(x => x.DepartmentId).HasColumnName("department_id").ValueGeneratedNever();
+            e.Property(x => x.NextNumber).HasColumnName("next_number");
+        });
+
+        modelBuilder.Entity<Ticket>(e =>
+        {
+            e.ToTable("tickets", t =>
+            {
+                t.HasCheckConstraint("ck_tickets_number_positive", "number > 0");
+                t.HasCheckConstraint("ck_tickets_reference_format", "reference ~ '^[A-Z][A-Z0-9]{1,9}-[0-9]+$' AND reference LIKE '%-' || number::text");
+                t.HasCheckConstraint("ck_tickets_subject", "length(btrim(subject)) BETWEEN 1 AND 200");
+                t.HasCheckConstraint("ck_tickets_status", "status IN ('Open','Pending','Resolved','Closed')");
+                t.HasCheckConstraint("ck_tickets_priority", "priority BETWEEN 1 AND 4");
+                t.HasCheckConstraint(
+                    "ck_tickets_status_timestamps",
+                    "(status = 'Closed') = (closed_at IS NOT NULL) AND (status IN ('Resolved','Closed')) = (resolved_at IS NOT NULL)");
+            });
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            e.Property(x => x.DepartmentId).HasColumnName("department_id");
+            e.Property(x => x.Number).HasColumnName("number");
+            e.Property(x => x.Reference).HasColumnName("reference").HasMaxLength(32);
+            e.Property(x => x.RequesterId).HasColumnName("requester_id");
+            e.Property(x => x.Subject).HasColumnName("subject").HasMaxLength(200);
+            e.Property(x => x.Status).HasColumnName("status").HasMaxLength(16).HasConversion<string>();
+            e.Property(x => x.Priority).HasColumnName("priority").HasConversion<short>();
+            e.Property(x => x.TeamId).HasColumnName("team_id");
+            e.Property(x => x.AssigneeUserId).HasColumnName("assignee_user_id");
+            e.Property(x => x.CreatedByUserId).HasColumnName("created_by_user_id");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            e.Property(x => x.ResolvedAt).HasColumnName("resolved_at");
+            e.Property(x => x.ClosedAt).HasColumnName("closed_at");
+            e.Property(x => x.Version).HasColumnName("xmin").HasColumnType("xid").IsRowVersion();
+
+            // Composite FK target for messages; (requester_id, department_id) keeps the requester in the ticket's department.
+            e.HasAlternateKey(x => new { x.Id, x.DepartmentId }).HasName("ux_tickets_id_department");
+            e.HasOne(x => x.Requester).WithMany().HasForeignKey(x => new { x.RequesterId, x.DepartmentId })
+                .HasPrincipalKey(r => new { r.Id, r.DepartmentId }).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_tickets_requester_department");
+
+            // Indexing choices (TICKETING.md "Indexing"): see the Initial migration for the rationale of each.
+            e.HasIndex(x => x.Reference).IsUnique().HasDatabaseName("ux_tickets_reference");
+            e.HasIndex(x => new { x.DepartmentId, x.Number }).IsUnique().HasDatabaseName("ux_tickets_department_number");
+            e.HasIndex(x => new { x.DepartmentId, x.Status, x.UpdatedAt, x.Id }).IsDescending(false, false, true, true).HasDatabaseName("ix_tickets_department_status_updated");
+            e.HasIndex(x => new { x.AssigneeUserId, x.UpdatedAt, x.Id }).IsDescending(false, true, true)
+                .HasFilter("assignee_user_id IS NOT NULL").HasDatabaseName("ix_tickets_assignee_updated");
+            e.HasIndex(x => new { x.TeamId, x.Status, x.UpdatedAt, x.Id }).IsDescending(false, false, true, true)
+                .HasFilter("team_id IS NOT NULL").HasDatabaseName("ix_tickets_team_status_updated");
+            e.HasIndex(x => new { x.DepartmentId, x.UpdatedAt, x.Id }).IsDescending(false, true, true)
+                .HasFilter("assignee_user_id IS NULL").HasDatabaseName("ix_tickets_unassigned_updated");
+            e.HasIndex(x => new { x.RequesterId, x.CreatedAt }).IsDescending(false, true).HasDatabaseName("ix_tickets_requester_created");
+            e.HasQueryFilter(x => ScopedDepartmentIds.Contains(x.DepartmentId));
+        });
+
+        modelBuilder.Entity<Message>(e =>
+        {
+            e.ToTable("messages", t =>
+            {
+                t.HasCheckConstraint("ck_messages_kind", "kind IN ('Public','Internal')");
+                t.HasCheckConstraint("ck_messages_author_type", "author_type IN ('Agent','Requester','System')");
+                t.HasCheckConstraint("ck_messages_source", "source IN ('web','manual')");
+                t.HasCheckConstraint("ck_messages_delivery_state", "delivery_state IN ('None','NotDelivered')");
+                t.HasCheckConstraint("ck_messages_body", "length(btrim(body)) > 0 AND char_length(body) <= 20000");
+                // An internal note is never authored by, or addressed to, a requester and never carries a delivery state.
+                t.HasCheckConstraint("ck_messages_internal_never_requester_or_delivered", "kind <> 'Internal' OR (author_type <> 'Requester' AND delivery_state = 'None')");
+                t.HasCheckConstraint(
+                    "ck_messages_author_matches_type",
+                    "(author_type = 'Agent' AND author_user_id IS NOT NULL AND author_requester_id IS NULL) "
+                    + "OR (author_type = 'Requester' AND author_requester_id IS NOT NULL AND author_user_id IS NULL) "
+                    + "OR (author_type = 'System' AND author_user_id IS NULL AND author_requester_id IS NULL)");
+            });
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            e.Property(x => x.TicketId).HasColumnName("ticket_id");
+            e.Property(x => x.DepartmentId).HasColumnName("department_id");
+            e.Property(x => x.Kind).HasColumnName("kind").HasMaxLength(16).HasConversion<string>();
+            e.Property(x => x.AuthorType).HasColumnName("author_type").HasMaxLength(16).HasConversion<string>();
+            e.Property(x => x.AuthorUserId).HasColumnName("author_user_id");
+            e.Property(x => x.AuthorRequesterId).HasColumnName("author_requester_id");
+            e.Property(x => x.Body).HasColumnName("body");
+            e.Property(x => x.Source).HasColumnName("source").HasMaxLength(16);
+            e.Property(x => x.DeliveryState).HasColumnName("delivery_state").HasMaxLength(16).HasConversion<string>();
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.HasOne<Ticket>().WithMany().HasForeignKey(x => new { x.TicketId, x.DepartmentId })
+                .HasPrincipalKey(t => new { t.Id, t.DepartmentId }).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_messages_ticket_department");
+            e.HasIndex(x => new { x.TicketId, x.CreatedAt, x.Id }).IsDescending(false, true, true).HasDatabaseName("ix_messages_ticket_created");
+            e.HasQueryFilter(x => ScopedDepartmentIds.Contains(x.DepartmentId));
+        });
+    }
+}
+
+internal sealed class TicketingDesignTimeFactory : IDesignTimeDbContextFactory<TicketingDbContext>
+{
+    public TicketingDbContext CreateDbContext(string[] args) =>
+        new(ModuleDbContextExtensions.DesignTimeOptions<TicketingDbContext>(TicketingDbContext.Schema), new EmptyDepartmentScope());
+}

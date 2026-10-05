@@ -17,6 +17,7 @@ public static class AuditModule
         services.AddModuleDbContext<AuditDbContext>(AuditDbContext.Schema, "audit", MigrationOrder);
         services.AddScoped<IAuditWriter, AuditWriter>();
         services.AddScoped<AuditQueries>();
+        services.AddScoped<IAuditReader, AuditReader>();
         return services;
     }
 

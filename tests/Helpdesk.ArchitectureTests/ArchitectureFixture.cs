@@ -2,6 +2,7 @@ using System.Reflection;
 using Helpdesk.Modules.Audit;
 using Helpdesk.Modules.Identity;
 using Helpdesk.Modules.Organisation;
+using Helpdesk.Modules.Ticketing;
 using Helpdesk.SharedKernel.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -14,9 +15,10 @@ internal static class Modules
     public static readonly Assembly Audit = typeof(AuditModule).Assembly;
     public static readonly Assembly Identity = typeof(IdentityModule).Assembly;
     public static readonly Assembly Organisation = typeof(OrganisationModule).Assembly;
+    public static readonly Assembly Ticketing = typeof(TicketingModule).Assembly;
     public static readonly Assembly Host = typeof(Program).Assembly;
 
-    public static readonly IReadOnlyList<Assembly> All = [Audit, Identity, Organisation];
+    public static readonly IReadOnlyList<Assembly> All = [Audit, Identity, Organisation, Ticketing];
 
     public static string Root(Assembly module) => module.GetName().Name!; // e.g. Helpdesk.Modules.Identity
 

@@ -60,6 +60,7 @@ Authorization order for ticket-id routes: resolve the ticket through the departm
 
 ## Audit/activity actions (category `ticketing`, object type `ticket` unless noted)
 `ticket.created` (next: reference, status, priority, teamId, assigneeUserId) · `ticket.subject_changed` (previous/next subject) · `ticket.status_changed` (previous/next status, optional `reason`: `requester_reply`) · `ticket.priority_changed` · `ticket.team_changed` (previous/next team id) · `ticket.assignee_changed` (previous/next user id) · `ticket.message_added` (next: messageId, kind, authorType; **never the body**) · `requester.created` (object type `requester`, department-scoped, not shown in ticket activity). Actor null with `source: system` for ingestion-driven changes.
+Payload keys (exact): `status_changed` {status}; `priority_changed` {priority}; `subject_changed` {subject}; `team_changed` {teamId} (null when unset); `assignee_changed` {assigneeUserId} (null when unset); `created` next {reference, status, priority, teamId, assigneeUserId}; `message_added` next {messageId, kind, authorType}. Activity `reason` is read from `next.reason` (e.g. `requester_reply`); `previous`/`next` are returned as stored, including `reason`.
 
 ## Removed
 `GET /api/departments/{id}/ticket-access-probe` (Phase 1 probe) is deleted; its tests move to the real ticket endpoints.

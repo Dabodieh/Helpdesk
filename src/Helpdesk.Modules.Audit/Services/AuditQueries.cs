@@ -36,7 +36,7 @@ internal sealed class AuditQueries(AuditDbContext db)
     public Task<AuditPage> ForPlatformAsync(string? cursor, int? limit, CancellationToken ct) =>
         PageAsync(db.Events.Where(e => e.Category == Contracts.AuditCategories.Organisation || e.Category == Contracts.AuditCategories.Identity), cursor, limit, ct);
 
-    private static async Task<AuditPage> PageAsync(IQueryable<AuditEvent> source, string? cursor, int? limit, CancellationToken ct)
+    internal static async Task<AuditPage> PageAsync(IQueryable<AuditEvent> source, string? cursor, int? limit, CancellationToken ct)
     {
         var take = limit ?? DefaultLimit;
         if (take is < 1 or > MaxLimit)

@@ -48,6 +48,7 @@ public sealed class IsolationMatrixTests(HelpdeskFixture fixture) : IClassFixtur
         public required TestUser Target2 { get; init; }  // Agent in A, in no team
         public required TestUser UserB { get; init; }    // Agent in B only
         public required string DepartmentVersion { get; init; }
+        public required Guid TicketA { get; init; }     // a ticket of department A
         public required Dictionary<string, ApiClient> Clients { get; init; }
         public Guid[] Ids => [A.Id, B.Id];
     }
@@ -70,8 +71,9 @@ public sealed class IsolationMatrixTests(HelpdeskFixture fixture) : IClassFixtur
         new("PUT member role", (w, d) => new(HttpMethod.Put, $"{D(d)}/members/{w.Target.Id}", new { role = DepartmentRoles.Viewer }), AdminOnly, true, HttpStatusCode.OK),
         new("DELETE member", (w, d) => new(HttpMethod.Delete, $"{D(d)}/members/{w.Target.Id}"), AdminOnly, true, HttpStatusCode.NoContent),
         new("GET audit", (w, d) => new(HttpMethod.Get, $"{D(d)}/audit"), [LeadA, AdminA], true, HttpStatusCode.OK),
-        // Content permission: platform admin alone is NOT enough.
-        new("GET ticket-access-probe", (w, d) => new(HttpMethod.Get, $"{D(d)}/ticket-access-probe"), AllRoles, false, HttpStatusCode.NoContent),
+        // Content permission (tickets.read on the ticket's department): platform admin alone is NOT enough. The department id of the matrix is
+        // the persisted department of the ticket; a random id stands for "does not exist" (404 for everyone without access).
+        new("GET ticket", (w, d) => new(HttpMethod.Get, $"/api/tickets/{(d == w.A.Id ? w.TicketA : d)}"), AllRoles, false, HttpStatusCode.OK),
     ];
 
     public static TheoryData<string, string> Matrix()
@@ -125,6 +127,7 @@ public sealed class IsolationMatrixTests(HelpdeskFixture fixture) : IClassFixtur
         var noMember = await fixture.NewUserAsync();
         (await root.Client.PutAsync($"{a.Url}/teams/{teamA.Id}/members/{target.Id}")).Expect(HttpStatusCode.NoContent);
         var version = (await root.Client.GetAsync(a.Url)).Expect(HttpStatusCode.OK).Version;
+        var ticketA = (await agent.CreateTicketAsync(a)).Id;
 
         return new World
         {
@@ -136,6 +139,7 @@ public sealed class IsolationMatrixTests(HelpdeskFixture fixture) : IClassFixtur
             Target2 = target2,
             UserB = userB,
             DepartmentVersion = version,
+            TicketA = ticketA,
             Clients = new Dictionary<string, ApiClient>
             {
                 [Anonymous] = await AnonymousWithCsrfAsync(),
@@ -329,6 +333,7 @@ public sealed class IsolationMatrixTests(HelpdeskFixture fixture) : IClassFixtur
         var inT2 = await fixture.NewMemberAsync(a, DepartmentRoles.Agent);
         var inNone = await fixture.NewMemberAsync(a, DepartmentRoles.Agent);
         var viewerInNone = await fixture.NewMemberAsync(a, DepartmentRoles.Viewer);
+        var ticketOfA = await inNone.CreateTicketAsync(a);
         (await root.Client.PutAsync($"{a.Url}/teams/{t1.Id}/members/{inT1.Id}")).Expect(HttpStatusCode.NoContent);
         (await root.Client.PutAsync($"{a.Url}/teams/{t2.Id}/members/{inT2.Id}")).Expect(HttpStatusCode.NoContent);
 
@@ -358,7 +363,7 @@ public sealed class IsolationMatrixTests(HelpdeskFixture fixture) : IClassFixtur
             membersList ??= all.Body;
             Assert.Equal(teamsList, teams.Body);
             Assert.Equal(membersList, all.Body);
-            (await user.Client.GetAsync($"{a.Url}/ticket-access-probe")).Expect(HttpStatusCode.NoContent);
+            (await user.Client.GetAsync($"/api/tickets/{ticketOfA.Id}")).Expect(HttpStatusCode.OK);
         }
     }
 
@@ -489,8 +494,8 @@ public sealed class IsolationMatrixTests(HelpdeskFixture fixture) : IClassFixtur
         var w = await BuildWorldAsync();
         var root = w.Clients[PlatformAdminNoMembership];
 
-        (await root.GetAsync($"{D(w.A.Id)}/ticket-access-probe")).Expect(HttpStatusCode.NotFound);
-        (await root.GetAsync($"{D(Guid.NewGuid())}/ticket-access-probe")).Expect(HttpStatusCode.NotFound);
+        (await root.GetAsync($"/api/tickets/{w.TicketA}")).Expect(HttpStatusCode.NotFound);
+        (await root.GetAsync($"/api/tickets/{Guid.NewGuid()}")).Expect(HttpStatusCode.NotFound);
         // isActive is exclusively a platform permission; DepartmentAdmin cannot, platform admin can.
         (await w.Clients[AdminA].PatchAsync(D(w.A.Id), new { version = w.DepartmentVersion, isActive = false })).Expect(HttpStatusCode.Forbidden);
         (await root.PatchAsync(D(w.A.Id), new { version = w.DepartmentVersion, isActive = false })).Expect(HttpStatusCode.OK);

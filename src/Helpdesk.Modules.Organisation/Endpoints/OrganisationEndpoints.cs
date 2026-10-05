@@ -17,11 +17,6 @@ internal static class OrganisationEndpoints
         MapDepartments(app);
         MapTeams(app);
         MapMembers(app);
-
-        // Temporary Phase 1 probe for the CONTENT permission tickets.read; replaced by real ticket endpoints in Phase 2.
-        app.MapGet("/api/departments/{departmentId:guid}/ticket-access-probe", () => TypedResults.NoContent())
-            .RequirePermission(PermissionCodes.TicketsRead)
-            .WithTags("Probe");
     }
 
     private static void MapDepartments(IEndpointRouteBuilder app)

@@ -18,5 +18,6 @@
     <ProjectReference Include="../../src/Helpdesk.Modules.Audit/Helpdesk.Modules.Audit.csproj" />
     <ProjectReference Include="../../src/Helpdesk.Modules.Identity/Helpdesk.Modules.Identity.csproj" />
     <ProjectReference Include="../../src/Helpdesk.Modules.Organisation/Helpdesk.Modules.Organisation.csproj" />
+    <ProjectReference Include="../../src/Helpdesk.Modules.Ticketing/Helpdesk.Modules.Ticketing.csproj" />
   </ItemGroup>
 </Project>

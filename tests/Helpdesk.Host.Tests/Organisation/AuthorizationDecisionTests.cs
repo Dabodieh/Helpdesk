@@ -12,33 +12,36 @@ public sealed class AuthorizationDecisionTests(HelpdeskFixture fixture) : IClass
     [InlineData(DepartmentRoles.Agent)]
     [InlineData(DepartmentRoles.TeamLead)]
     [InlineData(DepartmentRoles.DepartmentAdmin)]
-    public async Task Every_role_may_read_tickets_through_the_probe(string role)
+    public async Task Every_role_may_read_tickets(string role)
     {
         var department = await fixture.CreateDepartmentAsync();
+        var ticket = await fixture.CreateTicketAsync(department);
         var user = await fixture.NewMemberAsync(department, role);
-        var response = (await user.Client.GetAsync($"{department.Url}/ticket-access-probe")).Expect(HttpStatusCode.NoContent);
-        Assert.Equal(string.Empty, response.Body);
+        var response = (await user.Client.GetAsync($"/api/tickets/{ticket.Id}")).Expect(HttpStatusCode.OK);
+        Assert.Equal(ticket.Id, response.Id);
     }
 
     [Fact]
-    public async Task Probe_is_404_for_outsiders_and_unknown_departments_and_401_without_session()
+    public async Task Ticket_read_is_404_for_outsiders_and_unknown_tickets_and_401_without_session()
     {
         var department = await fixture.CreateDepartmentAsync();
+        var ticket = await fixture.CreateTicketAsync(department);
         var outsider = await fixture.NewUserAsync();
 
-        var hidden = (await outsider.Client.GetAsync($"{department.Url}/ticket-access-probe")).Expect(HttpStatusCode.NotFound);
-        var unknown = (await outsider.Client.GetAsync($"/api/departments/{Guid.NewGuid()}/ticket-access-probe")).Expect(HttpStatusCode.NotFound);
+        var hidden = (await outsider.Client.GetAsync($"/api/tickets/{ticket.Id}")).Expect(HttpStatusCode.NotFound);
+        var unknown = (await outsider.Client.GetAsync($"/api/tickets/{Guid.NewGuid()}")).Expect(HttpStatusCode.NotFound);
         Assert.Equal(hidden.Body.Length, unknown.Body.Length);
-        (await fixture.CreateAnonymousClient().GetAsync($"{department.Url}/ticket-access-probe")).Expect(HttpStatusCode.Unauthorized);
+        (await fixture.CreateAnonymousClient().GetAsync($"/api/tickets/{ticket.Id}")).Expect(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
     public async Task Platform_admin_without_membership_never_gets_content_access()
     {
         var department = await fixture.CreateDepartmentAsync();
+        var ticket = await fixture.CreateTicketAsync(department);
         var admin = await fixture.PlatformAdminAsync();
 
-        (await admin.Client.GetAsync($"{department.Url}/ticket-access-probe")).Expect(HttpStatusCode.NotFound);
+        (await admin.Client.GetAsync($"/api/tickets/{ticket.Id}")).Expect(HttpStatusCode.NotFound);
 
         // ...but administrative access works without membership.
         (await admin.Client.GetAsync(department.Url)).Expect(HttpStatusCode.OK);
@@ -51,13 +54,14 @@ public sealed class AuthorizationDecisionTests(HelpdeskFixture fixture) : IClass
     public async Task Platform_admin_gains_content_access_only_through_a_membership_which_is_a_flagged_audited_change()
     {
         var department = await fixture.CreateDepartmentAsync();
+        var ticket = await fixture.CreateTicketAsync(department);
         var admin = await fixture.NewUserAsync("padmin");
         var root = await fixture.PlatformAdminAsync();
         (await root.Client.PutAsync($"/api/platform/users/{admin.Id}/platform-admin", new { value = true })).Expect(HttpStatusCode.OK);
 
-        (await admin.Client.GetAsync($"{department.Url}/ticket-access-probe")).Expect(HttpStatusCode.NotFound);
+        (await admin.Client.GetAsync($"/api/tickets/{ticket.Id}")).Expect(HttpStatusCode.NotFound);
         (await admin.Client.PutAsync($"{department.Url}/members/{admin.Id}", new { role = DepartmentRoles.Viewer })).Expect(HttpStatusCode.OK);
-        (await admin.Client.GetAsync($"{department.Url}/ticket-access-probe")).Expect(HttpStatusCode.NoContent);
+        (await admin.Client.GetAsync($"/api/tickets/{ticket.Id}")).Expect(HttpStatusCode.OK);
     }
 
     [Fact]
@@ -108,13 +112,14 @@ public sealed class AuthorizationDecisionTests(HelpdeskFixture fixture) : IClass
         var b = await fixture.CreateDepartmentAsync();
         var adminOfA = await fixture.NewMemberAsync(a, DepartmentRoles.DepartmentAdmin);
         var teamOfB = await fixture.CreateTeamAsync(b);
+        var ticketOfB = await fixture.CreateTicketAsync(b);
 
         (await adminOfA.Client.GetAsync(b.Url)).Expect(HttpStatusCode.NotFound);
         (await adminOfA.Client.GetAsync($"{b.Url}/teams")).Expect(HttpStatusCode.NotFound);
         (await adminOfA.Client.GetAsync($"{b.Url}/teams/{teamOfB.Id}")).Expect(HttpStatusCode.NotFound);
         (await adminOfA.Client.GetAsync($"{b.Url}/members")).Expect(HttpStatusCode.NotFound);
         (await adminOfA.Client.GetAsync($"{b.Url}/audit")).Expect(HttpStatusCode.NotFound);
-        (await adminOfA.Client.GetAsync($"{b.Url}/ticket-access-probe")).Expect(HttpStatusCode.NotFound);
+        (await adminOfA.Client.GetAsync($"/api/tickets/{ticketOfB.Id}")).Expect(HttpStatusCode.NotFound);
         var listed = (await adminOfA.Client.GetAsync("/api/departments")).Json.EnumerateArray().Select(d => d.GetProperty("id").GetGuid()).ToList();
         Assert.DoesNotContain(b.Id, listed);
     }

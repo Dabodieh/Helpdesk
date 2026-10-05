@@ -95,9 +95,13 @@ namespace Helpdesk.Modules.Audit.Persistence.Migrations
                     b.HasIndex("DepartmentId", "OccurredAt", "Id")
                         .HasDatabaseName("ix_audit_events_department_time");
 
+                    b.HasIndex("ObjectId", "OccurredAt", "Id")
+                        .IsDescending(false, true, true)
+                        .HasDatabaseName("ix_audit_events_object_time");
+
                     b.ToTable("audit_events", "audit", t =>
                         {
-                            t.HasCheckConstraint("ck_audit_events_category", "category IN ('organisation','identity')");
+                            t.HasCheckConstraint("ck_audit_events_category", "category IN ('organisation','identity','ticketing')");
                         });
                 });
 #pragma warning restore 612, 618

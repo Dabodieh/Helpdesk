@@ -18,6 +18,12 @@ public sealed class ModuleBoundaryTests
         { "Identity", "Organisation" },
         { "Organisation", "Audit" },
         { "Organisation", "Identity" },
+        { "Ticketing", "Audit" },
+        { "Ticketing", "Identity" },
+        { "Ticketing", "Organisation" },
+        { "Audit", "Ticketing" },
+        { "Identity", "Ticketing" },
+        { "Organisation", "Ticketing" },
     };
 
     private static Assembly ByName(string name) => name switch
@@ -25,6 +31,7 @@ public sealed class ModuleBoundaryTests
         "Audit" => Modules.Audit,
         "Identity" => Modules.Identity,
         "Organisation" => Modules.Organisation,
+        "Ticketing" => Modules.Ticketing,
         _ => throw new ArgumentOutOfRangeException(nameof(name)),
     };
 
@@ -43,6 +50,10 @@ public sealed class ModuleBoundaryTests
         // Organisation uses Identity.Contracts (IUserDirectory) and Audit.Contracts (IAuditWriter).
         Assert.False(Types.InAssembly(Modules.Organisation).ShouldNot().HaveDependencyOn(Modules.ContractsNamespace(Modules.Identity)).GetResult().IsSuccessful);
         Assert.False(Types.InAssembly(Modules.Organisation).ShouldNot().HaveDependencyOn(Modules.ContractsNamespace(Modules.Audit)).GetResult().IsSuccessful);
+        // Ticketing uses Organisation.Contracts (IOrganisationDirectory), Audit.Contracts (IAuditWriter/IAuditReader) and Identity.Contracts (IUserDirectory).
+        Assert.False(Types.InAssembly(Modules.Ticketing).ShouldNot().HaveDependencyOn(Modules.ContractsNamespace(Modules.Organisation)).GetResult().IsSuccessful);
+        Assert.False(Types.InAssembly(Modules.Ticketing).ShouldNot().HaveDependencyOn(Modules.ContractsNamespace(Modules.Audit)).GetResult().IsSuccessful);
+        Assert.False(Types.InAssembly(Modules.Ticketing).ShouldNot().HaveDependencyOn(Modules.ContractsNamespace(Modules.Identity)).GetResult().IsSuccessful);
         // ...and a dependency on internal types is reported too (Identity's own types use Identity's own internals).
         Assert.False(Types.InAssembly(Modules.Identity).ShouldNot().HaveDependencyOnAny(Modules.NonContractTypeNames(Modules.Identity)).GetResult().IsSuccessful);
     }
@@ -50,13 +61,14 @@ public sealed class ModuleBoundaryTests
     [Fact]
     public void Project_references_follow_the_module_dag()
     {
-        // Audit -> SharedKernel; Identity -> SharedKernel, Audit; Organisation -> SharedKernel, Audit, Identity.
+        // Audit -> SharedKernel; Identity -> SharedKernel, Audit; Organisation -> SharedKernel, Audit, Identity; Ticketing -> all three (nothing depends on Ticketing but the Host).
         static IEnumerable<string> ModuleRefs(Assembly a) =>
             a.GetReferencedAssemblies().Select(r => r.Name!).Where(n => n.StartsWith("Helpdesk.Modules.", StringComparison.Ordinal));
 
         Assert.Empty(ModuleRefs(Modules.Audit));
         Assert.Equal(["Helpdesk.Modules.Audit"], ModuleRefs(Modules.Identity).Order());
         Assert.Equal(["Helpdesk.Modules.Audit", "Helpdesk.Modules.Identity"], ModuleRefs(Modules.Organisation).Order());
+        Assert.Equal(["Helpdesk.Modules.Audit", "Helpdesk.Modules.Identity", "Helpdesk.Modules.Organisation"], ModuleRefs(Modules.Ticketing).Order());
         Assert.Empty(ModuleRefs(Modules.SharedKernel));
     }
 
@@ -71,6 +83,7 @@ public sealed class ModuleBoundaryTests
     [InlineData("Audit")]
     [InlineData("Identity")]
     [InlineData("Organisation")]
+    [InlineData("Ticketing")]
     public void Only_contracts_and_the_module_registration_class_are_public(string module)
     {
         var assembly = ByName(module);
@@ -88,6 +101,7 @@ public sealed class ModuleBoundaryTests
     [InlineData("Audit")]
     [InlineData("Identity")]
     [InlineData("Organisation")]
+    [InlineData("Ticketing")]
     public void Module_registration_exposes_the_agreed_entry_points(string module)
     {
         var type = ByName(module).GetType($"{Modules.Root(ByName(module))}.{module}Module")!;

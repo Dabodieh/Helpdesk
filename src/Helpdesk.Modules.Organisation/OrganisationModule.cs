@@ -1,4 +1,5 @@
 using Helpdesk.Modules.Organisation.Authorization;
+using Helpdesk.Modules.Organisation.Contracts;
 using Helpdesk.Modules.Organisation.Endpoints;
 using Helpdesk.Modules.Organisation.Persistence;
 using Helpdesk.Modules.Organisation.Services;
@@ -35,6 +36,7 @@ public static class OrganisationModule
         services.AddScoped<TeamService>();
         services.AddScoped<MembershipService>();
         services.AddScoped<MeService>();
+        services.AddScoped<IOrganisationDirectory, OrganisationDirectory>();
         return services;
     }
 

@@ -38,6 +38,13 @@ internal static class PermissionCatalogue
         new(PermissionCodes.TeamsManage, PermissionKind.Administrative),
         new(PermissionCodes.DepartmentAuditRead, PermissionKind.Administrative),
         new(PermissionCodes.TicketsRead, PermissionKind.Content),
+        new(PermissionCodes.TicketsCreate, PermissionKind.Content),
+        new(PermissionCodes.TicketsReply, PermissionKind.Content),
+        new(PermissionCodes.TicketsNote, PermissionKind.Content),
+        new(PermissionCodes.TicketsNotesRead, PermissionKind.Content),
+        new(PermissionCodes.TicketsUpdate, PermissionKind.Content),
+        new(PermissionCodes.TicketsAssignSelf, PermissionKind.Content),
+        new(PermissionCodes.TicketsAssignAny, PermissionKind.Content),
     ];
 
     private static readonly Dictionary<string, PermissionDefinition> ByCode = All.ToDictionary(p => p.Code, StringComparer.Ordinal);
@@ -58,16 +65,27 @@ internal static class RoleCatalogue
     public static readonly IReadOnlyList<string> Roles =
         [DepartmentRoles.Viewer, DepartmentRoles.Agent, DepartmentRoles.TeamLead, DepartmentRoles.DepartmentAdmin];
 
-    private static readonly string[] Reader = [PermissionCodes.DepartmentRead, PermissionCodes.TicketsRead];
+    private static readonly string[] Reader = [PermissionCodes.DepartmentRead, PermissionCodes.TicketsRead, PermissionCodes.TicketsNotesRead];
+
+    private static readonly string[] Worker =
+    [
+        .. Reader,
+        PermissionCodes.TicketsCreate,
+        PermissionCodes.TicketsReply,
+        PermissionCodes.TicketsNote,
+        PermissionCodes.TicketsUpdate,
+        PermissionCodes.TicketsAssignSelf,
+    ];
 
     private static readonly Dictionary<string, HashSet<string>> Grants = new(StringComparer.Ordinal)
     {
         [DepartmentRoles.Viewer] = [.. Reader],
-        [DepartmentRoles.Agent] = [.. Reader],
-        [DepartmentRoles.TeamLead] = [.. Reader, PermissionCodes.DepartmentAuditRead],
+        [DepartmentRoles.Agent] = [.. Worker],
+        [DepartmentRoles.TeamLead] = [.. Worker, PermissionCodes.TicketsAssignAny, PermissionCodes.DepartmentAuditRead],
         [DepartmentRoles.DepartmentAdmin] =
         [
-            .. Reader,
+            .. Worker,
+            PermissionCodes.TicketsAssignAny,
             PermissionCodes.DepartmentAuditRead,
             PermissionCodes.DepartmentManage,
             PermissionCodes.DepartmentMembersManage,

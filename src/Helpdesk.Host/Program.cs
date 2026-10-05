@@ -2,6 +2,7 @@ using Helpdesk.Host.Errors;
 using Helpdesk.Modules.Audit;
 using Helpdesk.Modules.Identity;
 using Helpdesk.Modules.Organisation;
+using Helpdesk.Modules.Ticketing;
 using Helpdesk.SharedKernel.Database;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Options;
@@ -39,6 +40,7 @@ try
     builder.Services.AddAuditModule();
     builder.Services.AddIdentityModule(builder.Configuration, builder.Environment);
     builder.Services.AddOrganisationModule();
+    builder.Services.AddTicketingModule();
 
     builder.Services.AddProblemDetails();
     builder.Services.AddExceptionHandler<HelpdeskExceptionHandler>();
@@ -99,6 +101,7 @@ try
 
     app.MapIdentityEndpoints();
     app.MapOrganisationEndpoints();
+    app.MapTicketingEndpoints();
     app.MapAuditEndpoints();
 
     app.Run();

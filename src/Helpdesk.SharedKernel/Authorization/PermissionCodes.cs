@@ -15,4 +15,11 @@ public static class PermissionCodes
     public const string TeamsManage = "teams.manage";
     public const string DepartmentAuditRead = "department.audit.read";
     public const string TicketsRead = "tickets.read";
+    public const string TicketsCreate = "tickets.create";
+    public const string TicketsReply = "tickets.reply";
+    public const string TicketsNote = "tickets.note";
+    public const string TicketsNotesRead = "tickets.notes.read";
+    public const string TicketsUpdate = "tickets.update";
+    public const string TicketsAssignSelf = "tickets.assign.self";
+    public const string TicketsAssignAny = "tickets.assign.any";
 }

@@ -58,8 +58,8 @@ All unsafe methods (POST/PUT/PATCH/DELETE) need header `X-CSRF-TOKEN` from `GET 
 ## Audit (department)
 `GET /api/departments/{id}/audit?cursor=&limit=` requires `department.audit.read`. Returns `{ items: [{ id, occurredAt, actor: {id, displayName}|null, action, objectType, objectId, previous, next, source }], nextCursor }`. Read-only; no write API exists.
 
-## Probe (temporary, Phase 1 only)
-`GET /api/departments/{id}/ticket-access-probe` requires the **content** permission `tickets.read`; 204/403/404; returns no data. Replaced by real ticket endpoints in Phase 2.
+## Probe (removed in Phase 2)
+The Phase 1 `GET /api/departments/{id}/ticket-access-probe` no longer exists. The **content** permission `tickets.read` is exercised through the real `GET /api/tickets/{ticket}` (see `PHASE2_API.md`): 200 for every department role, 404 for outsiders, unknown tickets and platform admins without a membership.
 
 ## Audit actions emitted (Phase 1)
 `department.created`, `department.updated`, `department.activated`, `department.deactivated`, `team.created`, `team.updated`, `team.deactivated`, `team.activated`, `membership.added`, `membership.role_changed`, `membership.removed`, `team_membership.added`, `team_membership.removed`, `user.provisioned`, `user.platform_admin_changed`, `auth.signin` is **not** audited per request (log only). Values are redacted (no tokens/claims dumps).
@@ -69,7 +69,7 @@ All unsafe methods (POST/PUT/PATCH/DELETE) need header `X-CSRF-TOKEN` from `GET 
 - **PATCH:** `version` is required (missing/malformed 400, mismatch 409). `description`: `null`/absent = unchanged, `""` clears. A PATCH with none of `name`, `description`, `isActive` is 400.
 - **Members:** `PUT .../members/{userId}` returns 200 with `{ userId, displayName, email, role, teamIds }`; `PUT .../teams/{t}/members/{u}` is idempotent, 204; DELETE is 204, or 404 if the membership does not exist.
 - **Inactive:** adding members/teams/team members to an inactive department, members to an inactive team, or an inactive user as a member is 409.
-- **Content probe:** a platform admin without membership gets 404 on `ticket-access-probe`.
+- **Content access:** a platform admin without membership gets 404 on `GET /api/tickets/{ticket}` (formerly checked through the removed probe).
 - **Audit events** additionally carry `category` and `departmentId`. Membership events: `objectType: department_membership`, `objectId: <userId>`, `selfGrant` inside `next`. Team membership events: `objectType: team_membership`, `objectId: <teamId>`, `{teamId, userId}` in previous/next. The department audit endpoint returns the `organisation` category only. The actor display name is a snapshot taken at write time.
 - **Platform users list** is ordered by id (creation order); the cursor is the last id; `search` and `limit` (default 50, max 200) are supported.
 - **Bootstrap admins:** a subject in `Authentication:BootstrapPlatformAdminSubjects` becomes platform admin at first provisioning, or at sign-in when no active platform admin exists (recovery); it is not re-applied on every sign-in.
