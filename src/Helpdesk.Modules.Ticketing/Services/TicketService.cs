@@ -487,8 +487,9 @@ internal sealed class TicketService(
     }
 
     /// <summary>
-    /// Team/assignee changes need <c>tickets.assign.any</c>. With only <c>tickets.assign.self</c> a caller may take a ticket for
-    /// themself or release it when they are its assignee, leaving the team unchanged (on create: no team, assignee = themself).
+    /// Team/assignee changes need <c>tickets.assign.any</c>. With only <c>tickets.assign.self</c> a caller may CLAIM a ticket that has
+    /// no assignee (or keep one they already hold) or release a ticket they hold, leaving the team unchanged (on create: no team,
+    /// assignee = themself). Taking a ticket that is assigned to another agent is a reassignment and needs <c>assign.any</c>.
     /// </summary>
     private async Task RequireAssignmentRightsAsync(Guid departmentId, Guid? teamId, Guid? assigneeUserId, Ticket? ticket, CancellationToken ct)
     {
@@ -504,8 +505,9 @@ internal sealed class TicketService(
 
         var self = await authorizer.CheckAsync(PermissionCodes.TicketsAssignSelf, departmentId, ct) == AccessOutcome.Allowed;
         var teamUnchanged = teamId == ticket?.TeamId;
-        var selfAssignment = assigneeUserId == current.UserId
-            || (assigneeUserId is null && ticket is not null && ticket.AssigneeUserId == current.UserId);
+        var currentAssignee = ticket?.AssigneeUserId;
+        var selfAssignment = (assigneeUserId == current.UserId && (currentAssignee is null || currentAssignee == current.UserId))
+            || (assigneeUserId is null && currentAssignee == current.UserId);
         if (!(self && teamUnchanged && selfAssignment))
         {
             throw new ForbiddenException();

@@ -45,7 +45,7 @@ With 300,000 tickets inserted into the dev database (since removed), every queue
 
 ## Known limitations
 - Messages are append-only by convention, not by database grants; removing a department membership silently unassigns that member's tickets with no ticket event.
-- `assign.self` lets an agent take a ticket assigned to someone else (decided); posting a message bumps the ticket version, so a stale editor gets a 409.
+- (Hardened after Phase 2) `assign.self` claims unassigned tickets only; taking another agent's ticket needs `assign.any`. Posting a message bumps the ticket version, so a stale editor gets a 409.
 - No realtime: workspaces poll (30 s) and rely on version conflicts; SignalR is Phase 4. No optimistic UI, resizable split, saved views, multi-select priority filter or bulk actions.
 - Requesters are minimal (no editing, merging or portal identity). Plain-text bodies only; no attachments.
 - Phase 3 must sanitise CR/LF in subjects and angle brackets in requester emails before using them in mail headers.

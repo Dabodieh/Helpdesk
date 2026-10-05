@@ -179,6 +179,28 @@ public sealed class TicketChangeTests(HelpdeskFixture fixture) : IClassFixture<H
     }
 
     [Fact]
+    public async Task Assign_self_claims_unassigned_tickets_but_never_takes_another_agents_ticket()
+    {
+        var d = await fixture.NewDeptAsync();
+        var t = await d.Agent.CreateTicketAsync(d.Department);
+
+        var ownedByLead = (await d.Lead.AssignAsync(t.Id, t.Version, null, d.Lead.Id)).Expect(HttpStatusCode.OK);
+        // Already assigned to another agent: self-assign alone is not allowed to take it over, whatever the version.
+        (await d.Agent.AssignAsync(t.Id, ownedByLead.Version, null, d.Agent.Id)).Expect(HttpStatusCode.Forbidden);
+        Assert.Equal(d.Lead.Id, (await d.Agent.GetTicketAsync(t.Id)).Json.GetProperty("assignee").GetProperty("id").GetGuid());
+
+        // Reassignment of someone else's ticket needs the broader permission (TeamLead holds it).
+        var reassigned = (await d.Lead.AssignAsync(t.Id, ownedByLead.Version, null, d.Agent.Id)).Expect(HttpStatusCode.OK);
+        Assert.Equal(d.Agent.Id, reassigned.Json.GetProperty("assignee").GetProperty("id").GetGuid());
+
+        // The assignee keeps it (idempotent), releases it, and then anybody may claim the unassigned ticket.
+        (await d.Agent.AssignAsync(t.Id, reassigned.Version, null, d.Agent.Id)).Expect(HttpStatusCode.OK);
+        var released = (await d.Agent.AssignAsync(t.Id, reassigned.Version, null, null)).Expect(HttpStatusCode.OK);
+        var claimed = (await d.Agent.AssignAsync(t.Id, released.Version, null, d.Agent.Id)).Expect(HttpStatusCode.OK);
+        Assert.Equal(d.Agent.Id, claimed.Json.GetProperty("assignee").GetProperty("id").GetGuid());
+    }
+
+    [Fact]
     public async Task Assignment_to_a_team_or_user_outside_the_department_is_invalid_state()
     {
         var d = await fixture.NewDeptAsync();
