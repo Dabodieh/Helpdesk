@@ -45,6 +45,7 @@ internal sealed class FakeMailProvider : IMailProvider
     private readonly object _gate = new();
     private readonly Dictionary<string, MailboxState> _mailboxes = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _subscriptions = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _clientStates = new(StringComparer.Ordinal);
     private int _sequence;
     private int _failNextSends;
     private bool _failNextSendPermanently;
@@ -155,6 +156,15 @@ internal sealed class FakeMailProvider : IMailProvider
         }
     }
 
+    /// <summary>The client state the application sent when creating a subscription (what a real Graph would echo in notifications).</summary>
+    public string? ClientStateOf(string subscriptionId)
+    {
+        lock (_gate)
+        {
+            return _clientStates.TryGetValue(subscriptionId, out var state) ? state : null;
+        }
+    }
+
     public int SubscriptionCount
     {
         get
@@ -174,6 +184,7 @@ internal sealed class FakeMailProvider : IMailProvider
         {
             var id = "sub-" + Guid.NewGuid().ToString("N");
             _subscriptions[id] = mailbox.Address;
+            _clientStates[id] = request.ClientState;
             return Task.FromResult(new ProviderSubscription(id, request.ExpiresAt));
         }
     }

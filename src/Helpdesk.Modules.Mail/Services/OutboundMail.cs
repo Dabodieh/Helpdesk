@@ -27,7 +27,7 @@ internal sealed class MailOutbox(IMailJobScheduler scheduler, TimeProvider clock
              body_text, headers, ticket_id, ticket_message_id, ticket_reference, outbound_token, reply_to_message_id, requested_by_user_id,
              attempts, next_attempt_at, created_at, updated_at)
         SELECT @id, mb.id, mb.department_id, 'Outbound', 'Queued', @subject, mb.address, mb.display_name, @to::jsonb, @cc::jsonb, @now,
-               @body, '{}'::jsonb, @ticket_id, @ticket_message_id, @reference, @token,
+               @body, jsonb_build_object(), @ticket_id, @ticket_message_id, @reference, @token,
                (SELECT m.id FROM mail.messages m
                  WHERE m.mailbox_id = mb.id AND m.department_id = mb.department_id AND m.ticket_id = @ticket_id
                    AND m.direction = 'Inbound' AND m.provider_message_id IS NOT NULL AND m.state IN ('Ticketed','Completed')
