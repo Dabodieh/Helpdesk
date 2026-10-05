@@ -1,14 +1,17 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { listTickets } from '../api/tickets'
 import type { Queue, TicketListItem } from '../api/ticketSchemas'
 import { useMe } from '../auth'
 import { formatDateTime, timeAgo } from '../lib/format'
-import { hasCustomFilters, parseFilters, QUEUE_TITLES, type Mode } from '../lib/filters'
+import { DEFAULT_SORT, hasCustomFilters, parseFilters, QUEUE_TITLES, withParam, type Mode } from '../lib/filters'
+import { usePref } from '../lib/prefs'
 import { isActivatable, useShortcuts } from '../lib/shortcuts'
 import { livePolling } from '../queries'
+import BulkBar from './BulkBar'
 import { ErrorNotice } from './common'
+import { Icon } from './icons'
 import { PriorityMark, StatusPill } from './Pills'
 import QueueFilters from './QueueFilters'
 
@@ -21,6 +24,36 @@ type Props = {
   hrefFor: (t: TicketListItem) => string
 }
 
+/** Highlights the search text inside plain text. Built from React nodes (never HTML), so a snippet cannot inject markup. */
+export function Highlight({ text, term }: { text: string; term?: string }) {
+  if (!term) return <>{text}</>
+  const lower = text.toLowerCase()
+  const needle = term.toLowerCase()
+  const parts: React.ReactNode[] = []
+  let from = 0
+  for (let at = lower.indexOf(needle); at >= 0 && parts.length < 20; at = lower.indexOf(needle, from)) {
+    if (at > from) parts.push(text.slice(from, at))
+    parts.push(<mark key={at}>{text.slice(at, at + needle.length)}</mark>)
+    from = at + needle.length
+  }
+  parts.push(text.slice(from))
+  return (
+    <>
+      {parts.map((p, i) => (
+        <Fragment key={i}>{p}</Fragment>
+      ))}
+    </>
+  )
+}
+
+const MATCH_LABEL: Record<string, string> = {
+  reference: 'Reference',
+  subject: 'Subject',
+  requester: 'Requester',
+  message: 'Message',
+  note: 'Internal note',
+}
+
 export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
   const me = useMe()
   const navigate = useNavigate()
@@ -28,6 +61,7 @@ export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
   const searchRef = useRef<HTMLInputElement>(null)
   const filters = useMemo(() => parseFilters(queue, params, mode, me.id), [queue, params, mode, me.id])
   const enabled = mode !== 'search' || !!filters.q
+  const [density, setDensity] = usePref('helpdesk.density', ['comfortable', 'compact'] as const, 'comfortable')
 
   const list = useInfiniteQuery({
     queryKey: ['tickets', 'list', filters],
@@ -45,15 +79,26 @@ export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
   }, [list.data])
 
   const isSelected = useCallback(
-    (t: TicketListItem) =>
-      !!selected && (t.id === selected || t.reference.toLowerCase() === selected.toLowerCase()),
+    (t: TicketListItem) => !!selected && (t.id === selected || t.reference.toLowerCase() === selected.toLowerCase()),
     [selected],
   )
 
+  // Bulk selection (checkboxes). Cleared when the filters change, and never keeps ids that left the list.
+  const [checked, setChecked] = useState<Set<string>>(new Set())
+  const filterKey = JSON.stringify(filters)
+  useEffect(() => setChecked(new Set()), [filterKey])
+  const checkedItems = items.filter((t) => checked.has(t.id))
+  const toggleChecked = (id: string) =>
+    setChecked((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
   // Keyboard cursor, tracked by ticket id so it survives refreshes. Falls back to the open ticket.
   const [cursorId, setCursorId] = useState<string | null>(null)
-  const cursor =
-    items.find((t) => t.id === cursorId) ?? items.find((t) => isSelected(t)) ?? null
+  const cursor = items.find((t) => t.id === cursorId) ?? items.find((t) => isSelected(t)) ?? null
   const cursorIndex = cursor ? items.indexOf(cursor) : -1
   const rowRefs = useRef(new Map<string, HTMLTableRowElement>())
 
@@ -88,6 +133,11 @@ export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
       e.preventDefault()
       void navigate(hrefFor(cursor))
     },
+    x: (e) => {
+      if (!cursor) return
+      e.preventDefault()
+      toggleChecked(cursor.id)
+    },
     '/': (e) => {
       e.preventDefault()
       searchRef.current?.focus()
@@ -109,18 +159,38 @@ export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
 
   const title = mode === 'search' ? 'Search' : mode === 'ticket' ? 'Tickets' : QUEUE_TITLES[queue]
   const custom = hasCustomFilters(params)
+  const sort = filters.sort
+  const setSort = (next: string) => setParams((p) => withParam(p, 'sort', next === DEFAULT_SORT ? null : next), { replace: true })
+  const allChecked = items.length > 0 && items.every((t) => checked.has(t.id))
 
   return (
-    <section className="queue-pane" aria-label={title}>
+    <section className="queue-pane" aria-label={title} data-density={density}>
       <div className="pane-head">
         <h1>{title}</h1>
-        <span className="muted small" role="status">
-          {list.isSuccess ? `${items.length}${list.hasNextPage ? '+' : ''} shown` : ''}
+        <span className="muted small count-note" role="status">
+          {list.isSuccess ? `${items.length}${list.hasNextPage ? '+' : ''} ${items.length === 1 ? 'ticket' : 'tickets'}` : ''}
         </span>
+        <button
+          type="button"
+          className="ghost icon-btn"
+          aria-pressed={density === 'compact'}
+          title={density === 'compact' ? 'Switch to comfortable rows' : 'Switch to compact rows'}
+          onClick={() => setDensity(density === 'compact' ? 'comfortable' : 'compact')}
+        >
+          <Icon name="density" />
+          <span className="sr-only">{density === 'compact' ? 'Comfortable rows' : 'Compact rows'}</span>
+        </button>
       </div>
-      <QueueFilters mode={mode} searchRef={searchRef} />
+      <QueueFilters mode={mode} searchRef={searchRef} filters={filters} />
+      {checkedItems.length > 0 && <BulkBar tickets={checkedItems} onClear={() => setChecked(new Set())} />}
       <div className="queue-scroll" id="queue-list" tabIndex={-1}>
-        {!enabled && <p className="empty">Type at least 2 characters of a reference or subject to search all statuses.</p>}
+        {!enabled && (
+          <div className="empty">
+            <Icon name="search" size={28} />
+            <p>Search every ticket you can access.</p>
+            <p className="muted small">Reference, subject, requester name or email, and message text. Type at least 2 characters.</p>
+          </div>
+        )}
         {enabled && list.isPending && <QueueSkeleton />}
         {enabled && list.isError && (
           <div className="pad">
@@ -129,7 +199,8 @@ export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
         )}
         {enabled && list.isSuccess && items.length === 0 && (
           <div className="empty">
-            <p>No tickets here.</p>
+            <Icon name="inbox" size={28} />
+            <p>{mode === 'search' ? `No tickets match “${filters.q}”.` : 'No tickets here.'}</p>
             {custom ? (
               <button type="button" onClick={() => setParams(new URLSearchParams(), { replace: true })}>
                 Reset filters
@@ -144,14 +215,43 @@ export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
             <caption className="sr-only">{title}</caption>
             <thead>
               <tr>
-                <th scope="col" className="col-ref">Ref</th>
-                <th scope="col" className="col-subject">Subject</th>
-                <th scope="col" className="col-requester">Requester</th>
-                <th scope="col" className="col-status">Status</th>
-                <th scope="col" className="col-prio">Priority</th>
-                <th scope="col" className="col-team">Team</th>
-                <th scope="col" className="col-assignee">Assignee</th>
-                <th scope="col" className="col-age">Updated</th>
+                <th scope="col" className="col-check">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all tickets in this list"
+                    checked={allChecked}
+                    onChange={() => setChecked(allChecked ? new Set() : new Set(items.map((t) => t.id)))}
+                  />
+                </th>
+                <th scope="col" className="col-ref">
+                  Ref
+                </th>
+                <th scope="col" className="col-subject">
+                  Subject
+                </th>
+                <th scope="col" className="col-requester">
+                  Requester
+                </th>
+                <th scope="col" className="col-status">
+                  Status
+                </th>
+                <th scope="col" className="col-prio" aria-sort={sort === 'priority_desc' ? 'descending' : 'none'}>
+                  <button type="button" className="th-sort" onClick={() => setSort(sort === 'priority_desc' ? DEFAULT_SORT : 'priority_desc')}>
+                    Priority {sort === 'priority_desc' && <span aria-hidden="true">↓</span>}
+                  </button>
+                </th>
+                <th scope="col" className="col-team">
+                  Team
+                </th>
+                <th scope="col" className="col-assignee">
+                  Assignee
+                </th>
+                <th scope="col" className="col-age" aria-sort={sort === 'updated_desc' ? 'descending' : sort === 'updated_asc' ? 'ascending' : 'none'}>
+                  <button type="button" className="th-sort" onClick={() => setSort(sort === 'updated_desc' ? 'updated_asc' : 'updated_desc')}>
+                    Updated{' '}
+                    {(sort === 'updated_desc' || sort === 'updated_asc') && <span aria-hidden="true">{sort === 'updated_desc' ? '↓' : '↑'}</span>}
+                  </button>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -166,25 +266,35 @@ export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
                     }}
                     data-selected={open || undefined}
                     data-cursor={cursor?.id === t.id || undefined}
+                    data-checked={checked.has(t.id) || undefined}
                     onClick={(e) => {
-                      if ((e.target as HTMLElement).closest('a')) return
+                      if ((e.target as HTMLElement).closest('a,input,button')) return
                       setCursorId(t.id)
                       void navigate(hrefFor(t))
                     }}
                   >
+                    <td className="col-check">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${t.reference}`}
+                        checked={checked.has(t.id)}
+                        onChange={() => toggleChecked(t.id)}
+                      />
+                    </td>
                     <td className="col-ref ref">{t.reference}</td>
                     <td className="col-subject">
-                      <Link
-                        to={hrefFor(t)}
-                        className="row-link"
-                        aria-current={open ? 'true' : undefined}
-                        onClick={() => setCursorId(t.id)}
-                      >
-                        {t.subject}
+                      <Link to={hrefFor(t)} className="row-link" aria-current={open ? 'true' : undefined} onClick={() => setCursorId(t.id)}>
+                        <Highlight text={t.subject} term={t.match?.field === 'subject' ? filters.q : undefined} />
                       </Link>
                       <span className="subline">
                         {t.requester.displayName} · {t.team?.name ?? 'No team'} · {t.assignee?.displayName ?? 'Unassigned'}
                       </span>
+                      {t.match && t.match.field !== 'subject' && (
+                        <span className="match">
+                          <span className="match-field">{MATCH_LABEL[t.match.field] ?? t.match.field}</span>
+                          {t.match.snippet ? <Highlight text={t.match.snippet} term={filters.q} /> : null}
+                        </span>
+                      )}
                     </td>
                     <td className="col-requester">{t.requester.displayName}</td>
                     <td className="col-status">

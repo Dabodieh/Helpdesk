@@ -39,6 +39,7 @@ test('create department: invalid key is rejected client-side without calling the
     ...csrfHandler,
   })
   renderApp('/admin')
+  fireEvent.click(await screen.findByRole('button', { name: 'New department' }))
   type(await screen.findByLabelText(/^Key/), 'a-b')
   type(screen.getByLabelText('Name'), 'Facilities')
   fireEvent.click(screen.getByRole('button', { name: 'Create department' }))
@@ -57,6 +58,7 @@ test('create department: valid input posts key and name', async () => {
     ...csrfHandler,
   })
   renderApp('/admin')
+  fireEvent.click(await screen.findByRole('button', { name: 'New department' }))
   type(await screen.findByLabelText(/^Key/), 'fac')
   type(screen.getByLabelText('Name'), 'Facilities')
   fireEvent.click(screen.getByRole('button', { name: 'Create department' }))
@@ -131,6 +133,8 @@ test('member add flow: lookup requires 3 characters, then adds with the chosen r
     }),
   })
   renderApp('/admin/departments/d1')
+  fireEvent.click(await screen.findByRole('tab', { name: 'Members' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Add member' }))
   const search = await screen.findByLabelText('Find user by name or email')
   type(search, 'al')
   expect(screen.getByRole('button', { name: 'Search' })).toBeDisabled()

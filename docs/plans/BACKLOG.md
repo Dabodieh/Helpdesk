@@ -34,7 +34,14 @@
 - Phase 3 mail: sanitise CR/LF in subjects and angle brackets in requester emails before header/template use
 - Per-department late-reply policy (reopen vs follow-up ticket) and auto-close timers (Phase 5)
 - Cross-department ticket move (reference alias rules defined in TICKETING.md)
-- SignalR push for open workspaces and queues (Phase 4); optimistic UI and a resizable split in the workspace
+- ~~SignalR push, resizable split~~ (done in Phase 4). Still open: optimistic UI for ticket edits.
+- SignalR backplane (Redis or PostgreSQL) before running more than one host instance.
+- Canned responses: variables/placeholders, per-team scope, usage statistics.
+- Ranked full-text search (tsvector, stemming, relevance) if substring search proves too coarse on real data.
+- Per-account storage of split width, density and column preferences (currently per browser).
+- Code-split the web bundle (about 540 kB).
+- Screen-reader and high-contrast testing with real assistive technology.
+- Bulk undo, bulk reply.
 - Multi-select priority filter and saved views in the queue (Phase 4)
 - Reverse-proxy security headers for the SPA (CSP, HSTS)
 - Rate limiting for the webhook endpoints and the API (ASP.NET rate limiter)

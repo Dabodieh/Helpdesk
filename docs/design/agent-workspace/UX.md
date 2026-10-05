@@ -31,3 +31,11 @@ Empty queue: one line plus hint to change filters. Empty workspace pane: "Select
 
 ## Phase 3 additions
 Delivery state under agent replies (Queued / Sent by email from the department mailbox / Failed with Retry / Recorded, not emailed); attachments list (download link, blocked or awaiting-scan reasons); "Show formatted" opens sanitised email HTML in a sandboxed frame (plain text stays default); ticket header shows the mailbox and people in copy; Administration gains Mailboxes and "Mail needing attention". Screenshots: `screenshots/email-ticket.png`, `screenshots/admin-mailboxes.png`.
+
+## Phase 4 additions
+- Base font 15 px; page headers; stronger selected/hover/focus; reduced motion honoured.
+- Resizable queue/detail split (separator with arrow keys, Shift for larger steps, Home/End/Enter), clamped and remembered per browser.
+- Queue: selection checkboxes and bulk bar, sortable Priority/Updated headers, density toggle, match snippets with field label, live-updates indicator in the navigation, pinned saved views under the core queues.
+- Composer: mode-specific style and banner, Insert response picker (insert only), Ctrl+Enter sends, Enter alone never sends.
+- Administration: department tabs (Overview, Teams, Members, Mailboxes, Responses); creation through dialogs opened by New/Add buttons.
+- Screenshots (light and dark): docs/design/agent-workspace/screenshots/. Accessibility: axe checks in e2e/productivity.spec.ts.

@@ -7,6 +7,7 @@ import RequireAuth from './components/RequireAuth'
 import DepartmentPage from './pages/DepartmentPage'
 import DepartmentsPage from './pages/DepartmentsPage'
 import Landing from './pages/Landing'
+import ResponsesPage from './pages/ResponsesPage'
 import StatusPage from './pages/StatusPage'
 import TeamPage from './pages/TeamPage'
 import WorkspacePage from './pages/WorkspacePage'
@@ -40,6 +41,7 @@ export function AppRoutes() {
         <Route path="queue/:queue/:ticket?" element={<WorkspacePage mode="queue" />} />
         <Route path="tickets/:ticket" element={<WorkspacePage mode="ticket" />} />
         <Route path="search/:ticket?" element={<WorkspacePage mode="search" />} />
+        <Route path="responses" element={<ResponsesPage />} />
         <Route path="admin" element={<AdminLayout />}>
           <Route index element={<DepartmentsPage />} />
           <Route path="departments/:departmentId" element={<DepartmentPage />} />

@@ -23,7 +23,7 @@ public sealed class TicketQueueTests(HelpdeskFixture fixture) : IClassFixture<He
 
         var item = Assert.Single((await List(d.Viewer)).Expect(HttpStatusCode.OK).Json.GetProperty("items").EnumerateArray());
         Assert.Equal(
-            ["assignee", "createdAt", "departmentId", "departmentKey", "id", "priority", "reference", "requester", "status", "subject", "team", "updatedAt"],
+            ["assignee", "createdAt", "departmentId", "departmentKey", "id", "match", "priority", "reference", "requester", "status", "subject", "team", "updatedAt"],
             item.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
         Assert.Equal(t.Id, item.GetProperty("id").GetGuid());
         Assert.Equal(d.Key, item.Str("departmentKey"));

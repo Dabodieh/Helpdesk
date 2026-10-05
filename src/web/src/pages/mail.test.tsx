@@ -169,6 +169,7 @@ const deptRoutes = (me = adminMe) => ({
 test('mailbox administration: shows health and mail needing attention, and failed mail can be retried', async () => {
   const calls = mockFetch({ ...deptRoutes(), 'POST /api/departments/d1/mail/x1/retry': () => new Response(null, { status: 204 }) })
   renderApp('/admin/departments/d1')
+  fireEvent.click(await screen.findByRole('tab', { name: 'Mailboxes' }))
   expect(await screen.findByRole('heading', { name: 'Mailboxes' })).toBeInTheDocument()
   expect(await screen.findByText('desk@helpdesk.test')).toBeInTheDocument()
   expect(screen.getByText('Default')).toBeInTheDocument()
@@ -184,6 +185,7 @@ test('mailbox administration is not offered without department.mailboxes.manage'
   mockFetch(deptRoutes(agentMe()))
   renderApp('/admin/departments/d1')
   await screen.findByLabelText('Name')
+  expect(screen.queryByRole('tab', { name: 'Mailboxes' })).not.toBeInTheDocument()
   expect(screen.queryByRole('heading', { name: 'Mailboxes' })).not.toBeInTheDocument()
   expect(screen.queryByRole('form', { name: 'New mailbox' })).not.toBeInTheDocument()
 })
@@ -200,6 +202,8 @@ test('creating a mailbox posts the trimmed values and shows server field errors'
     },
   })
   renderApp('/admin/departments/d1')
+  fireEvent.click(await screen.findByRole('tab', { name: 'Mailboxes' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Add mailbox' }))
   const form = await screen.findByRole('form', { name: 'New mailbox' })
   fireEvent.change(within(form).getByLabelText('Mailbox address'), { target: { value: '  new@helpdesk.test ' } })
   fireEvent.change(within(form).getByLabelText('Sender name'), { target: { value: ' IT Desk ' } })

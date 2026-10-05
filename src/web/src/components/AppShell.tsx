@@ -1,10 +1,13 @@
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState, type ReactNode } from 'react'
-import { Link, NavLink, useNavigate } from 'react-router-dom'
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { canAdminister, hasAnyPermission } from '../api/permissions'
 import { logout } from '../api/organisation'
+import { listViews } from '../api/views'
 import { useMe } from '../auth'
 import { clearDrafts } from '../lib/drafts'
+import { viewLocation } from '../lib/filters'
+import { useRealtime, useRealtimeStatus } from '../lib/realtime'
 import { useShortcuts } from '../lib/shortcuts'
 import { useQueueCounts } from '../queries'
 import { endSession } from '../queryClient'
@@ -21,15 +24,29 @@ const QUEUE_NAV = [
   { to: '/queue/all', label: 'All Tickets', icon: 'all', count: 'all' },
 ] as const
 
+const LIVE_TEXT = {
+  off: '',
+  connecting: 'Connecting…',
+  live: 'Live updates on',
+  reconnecting: 'Reconnecting…',
+  offline: 'Live updates off · refreshing every 30 s',
+} as const
+
 /** Narrow left navigation + content. Only modules that exist are listed. */
 export default function AppShell({ children }: { children: ReactNode }) {
   const me = useMe()
   const qc = useQueryClient()
   const navigate = useNavigate()
+  const location = useLocation()
   const [dialog, setDialog] = useState<'ticket' | 'help' | null>(null)
   const hasTickets = hasAnyPermission(me, 'tickets.read')
   const canCreate = hasAnyPermission(me, 'tickets.create')
   const counts = useQueueCounts(hasTickets)
+  const views = useQuery({ queryKey: ['views'], queryFn: listViews, enabled: hasTickets, staleTime: 60_000 })
+  const pinned = (views.data ?? []).filter((v) => v.isPinned)
+  const activeView = new URLSearchParams(location.search).get('view')
+  useRealtime(hasTickets, me.id)
+  const live = useRealtimeStatus()
 
   const api = useMemo(
     () => ({
@@ -57,6 +74,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <div className="shell">
         <aside className="rail">
           <Link to="/" className="brand">
+            <span className="brand-mark" aria-hidden="true">
+              H
+            </span>
             Helpdesk
           </Link>
           {canCreate && (
@@ -66,27 +86,44 @@ export default function AppShell({ children }: { children: ReactNode }) {
           )}
           <nav aria-label="Main">
             {hasTickets && (
-              <ul>
-                {QUEUE_NAV.map((n) => (
-                  <li key={n.to}>
-                    <NavLink to={n.to}>
-                      <Icon name={n.icon} />
-                      <span className="nav-label">{n.label}</span>
-                      {counts.data && (
-                        <span className="count" aria-label={`${counts.data[n.count]} open`}>
-                          {counts.data[n.count]}
-                        </span>
-                      )}
+              <>
+                <ul>
+                  {QUEUE_NAV.map((n) => (
+                    <li key={n.to}>
+                      <NavLink to={n.to} className={() => (location.pathname.startsWith(n.to) && !activeView ? 'active' : undefined)}>
+                        <Icon name={n.icon} />
+                        <span className="nav-label">{n.label}</span>
+                        {counts.data && (
+                          <span className="count" aria-label={`${counts.data[n.count]} open`}>
+                            {counts.data[n.count]}
+                          </span>
+                        )}
+                      </NavLink>
+                    </li>
+                  ))}
+                  <li>
+                    <NavLink to="/search">
+                      <Icon name="search" />
+                      <span className="nav-label">Search</span>
                     </NavLink>
                   </li>
-                ))}
-                <li>
-                  <NavLink to="/search">
-                    <Icon name="search" />
-                    <span className="nav-label">Search</span>
-                  </NavLink>
-                </li>
-              </ul>
+                </ul>
+                {pinned.length > 0 && (
+                  <>
+                    <h2 className="rail-heading">Views</h2>
+                    <ul aria-label="Pinned views">
+                      {pinned.map((v) => (
+                        <li key={v.id}>
+                          <Link to={viewLocation(v)} className={v.id === activeView ? 'active' : undefined} aria-current={v.id === activeView ? 'page' : undefined}>
+                            <Icon name="star" />
+                            <span className="nav-label">{v.name}</span>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </>
             )}
             <ul className="rail-bottom">
               {canAdminister(me) && (
@@ -99,6 +136,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
               )}
             </ul>
           </nav>
+          {live !== 'off' && (
+            <p className={`live live-${live}`} role="status">
+              <span className="live-dot" aria-hidden="true" /> {LIVE_TEXT[live]}
+            </p>
+          )}
           <UserMenu onSignOut={() => void signOut()} onHelp={() => setDialog('help')} />
         </aside>
         <main className="main">{children}</main>

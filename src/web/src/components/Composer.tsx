@@ -6,6 +6,7 @@ import { STATUSES, type TicketDetail } from '../api/ticketSchemas'
 import { useMe } from '../auth'
 import { useApplyTicket } from '../hooks/useApplyTicket'
 import { getDraft, setDraft } from '../lib/drafts'
+import CannedPicker from './CannedPicker'
 import { Icon } from './icons'
 import ProblemBanner from './ProblemBanner'
 
@@ -56,6 +57,21 @@ export default function Composer({
       handleRef.current = null
     }
   }, [handleRef, publicBlocked, canNote])
+
+  /** Insert canned text at the cursor (or replace the selection). Nothing is posted; the agent reviews and submits. */
+  function insertText(snippet: string) {
+    const el = area.current
+    const start = el?.selectionStart ?? text.length
+    const end = el?.selectionEnd ?? text.length
+    const next = text.slice(0, start) + snippet + text.slice(end)
+    setText(next)
+    setDraft(ticket.id, next)
+    const caret = start + snippet.length
+    requestAnimationFrame(() => {
+      area.current?.focus()
+      area.current?.setSelectionRange(caret, caret)
+    })
+  }
 
   const send = useMutation({
     mutationFn: () =>
@@ -115,6 +131,8 @@ export default function Composer({
           </label>
         </div>
         {closed && canReply && <span className="muted small">Public replies need the ticket reopened first.</span>}
+        <span className="grow" />
+        <CannedPicker departmentId={ticket.departmentId} onPick={insertText} />
       </div>
       {internal ? (
         <p className="mode-banner internal-banner" role="note">
@@ -159,6 +177,9 @@ export default function Composer({
           </label>
         )}
         <span className="grow" />
+        <span className="muted small send-hint">
+          <kbd>Ctrl</kbd>+<kbd>Enter</kbd> sends
+        </span>
         <button type="submit" className="primary" disabled={nothing || send.isPending}>
           {send.isPending ? 'Posting…' : internal ? 'Add internal note' : 'Post public reply'}
         </button>

@@ -3,7 +3,8 @@ import { Link, useParams } from 'react-router-dom'
 import { getDepartment, updateDepartment } from '../api/organisation'
 import { canInDepartment, canPlatform } from '../api/permissions'
 import { useMe } from '../auth'
-import { ActiveBadge, ErrorNotice, Loading } from '../components/common'
+import CannedManager from '../components/CannedManager'
+import { ActiveBadge, ErrorNotice, Loading, PageHeader, Tabs } from '../components/common'
 import EditForm from '../components/EditForm'
 import MailboxesSection from '../components/MailboxesSection'
 import MembersSection from '../components/MembersSection'
@@ -31,35 +32,64 @@ export default function DepartmentPage() {
 
   return (
     <>
-      <p>
-        <Link to="/admin">Departments</Link> / {d.key}
-      </p>
-      <h1>
-        {d.name} <ActiveBadge active={d.isActive} />
-      </h1>
-      <p className="muted">
-        Key {d.key}
-        {d.myRole ? ` · Your role: ${d.myRole}` : ''}
-      </p>
-
-      <section aria-labelledby="details-h">
-        <h2 id="details-h">Details</h2>
-        <EditForm
-          initial={{ name: d.name, description: d.description ?? '', isActive: d.isActive, version: d.version }}
-          canEditDetails={canManage}
-          canEditActive={canPlatform(me, 'platform.departments.manage')}
-          save={async (body) => {
-            await updateDepartment(d.id, body)
-            await qc.invalidateQueries({ queryKey: ['department', d.id] })
-            await qc.invalidateQueries({ queryKey: ['departments'] })
-          }}
-          reload={() => dept.refetch()}
-        />
-      </section>
-
-      <TeamsSection department={d} />
-      <MembersSection department={d} />
-      <MailboxesSection department={d} />
+      <PageHeader
+        crumbs={
+          <>
+            <Link to="/admin">Departments</Link> / {d.key}
+          </>
+        }
+        title={
+          <>
+            {d.name} <ActiveBadge active={d.isActive} />
+          </>
+        }
+        subtitle={`Key ${d.key}${d.myRole ? ` · Your role: ${d.myRole}` : ''}`}
+      />
+      <Tabs
+        label="Department administration"
+        tabs={[
+          {
+            id: 'overview',
+            label: 'Overview',
+            content: (
+              <section aria-labelledby="details-h">
+                <h2 id="details-h">Details</h2>
+                <EditForm
+                  initial={{ name: d.name, description: d.description ?? '', isActive: d.isActive, version: d.version }}
+                  canEditDetails={canManage}
+                  canEditActive={canPlatform(me, 'platform.departments.manage')}
+                  save={async (body) => {
+                    await updateDepartment(d.id, body)
+                    await qc.invalidateQueries({ queryKey: ['department', d.id] })
+                    await qc.invalidateQueries({ queryKey: ['departments'] })
+                  }}
+                  reload={() => dept.refetch()}
+                />
+              </section>
+            ),
+          },
+          { id: 'teams', label: 'Teams', content: <TeamsSection department={d} /> },
+          { id: 'members', label: 'Members', content: <MembersSection department={d} /> },
+          {
+            id: 'mailboxes',
+            label: 'Mailboxes',
+            hidden: !canInDepartment(me, 'department.mailboxes.manage', d.id),
+            content: <MailboxesSection department={d} />,
+          },
+          {
+            id: 'responses',
+            label: 'Responses',
+            hidden: !canInDepartment(me, 'department.canned.manage', d.id),
+            content: (
+              <section aria-labelledby="responses-h">
+                <h2 id="responses-h">Shared canned responses</h2>
+                <p className="muted">Available to every member of this department when replying. They are inserted into the reply box, never sent automatically.</p>
+                <CannedManager scope={{ scope: 'Department', departmentId: d.id }} />
+              </section>
+            ),
+          },
+        ]}
+      />
     </>
   )
 }

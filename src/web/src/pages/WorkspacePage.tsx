@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, type CSSProperties } from 'react'
 import { Navigate, useLocation, useParams } from 'react-router-dom'
 import type { TicketListItem } from '../api/ticketSchemas'
 import { QUEUES, type Queue } from '../api/ticketSchemas'
@@ -7,6 +7,7 @@ import QueuePane from '../components/QueuePane'
 import { useShell } from '../components/ShellContext'
 import TicketPane from '../components/TicketPane'
 import type { Mode } from '../lib/filters'
+import { SPLIT_DEFAULT, SPLIT_MIN, useSplit } from '../lib/split'
 import { useShortcuts } from '../lib/shortcuts'
 
 /**
@@ -19,6 +20,8 @@ export default function WorkspacePage({ mode }: { mode: Mode }) {
   const location = useLocation()
   const composerRef = useRef<ComposerHandle | null>(null)
   const { openHelp } = useShell()
+  const workspaceRef = useRef<HTMLDivElement>(null)
+  const split = useSplit(workspaceRef)
 
   useShortcuts({
     r: (e) => {
@@ -42,8 +45,20 @@ export default function WorkspacePage({ mode }: { mode: Mode }) {
   const effectiveQueue: Queue = mode === 'queue' ? queue! : 'all'
 
   return (
-    <div className="workspace" data-view={ticket ? 'ticket' : 'list'}>
+    <div className="workspace" data-view={ticket ? 'ticket' : 'list'} ref={workspaceRef} style={{ '--queue-w': `${split.width}px` } as CSSProperties}>
       <QueuePane queue={effectiveQueue} mode={mode} selected={ticket} hrefFor={hrefFor} />
+      <div
+        className="split-handle"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize ticket list"
+        aria-valuemin={SPLIT_MIN}
+        aria-valuenow={split.width}
+        aria-valuemax={1600}
+        aria-valuetext={`${split.width} pixels (default ${SPLIT_DEFAULT})`}
+        tabIndex={0}
+        {...split.handlers}
+      />
       <section className="ticket-pane" aria-label="Ticket">
         {ticket ? (
           <TicketPane key={ticket.toLowerCase()} ticketRef={ticket} backTo={listPath} composerRef={composerRef} />

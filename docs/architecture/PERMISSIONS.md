@@ -62,3 +62,6 @@ Policy-style authorization handlers sit behind `IAuthorizer`; endpoint filters m
 ## Phase 1 implementation notes
 - The frontend infers a platform admin's administrative permissions for departments without a membership from the permission catalogue (a hardcoded list in `src/web/src/api/permissions.ts`); this is UX only and tracked in BACKLOG ("single source for UI hints").
 - Enforcement rule 4 is implemented for ticketing (Phase 2): a fail-closed EF global query filter on tickets, messages and requesters, plus per-action `IAuthorizer` checks and composite foreign keys (see `TICKETING.md`). Organisation tables keep authorizer checks and query-level filtering.
+
+## Phase 4 additions
+`department.canned.manage` (administrative kind, membership based, DepartmentAdmin only): create, edit and (de)activate **department-scope** canned responses. Personal canned responses and saved views need no permission: they are owner-only and a different user's id returns 404. Using a department canned response requires being able to reply or add notes in that department. Bulk change adds no permission: each ticket is checked against `tickets.update` / `tickets.assign.*` individually. The realtime hub grants group membership from `tickets.read` (department group) and `tickets.notes.read` (notes group), recomputed when memberships change.

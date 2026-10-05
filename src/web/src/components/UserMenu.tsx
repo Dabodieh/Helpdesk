@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useMe } from '../auth'
 
 export default function UserMenu({ onSignOut, onHelp }: { onSignOut: () => void; onHelp: () => void }) {
@@ -54,6 +55,9 @@ export default function UserMenu({ onSignOut, onHelp }: { onSignOut: () => void;
         <div id={panelId} className="popover" role="group" aria-label="Account">
           <p className="muted small">{me.email ?? me.displayName}</p>
           {me.isPlatformAdmin && <p className="small">Platform administrator</p>}
+          <Link to="/responses" onClick={() => setOpen(false)}>
+            My canned responses
+          </Link>
           <button type="button" onClick={onHelp}>
             Keyboard shortcuts
           </button>

@@ -78,10 +78,16 @@ Queues are filtered views over `tickets`, never separate stores. `my` = assignee
 - `audit.ix_audit_events_object_time (object_id, occurred_at DESC, id DESC)` (Audit migration `TicketingSupport`): ticket activity.
 - EF also generates two FK indexes (`IX_messages_ticket_id_department_id`, `IX_tickets_requester_id_department_id`); kept as generated.
 - `priority_desc` and `created_*` sorts run over the scoped set without a dedicated index (not hot; revisit with real data). Priority is stored as `smallint` (1 Low .. 4 Urgent) so the sort is a plain column order.
-- Text search in Phase 2 is `reference` prefix or subject substring (`ILIKE`, wildcards escaped) on the already-scoped set; real full-text search is Phase 4.
+- Search (Phase 4): `q` matches reference prefix, subject, requester name/email and message text with escaped `ILIKE` on the already-scoped set, backed by pg_trgm GIN indexes (`ix_tickets_subject_trgm`, `ix_requesters_name_trgm`, `ix_requesters_email_trgm`, `ix_messages_body_trgm`). Internal notes are searched only with `tickets.notes.read`. Hits carry `match { field, snippet }`, a plain-text snippet from messages the caller may read. Not ranked full-text search; see the Phase 4 report for the scale check.
+- Saved views (`ix_saved_views_owner`) and canned responses (`ix_canned_owner`, `ix_canned_department`) are small per-owner tables.
 
 ## Realtime
-SignalR is deferred to Phase 4 (plan unchanged). Phase 2 workspaces poll with TanStack Query (focus refetch + short interval for the open ticket and queue counts) and rely on `version` conflicts to avoid silent overwrites. The mutation response always returns the new ticket state so a future push channel can reuse the same payload.
+Phase 4 added a SignalR hub (`/hubs/tickets`) that announces *that* a ticket changed (ids and a kind, no content); clients re-read through REST. Polling with TanStack Query remains the fallback (30 s, or 120 s while the hub is live) and `version` conflicts still prevent silent overwrites. See ARCHITECTURE.md (Phase 4 structure) and the realtime security model in the Phase 4 report.
+
+## Phase 4 additions
+- **Saved views:** personal, owner-only, structured validated filter, executed as the normal scoped list (`?view=`).
+- **Bulk change:** up to 100 tickets; per-ticket transaction, authorization, validation, audit (`bulk: true`) and event; partial failure reported per ticket, never as an HTTP error.
+- **Canned responses:** personal and department scope, plain text, insert-only; department scope needs `department.canned.manage`.
 
 ## Out of scope
-Attachments, email transport, SLA, automation, tags/categories, merge/link, bulk actions, saved views, rich text, requester portal, cross-department move.
+SLA, automation, tags/categories, merge/link, rich text, requester portal, cross-department move, bulk reply, canned-response variables.

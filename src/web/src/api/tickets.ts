@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { api } from './http'
 import {
   activitySchema,
+  bulkResultSchema,
   messageSchema,
   pageSchema,
   postMessageResultSchema,
@@ -107,3 +108,13 @@ export const lookupRequesters = (departmentId: string, q: string) =>
   api('GET', `/api/departments/${encodeURIComponent(departmentId)}/requesters/lookup?q=${encodeURIComponent(q)}`, {
     schema: z.array(requesterLookupSchema),
   })
+
+export type BulkChange = {
+  status?: string
+  priority?: string
+  team?: { id: string | null }
+  assignee?: { id: string | null }
+}
+
+export const bulkUpdate = (ticketIds: string[], change: BulkChange) =>
+  api('POST', '/api/tickets/bulk', { body: { ticketIds, ...change }, schema: bulkResultSchema })

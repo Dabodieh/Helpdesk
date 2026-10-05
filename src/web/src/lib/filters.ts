@@ -1,5 +1,6 @@
 import type { TicketFilters } from '../api/tickets'
-import { PRIORITIES, SORTS, STATUSES, type Priority, type Queue, type Sort, type Status } from '../api/ticketSchemas'
+import { PRIORITIES, QUEUES, SORTS, STATUSES, type Priority, type Queue, type Sort, type Status } from '../api/ticketSchemas'
+import type { ViewFilter } from '../api/views'
 
 export type Mode = 'queue' | 'search' | 'ticket'
 
@@ -46,7 +47,7 @@ export function parseFilters(queue: Queue, params: URLSearchParams, mode: Mode, 
 
 /** Is any filter different from the defaults for this mode? (drives "Reset filters") */
 export function hasCustomFilters(params: URLSearchParams) {
-  return ['status', 'priority', 'dept', 'team', 'assignee', 'q', 'sort'].some((k) => params.has(k))
+  return ['status', 'priority', 'dept', 'team', 'assignee', 'q', 'sort', 'view'].some((k) => params.has(k))
 }
 
 /** Set or clear one URL parameter. */
@@ -62,4 +63,36 @@ export const QUEUE_TITLES: Record<Queue, string> = {
   team: 'Team Queue',
   unassigned: 'Unassigned',
   all: 'All Tickets',
+}
+
+/** The structured filter a saved view stores, from the filters the queue is showing. */
+export function toViewFilter(f: TicketFilters): ViewFilter {
+  return {
+    queue: f.queue,
+    departmentId: f.departmentId ?? null,
+    teamId: f.teamId ?? null,
+    assigneeUserId: f.assigneeUserId ?? null,
+    unassigned: f.unassigned ?? null,
+    status: f.statuses,
+    priority: f.priorities.length > 0 ? f.priorities : null,
+    q: f.q ?? null,
+    sort: f.sort,
+  }
+}
+
+/** Where a saved view opens: the normal queue URL carrying its filters (the server re-checks scope on every list call). */
+export function viewLocation(v: { id: string; filter: ViewFilter }): string {
+  const f = v.filter
+  const queue = (QUEUES as readonly string[]).includes(f.queue ?? '') ? f.queue! : 'all'
+  const p = new URLSearchParams()
+  p.set('status', (f.status ?? []).join(','))
+  if (f.priority?.length) p.set('priority', f.priority.join(','))
+  if (f.departmentId) p.set('dept', f.departmentId)
+  if (f.teamId) p.set('team', f.teamId)
+  if (f.unassigned) p.set('assignee', 'none')
+  else if (f.assigneeUserId) p.set('assignee', f.assigneeUserId)
+  if (f.q) p.set('q', f.q)
+  if (f.sort && f.sort !== DEFAULT_SORT) p.set('sort', f.sort)
+  p.set('view', v.id)
+  return `/queue/${queue}?${p.toString()}`
 }

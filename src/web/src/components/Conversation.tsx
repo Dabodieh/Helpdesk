@@ -4,6 +4,7 @@ import { canTicket } from '../api/permissions'
 import { attachmentHref, listMessages, retryDelivery } from '../api/tickets'
 import type { Attachment, Message } from '../api/ticketSchemas'
 import { useMe } from '../auth'
+import { pollInterval } from '../lib/realtime'
 import { formatDateTime } from '../lib/format'
 import { livePolling, PENDING_POLL_MS } from '../queries'
 import { ErrorNotice, Loading } from './common'
@@ -146,7 +147,7 @@ export default function Conversation({ ticketId }: { ticketId: string }) {
     getNextPageParam: (last) => last.nextCursor,
     ...livePolling,
     refetchInterval: (query) =>
-      query.state.data?.pages.some((p) => p.items.some((m) => m.deliveryState === 'Pending')) ? PENDING_POLL_MS : livePolling.refetchInterval,
+      query.state.data?.pages.some((p) => p.items.some((m) => m.deliveryState === 'Pending')) ? PENDING_POLL_MS : pollInterval(),
   })
 
   // Pages arrive newest first; the conversation reads oldest first.

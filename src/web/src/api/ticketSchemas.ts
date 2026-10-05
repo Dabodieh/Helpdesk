@@ -14,6 +14,8 @@ const prioritySchema = z.enum(PRIORITIES)
 const refSchema = z.object({ id: z.string(), displayName: z.string() })
 const nameRefSchema = z.object({ id: z.string(), name: z.string() })
 
+export const matchSchema = z.object({ field: z.string(), snippet: z.string().nullish() })
+
 export const ticketListItemSchema = z.object({
   id: z.string(),
   reference: z.string(),
@@ -27,6 +29,8 @@ export const ticketListItemSchema = z.object({
   assignee: refSchema.nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  /** Present for searches: why the ticket matched (never HTML). */
+  match: matchSchema.nullish(),
 })
 export type TicketListItem = z.infer<typeof ticketListItemSchema>
 
@@ -103,3 +107,11 @@ export const requesterLookupSchema = z.object({ id: z.string(), displayName: z.s
 export type RequesterLookup = z.infer<typeof requesterLookupSchema>
 
 export const postMessageResultSchema = z.object({ message: messageSchema, ticket: ticketDetailSchema })
+
+export const bulkResultSchema = z.object({
+  results: z.array(z.object({ ticketId: z.string(), reference: z.string().nullish(), outcome: z.string(), code: z.string().nullish() })),
+  updated: z.number(),
+  unchanged: z.number(),
+  failed: z.number(),
+})
+export type BulkResult = z.infer<typeof bulkResultSchema>

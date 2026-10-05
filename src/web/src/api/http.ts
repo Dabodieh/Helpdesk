@@ -71,6 +71,12 @@ async function getCsrf(): Promise<Csrf> {
   return csrf
 }
 
+/** Headers the realtime connection needs for its (unsafe) negotiate request. */
+export async function csrfHeaders(): Promise<Record<string, string>> {
+  const { headerName, token } = await getCsrf()
+  return { [headerName]: token }
+}
+
 const UNSAFE = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 
 export async function api<T = void>(

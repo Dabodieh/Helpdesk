@@ -7,6 +7,7 @@ import type { Department } from '../api/schemas'
 import { useMe } from '../auth'
 import { formatDateTime } from '../lib/format'
 import { ActiveBadge, ErrorNotice, Field, Loading } from './common'
+import Dialog from './Dialog'
 
 const IGNORE_REASONS: Record<string, string> = {
   own_address: 'sent from a helpdesk mailbox',
@@ -21,7 +22,7 @@ const IGNORE_REASONS: Record<string, string> = {
   duplicate_internet_message_id: 'duplicate',
 }
 
-function CreateMailbox({ departmentId }: { departmentId: string }) {
+function CreateMailbox({ departmentId, onClose }: { departmentId: string; onClose: () => void }) {
   const qc = useQueryClient()
   const [address, setAddress] = useState('')
   const [displayName, setDisplayName] = useState('')
@@ -33,6 +34,7 @@ function CreateMailbox({ departmentId }: { departmentId: string }) {
       setDisplayName('')
       setSignature('')
       await qc.invalidateQueries({ queryKey: ['mailboxes', departmentId] })
+      onClose()
     },
   })
   const server = fieldErrors(create.error)
@@ -41,9 +43,10 @@ function CreateMailbox({ departmentId }: { departmentId: string }) {
     if (address.trim() && displayName.trim()) create.mutate()
   }
   return (
-    <form className="form" onSubmit={submit} aria-label="New mailbox">
+    <Dialog title="Add mailbox" onClose={onClose}>
+    <form className="dialog-form" onSubmit={submit} aria-label="New mailbox">
       <Field label="Mailbox address" error={server.address} hint="The shared mailbox in Microsoft 365 that receives this department's email.">
-        {(p) => <input {...p} type="email" value={address} maxLength={320} required onChange={(e) => setAddress(e.target.value)} />}
+        {(p) => <input {...p} data-autofocus type="email" value={address} maxLength={320} required onChange={(e) => setAddress(e.target.value)} />}
       </Field>
       <Field label="Sender name" error={server.displayName} hint="Shown as the sender of replies.">
         {(p) => <input {...p} value={displayName} maxLength={200} required onChange={(e) => setDisplayName(e.target.value)} />}
@@ -51,11 +54,17 @@ function CreateMailbox({ departmentId }: { departmentId: string }) {
       <Field label="Signature (optional)" error={server.signature} hint="Plain text appended to every reply.">
         {(p) => <textarea {...p} rows={3} value={signature} maxLength={4000} onChange={(e) => setSignature(e.target.value)} />}
       </Field>
-      <button type="submit" className="primary" disabled={create.isPending}>
-        Add mailbox
-      </button>
       <ErrorNotice error={create.error} />
+      <div className="dialog-actions">
+        <button type="button" onClick={onClose}>
+          Cancel
+        </button>
+        <button type="submit" className="primary" disabled={create.isPending}>
+          Add mailbox
+        </button>
+      </div>
     </form>
+    </Dialog>
   )
 }
 
@@ -192,12 +201,18 @@ function Attention({ departmentId }: { departmentId: string }) {
 export default function MailboxesSection({ department }: { department: Department }) {
   const me = useMe()
   const allowed = canInDepartment(me, 'department.mailboxes.manage', department.id)
+  const [adding, setAdding] = useState(false)
   const q = useQuery({ queryKey: ['mailboxes', department.id], queryFn: () => listMailboxes(department.id), enabled: allowed })
   if (!allowed) return null
   return (
     <>
       <section aria-labelledby="mailboxes-h">
-        <h2 id="mailboxes-h">Mailboxes</h2>
+        <div className="section-head">
+          <h2 id="mailboxes-h">Mailboxes</h2>
+          <button type="button" className="primary" onClick={() => setAdding(true)}>
+            Add mailbox
+          </button>
+        </div>
         <p className="muted">
           Email sent to these shared mailboxes becomes tickets of this department. Replies leave from the ticket's mailbox, or the default one.
         </p>
@@ -225,7 +240,7 @@ export default function MailboxesSection({ department }: { department: Departmen
             </tbody>
           </table>
         )}
-        <CreateMailbox departmentId={department.id} />
+        {adding && <CreateMailbox departmentId={department.id} onClose={() => setAdding(false)} />}
       </section>
       <section aria-labelledby="attention-h">
         <h2 id="attention-h">Mail needing attention</h2>

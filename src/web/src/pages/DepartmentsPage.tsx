@@ -6,9 +6,10 @@ import { createDepartment, listDepartments } from '../api/organisation'
 import { canPlatform, hasAnyPermission } from '../api/permissions'
 import { DEPARTMENT_KEY } from '../api/schemas'
 import { useMe } from '../auth'
-import { ActiveBadge, ErrorNotice, Field, Loading } from '../components/common'
+import { ActiveBadge, ErrorNotice, Field, Loading, PageHeader } from '../components/common'
+import Dialog from '../components/Dialog'
 
-function CreateDepartment() {
+function CreateDepartment({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const [key, setKey] = useState('')
@@ -39,24 +40,28 @@ function CreateDepartment() {
   }
 
   return (
-    <section aria-labelledby="new-dept">
-      <h2 id="new-dept">New department</h2>
-      <form className="form" onSubmit={submit} noValidate>
-        <Field label="Key (cannot be changed later)" error={(touched && keyError) || server.key}>
-          {(p) => <input {...p} value={key} maxLength={10} onChange={(e) => setKey(e.target.value.toUpperCase())} />}
-        </Field>
+    <Dialog title="New department" onClose={onClose}>
+      <form className="dialog-form" onSubmit={submit} noValidate aria-label="New department">
         <Field label="Name" error={(touched && nameError) || server.name}>
-          {(p) => <input {...p} value={name} maxLength={200} onChange={(e) => setName(e.target.value)} />}
+          {(p) => <input {...p} data-autofocus value={name} maxLength={200} onChange={(e) => setName(e.target.value)} />}
+        </Field>
+        <Field label="Key (cannot be changed later)" error={(touched && keyError) || server.key} hint="Prefix of ticket references, e.g. IT-1042.">
+          {(p) => <input {...p} value={key} maxLength={10} onChange={(e) => setKey(e.target.value.toUpperCase())} />}
         </Field>
         <Field label="Description (optional)" error={server.description}>
           {(p) => <textarea {...p} rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />}
         </Field>
         <ErrorNotice error={create.error} />
-        <button type="submit" className="primary" disabled={create.isPending}>
-          Create department
-        </button>
+        <div className="dialog-actions">
+          <button type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="primary" disabled={create.isPending}>
+            Create department
+          </button>
+        </div>
       </form>
-    </section>
+    </Dialog>
   )
 }
 
@@ -64,10 +69,21 @@ export default function DepartmentsPage() {
   const me = useMe()
   const list = useQuery({ queryKey: ['departments'], queryFn: listDepartments })
   const canCreate = canPlatform(me, 'platform.departments.manage')
+  const [creating, setCreating] = useState(false)
 
   return (
     <>
-      <h1>Departments</h1>
+      <PageHeader
+        title="Departments"
+        subtitle="Teams, members and email for each department."
+        actions={
+          canCreate && (
+            <button type="button" className="primary" onClick={() => setCreating(true)}>
+              New department
+            </button>
+          )
+        }
+      />
       {!hasAnyPermission(me, 'tickets.read') && (
         <p className="notice info" role="note">
           You have no access to tickets: ticket queues need a department membership with ticket permissions.
@@ -84,8 +100,7 @@ export default function DepartmentsPage() {
           <caption className="sr-only">Departments</caption>
           <thead>
             <tr>
-              <th scope="col">Key</th>
-              <th scope="col">Name</th>
+              <th scope="col">Department</th>
               <th scope="col">Status</th>
               <th scope="col">My role</th>
             </tr>
@@ -93,9 +108,11 @@ export default function DepartmentsPage() {
           <tbody>
             {list.data.map((d) => (
               <tr key={d.id}>
-                <td>{d.key}</td>
                 <td>
-                  <Link to={`/admin/departments/${d.id}`}>{d.name}</Link>
+                  <Link to={`/admin/departments/${d.id}`} className="dept-link">
+                    {d.name}
+                  </Link>{' '}
+                  <code className="key-chip">{d.key}</code>
                 </td>
                 <td>
                   <ActiveBadge active={d.isActive} />
@@ -106,7 +123,7 @@ export default function DepartmentsPage() {
           </tbody>
         </table>
       )}
-      {canCreate && <CreateDepartment />}
+      {creating && <CreateDepartment onClose={() => setCreating(false)} />}
     </>
   )
 }

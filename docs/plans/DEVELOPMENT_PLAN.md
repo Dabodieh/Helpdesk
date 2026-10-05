@@ -22,6 +22,9 @@ Agent workspace (queues, split ticket view, conversation, composer, history, key
 ## Phase 3 scope (built; production readiness gated)
 Mail and Attachments modules, mailbox admin, Graph provider + simulator, webhooks/delta/subscriptions, inbound pipeline with threading and idempotency, outbox and delivery states, attachments on S3-compatible storage, HTML sanitising, Hangfire jobs. Report: `docs/reports/PHASE-3-EMAIL.md`. Real-tenant validation (ADR-011) is not done.
 
+## Phase 4 scope (built)
+Agent productivity: UX polish and resizable split, saved views, bulk actions, canned responses, trigram search with snippets, SignalR realtime with scoped groups and polling fallback, keyboard/density/sortable columns, axe checks, Playwright flows. Report: `docs/reports/PHASE-4-AGENT-PRODUCTIVITY.md`, API: `docs/api/PHASE4_API.md`. Phase 5 is not started.
+
 ## Phase 0 work packages
 1. Repo scaffolding, conventions, CLAUDE.md, agent definitions (done in bootstrap).
 2. `src/Helpdesk.Host` skeleton: options pattern, Serilog, OTel, health, OpenAPI, problem details, forwarded headers.

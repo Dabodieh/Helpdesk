@@ -55,3 +55,11 @@ Known limitations: message rows are append-only by convention (the application D
 ## Phase 3 (email) controls and limits
 Verified by tests: department derived only from the receiving mailbox (composite FKs; cross-department evidence discarded); webhooks authenticate by per-subscription client state (hash stored, constant-time compare), reveal nothing in responses, are size-limited and are the only CSRF-exempt routes (architecture-tested); loop/noise guard and per-sender rate limit; idempotent ingestion; attachments validated (size, blocked types incl. double extensions, signature check), downloaded only as attachments through ticket authorization, scan gate (`Attachments:RequireCleanScan`); HTML sanitised with the original kept immutable and shown only in a sandboxed frame; no message content in logs or audit; Hangfire dashboard read-only and platform-admin only. Threat notes: `docs/security/PHASE3_THREAT_MODEL.md`.
 Open: no malware engine (D-08), no webhook rate limiting, raw bodies stored in `mail.messages` (retention D-09), Graph behaviour unvalidated against a real tenant (ADR-011 gate), Data Protection keys not persisted (D-13).
+
+## Phase 4 (realtime, search, canned responses) controls
+- Realtime hub: authenticated, server-decided groups (department, and notes only with tickets.notes.read), content-free payloads, group refresh on membership change and every 60 s, clients cannot subscribe or invoke state changes. Tests: Productivity/RealtimeTests.
+- Search: scoped by the same department filter as lists; internal notes searched only with tickets.notes.read; snippets are plain text from messages the caller may read; wildcards escaped; query length 2 to 100.
+- Saved views and personal canned responses are owner-only (404 otherwise); department canned responses need department.canned.manage; canned text is plain text inserted by the client, never sent automatically.
+- Bulk change authorises and audits every ticket individually; inaccessible and missing tickets are indistinguishable (not_found).
+- Audit records the canned-response title (never its text) and view names; logs and audit never contain message bodies or search snippets.
+- Limits: single host instance (no backplane), no rate limiting on search or the hub yet (see BACKLOG).

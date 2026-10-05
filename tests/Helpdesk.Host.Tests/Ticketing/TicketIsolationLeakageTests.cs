@@ -70,10 +70,18 @@ public sealed class TicketIsolationLeakageTests(HelpdeskFixture fixture) : IClas
             ("list q=description", c => c.GetAsync($"/api/tickets?q={desc}")),
             ("counts", c => c.GetAsync("/api/tickets/queue-counts")),
         };
+        // Phase 4: search results carry a snippet of the matching message text, but only for callers who may read that content
+        // (department members; internal notes need tickets.notes.read). Everyone else must never see a token anywhere.
+        string[] insiders = [IsoWorld.ViewerA, IsoWorld.AgentA, IsoWorld.LeadA, IsoWorld.AdminA];
         foreach (var persona in new[] { IsoWorld.ViewerA, IsoWorld.AgentA, IsoWorld.LeadA, IsoWorld.AdminA, IsoWorld.NoMembership, IsoWorld.PlatformAdminNoMembership, IsoWorld.MemberOfBOnly, IsoWorld.AdminOfBAgainstA })
         {
             foreach (var (name, call) in reads)
             {
+                if (name.StartsWith("list q=", StringComparison.Ordinal) && insiders.Contains(persona))
+                {
+                    continue; // snippets for insiders are intended; covered below
+                }
+
                 var body = (await call(w.Actors[persona].Client)).Body;
                 foreach (var token in tokens)
                 {
@@ -82,8 +90,9 @@ public sealed class TicketIsolationLeakageTests(HelpdeskFixture fixture) : IClas
             }
         }
 
-        // Search matches reference and subject only: even insiders find nothing by body text.
-        Assert.True(IsoKit.EmptyPage((await w.Actors[IsoWorld.AdminA].Client.GetAsync($"/api/tickets?q={note}")).Expect(HttpStatusCode.OK)));
+        // Insiders find the ticket by message text and see why it matched (a snippet of text they may read anyway).
+        var hit = Assert.Single((await w.Actors[IsoWorld.AdminA].Client.GetAsync($"/api/tickets?q={note}")).Expect(HttpStatusCode.OK).Json.GetProperty("items").EnumerateArray());
+        Assert.Equal("note", hit.GetProperty("match").GetProperty("field").GetString());
 
         // The one place bodies live: the messages endpoint, for callers with the matching permission.
         foreach (var persona in new[] { IsoWorld.ViewerA, IsoWorld.AgentA, IsoWorld.LeadA, IsoWorld.AdminA })

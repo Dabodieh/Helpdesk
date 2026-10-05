@@ -5,6 +5,7 @@ import { canInDepartment } from '../api/permissions'
 import { ROLES, type Department, type Member, type Role } from '../api/schemas'
 import { useMe } from '../auth'
 import { ErrorNotice, Field, Loading } from './common'
+import Dialog from './Dialog'
 
 const MIN_QUERY = 3
 
@@ -70,7 +71,7 @@ function MemberRow({ departmentId, member, canManage }: { departmentId: string; 
   )
 }
 
-function AddMember({ departmentId, existing }: { departmentId: string; existing: Set<string> }) {
+function AddMember({ departmentId, existing, onClose }: { departmentId: string; existing: Set<string>; onClose: () => void }) {
   const qc = useQueryClient()
   const [text, setText] = useState('')
   const [q, setQ] = useState('')
@@ -98,11 +99,10 @@ function AddMember({ departmentId, existing }: { departmentId: string; existing:
 
   const tooShort = text.trim().length > 0 && text.trim().length < MIN_QUERY
   return (
-    <div>
-      <h3>Add member</h3>
+    <Dialog title="Add member" onClose={onClose}>
       <form className="form inline" onSubmit={search} role="search" aria-label="Find user">
         <Field label="Find user by name or email" hint={tooShort ? `Enter at least ${MIN_QUERY} characters.` : undefined}>
-          {(p) => <input {...p} type="search" value={text} onChange={(e) => setText(e.target.value)} />}
+          {(p) => <input {...p} data-autofocus type="search" value={text} onChange={(e) => setText(e.target.value)} />}
         </Field>
         <button type="submit" disabled={text.trim().length < MIN_QUERY}>
           Search
@@ -139,7 +139,12 @@ function AddMember({ departmentId, existing }: { departmentId: string; existing:
           ))}
         </ul>
       )}
-    </div>
+      <div className="dialog-actions">
+        <button type="button" onClick={onClose}>
+          Done
+        </button>
+      </div>
+    </Dialog>
   )
 }
 
@@ -147,10 +152,18 @@ export default function MembersSection({ department }: { department: Department 
   const me = useMe()
   const members = useQuery({ queryKey: ['members', department.id], queryFn: () => listMembers(department.id) })
   const canManage = canInDepartment(me, 'department.members.manage', department.id)
+  const [adding, setAdding] = useState(false)
 
   return (
     <section aria-labelledby="members-h">
-      <h2 id="members-h">Members</h2>
+      <div className="section-head">
+        <h2 id="members-h">Members</h2>
+        {canManage && department.isActive && (
+          <button type="button" className="primary" onClick={() => setAdding(true)}>
+            Add member
+          </button>
+        )}
+      </div>
       {members.isPending && <Loading />}
       {members.isError && <ErrorNotice error={members.error} onRetry={() => void members.refetch()} />}
       {members.data && members.data.length === 0 && <p>No members yet.</p>}
@@ -172,12 +185,8 @@ export default function MembersSection({ department }: { department: Department 
           </tbody>
         </table>
       )}
-      {canManage &&
-        (department.isActive ? (
-          <AddMember departmentId={department.id} existing={new Set(members.data?.map((m) => m.userId))} />
-        ) : (
-          <p className="muted">Members cannot be added to an inactive department.</p>
-        ))}
+      {canManage && !department.isActive && <p className="muted">Members cannot be added to an inactive department.</p>}
+      {adding && <AddMember departmentId={department.id} existing={new Set(members.data?.map((m) => m.userId))} onClose={() => setAdding(false)} />}
     </section>
   )
 }

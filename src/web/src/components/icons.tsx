@@ -55,6 +55,36 @@ const paths: Record<string, ReactNode> = {
     </>
   ),
   attach: <path d="M11.5 7.5l-4 4a2.5 2.5 0 01-3.5-3.5l5-5a1.7 1.7 0 012.4 2.4l-5 5a.8.8 0 01-1.2-1.2l4-4" />,
+  density: <path d="M2 4h12M2 8h12M2 12h12" />,
+  star: <path d="M8 2l1.8 3.7 4 .6-2.9 2.8.7 4L8 11.2 4.4 13.1l.7-4L2.2 6.3l4-.6L8 2z" />,
+  views: (
+    <>
+      <rect x="2" y="3" width="12" height="10" rx="1.5" />
+      <path d="M2 6.5h12M6 6.5V13" />
+    </>
+  ),
+  file: <path d="M4 2h5l3 3v9H4V2zM9 2v3h3" />,
+  image: (
+    <>
+      <rect x="2" y="3" width="12" height="10" rx="1" />
+      <circle cx="6" cy="7" r="1.2" />
+      <path d="M2.5 12l3.5-3 3 2.5 2-1.5 2.5 2" />
+    </>
+  ),
+  download: <path d="M8 2v8m0 0L5 7m3 3l3-3M3 13h10" />,
+  alert: (
+    <>
+      <path d="M8 2l6.5 11.5h-13L8 2z" />
+      <path d="M8 6.5v3M8 11.5v.1" />
+    </>
+  ),
+  person: (
+    <>
+      <circle cx="8" cy="5.5" r="2.5" />
+      <path d="M3 14c0-2.6 2.2-4 5-4s5 1.4 5 4" />
+    </>
+  ),
+  chat: <path d="M2 3.5h12v7H8l-3 2.5v-2.5H2v-7z" />,
   back: <path d="M10 3L5 8l5 5" />,
   edit: <path d="M3 13l1-3.5L11 2.5l2.5 2.5-7 7L3 13z" />,
   help: (

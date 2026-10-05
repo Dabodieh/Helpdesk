@@ -7,8 +7,9 @@ import { canInDepartment } from '../api/permissions'
 import type { Department, Team } from '../api/schemas'
 import { useMe } from '../auth'
 import { ActiveBadge, ErrorNotice, Field, Loading } from './common'
+import Dialog from './Dialog'
 
-function CreateTeam({ departmentId }: { departmentId: string }) {
+function CreateTeam({ departmentId, onClose }: { departmentId: string; onClose: () => void }) {
   const qc = useQueryClient()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -18,6 +19,7 @@ function CreateTeam({ departmentId }: { departmentId: string }) {
       setName('')
       setDescription('')
       await qc.invalidateQueries({ queryKey: ['teams', departmentId] })
+      onClose()
     },
   })
   const server = fieldErrors(create.error)
@@ -26,18 +28,25 @@ function CreateTeam({ departmentId }: { departmentId: string }) {
     if (name.trim()) create.mutate()
   }
   return (
-    <form className="form inline" onSubmit={submit} aria-label="New team">
-      <Field label="Team name" error={server.name}>
-        {(p) => <input {...p} value={name} maxLength={200} required onChange={(e) => setName(e.target.value)} />}
-      </Field>
-      <Field label="Description (optional)" error={server.description}>
-        {(p) => <input {...p} value={description} onChange={(e) => setDescription(e.target.value)} />}
-      </Field>
-      <button type="submit" className="primary" disabled={create.isPending}>
-        Add team
-      </button>
-      <ErrorNotice error={create.error} />
-    </form>
+    <Dialog title="New team" onClose={onClose}>
+      <form className="dialog-form" onSubmit={submit} aria-label="New team">
+        <Field label="Team name" error={server.name}>
+          {(p) => <input {...p} data-autofocus value={name} maxLength={200} required onChange={(e) => setName(e.target.value)} />}
+        </Field>
+        <Field label="Description (optional)" error={server.description}>
+          {(p) => <input {...p} value={description} onChange={(e) => setDescription(e.target.value)} />}
+        </Field>
+        <ErrorNotice error={create.error} />
+        <div className="dialog-actions">
+          <button type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="primary" disabled={create.isPending}>
+            Add team
+          </button>
+        </div>
+      </form>
+    </Dialog>
   )
 }
 
@@ -82,10 +91,18 @@ export default function TeamsSection({ department }: { department: Department })
   const me = useMe()
   const teams = useQuery({ queryKey: ['teams', department.id], queryFn: () => listTeams(department.id) })
   const canManage = canInDepartment(me, 'teams.manage', department.id)
+  const [creating, setCreating] = useState(false)
 
   return (
     <section aria-labelledby="teams-h">
-      <h2 id="teams-h">Teams</h2>
+      <div className="section-head">
+        <h2 id="teams-h">Teams</h2>
+        {canManage && department.isActive && (
+          <button type="button" className="primary" onClick={() => setCreating(true)}>
+            New team
+          </button>
+        )}
+      </div>
       {teams.isPending && <Loading />}
       {teams.isError && <ErrorNotice error={teams.error} onRetry={() => void teams.refetch()} />}
       {teams.data && teams.data.length === 0 && <p>No teams yet.</p>}
@@ -108,7 +125,8 @@ export default function TeamsSection({ department }: { department: Department })
           </tbody>
         </table>
       )}
-      {canManage && (department.isActive ? <CreateTeam departmentId={department.id} /> : <p className="muted">Teams cannot be added to an inactive department.</p>)}
+      {canManage && !department.isActive && <p className="muted">Teams cannot be added to an inactive department.</p>}
+      {creating && <CreateTeam departmentId={department.id} onClose={() => setCreating(false)} />}
     </section>
   )
 }
