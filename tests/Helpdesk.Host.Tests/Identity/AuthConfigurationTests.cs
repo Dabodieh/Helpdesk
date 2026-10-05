@@ -83,7 +83,21 @@ public sealed class AuthConfigurationTests(HelpdeskFixture fixture) : IClassFixt
     [Fact]
     public async Task Entra_only_production_configuration_starts_and_has_no_dev_login_route()
     {
-        var factory = Variant("Production", b => Entra(b, devSignIn: false));
+        var factory = Variant("Production", b =>
+        {
+            Entra(b, devSignIn: false);
+
+            // Production has no simulator or in-memory store: Graph and S3 must be configured explicitly (secrets come from the environment).
+            b.UseSetting("Mail:Provider", "Graph");
+            b.UseSetting("Mail:NotificationBaseUrl", "https://helpdesk.example.test");
+            b.UseSetting("Mail:Graph:TenantId", "11111111-1111-1111-1111-111111111111");
+            b.UseSetting("Mail:Graph:ClientId", "22222222-2222-2222-2222-222222222222");
+            b.UseSetting("Mail:Graph:ClientSecret", "test-secret-not-real");
+            b.UseSetting("Storage:Provider", "S3");
+            b.UseSetting("Storage:S3:AccessKey", "test-access");
+            b.UseSetting("Storage:S3:SecretKey", "test-secret");
+            b.UseSetting("Jobs:Enabled", "false");
+        });
         var client = fixture.CreateAnonymousClient(factory);
 
         // The route is not merely forbidden: it is not registered at all.
@@ -94,6 +108,26 @@ public sealed class AuthConfigurationTests(HelpdeskFixture fixture) : IClassFixt
         // Unmatched paths also fall under the authenticated fallback policy (401 for anonymous callers).
         (await client.GetAsync("/api/auth/dev-login?subject=x")).Expect(HttpStatusCode.Unauthorized);
         (await client.GetAsync("/health/live")).Expect(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public void The_mail_simulator_and_missing_graph_or_storage_settings_stop_a_production_host()
+    {
+        // Fake provider outside Development/Testing, and Graph/S3 left unconfigured, must fail at startup (never silently run).
+        Assert.ThrowsAny<Exception>(() => Variant("Production", b =>
+        {
+            Entra(b, devSignIn: false);
+            b.UseSetting("Mail:Provider", "Fake");
+            b.UseSetting("Storage:Provider", "S3");
+            b.UseSetting("Storage:S3:AccessKey", "a");
+            b.UseSetting("Storage:S3:SecretKey", "b");
+            b.UseSetting("Jobs:Enabled", "false");
+        }).Services);
+        Assert.ThrowsAny<Exception>(() => Variant("Production", b =>
+        {
+            Entra(b, devSignIn: false);
+            b.UseSetting("Jobs:Enabled", "false");
+        }).Services);
     }
 
     [Fact]

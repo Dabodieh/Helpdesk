@@ -2,6 +2,11 @@
 
 Module: **Mail** (+ Attachments). Ticketing depends on mail only through contracts; Mail never writes ticket tables directly.
 
+## Implementation status (Phase 3)
+Implemented (ADR-013, API: `docs/api/PHASE3_API.md`): Mail and Attachments modules, mailbox administration, `IMailProvider` with a Graph provider and an in-process simulator, webhook + lifecycle endpoints, delta synchronisation, subscription maintenance, the inbound pipeline (idempotent persist, noise/loop guard, department from the receiving mailbox, correlation, hand-over to Ticketing, attachments), the outbound outbox (same transaction as the ticket message, retry-safe send, visible failure and retry), HTML sanitising, Hangfire jobs, an "attention" list for failed/ignored mail. The MVP acceptance scenario runs automatically against the simulator (`MailLoopTests`, Playwright `email-loop.spec.ts`).
+**Validation status (unchanged by Phase 3):** behaviour validated against our Microsoft 365 tenant is still **NONE**. The Graph provider is tested only against hand-built payloads in the documented shapes (`GraphProviderTests`), and the simulator assumes Exchange sets `In-Reply-To`/`References` on reply drafts (E-23). The production gate of ADR-011 stays open until `docs/guides/GRAPH_TENANT_VALIDATION.md` has been executed against an approved test mailbox. The S3 object store was verified against a real S3-compatible endpoint (local SeaweedFS).
+Where the code differs from the sketches below: the provider interface is the one in `Providers/IMailProvider.cs` (explicit draft/send/sent-copy steps; delta takes a not-before date so existing mailbox history is never imported), the notification table stores identifiers only and only nudges the delta sync, and a reply with no reply target (web-created ticket) goes out as a new message with the ticket reference in the subject as a hint.
+
 ## Provider abstraction (ADR-004)
 ```csharp
 public interface IMailProvider

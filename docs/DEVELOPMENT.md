@@ -99,3 +99,7 @@ Serilog writes structured logs to the console. Set `OTEL_EXPORTER_OTLP_ENDPOINT`
 
 ## Demo data
 `node scripts/dev-seed.mjs [apiBase]` seeds a LOCAL Development API (dev sign-in must be enabled) with an IT department, two teams, agents `alice`, `bob`, `carol` (TeamLead) plus `dev-admin`, and 12 realistic tickets with conversations. Idempotent: it leaves existing tickets alone.
+
+## Email (Phase 3)
+Development uses the in-process mailbox simulator (`Mail:Provider=Fake`, `Storage:Provider=InMemory`): sign in as `dev-admin`, create a mailbox in Administration (or run `node scripts/dev-seed.mjs`), then inject mail with `POST /api/dev/mail/inbound` and answer sent mail with `POST /api/dev/mail/customer-reply`. Hangfire runs in the host; dashboard (platform admin, read-only) at `/hangfire`.
+Real tenant: `Mail:Provider=Graph`, `Mail:NotificationBaseUrl` (public https), `Mail:Graph:TenantId/ClientId` and `ClientSecret` or `CertificatePath` (user-secrets or environment only), then follow `docs/guides/GRAPH_TENANT_VALIDATION.md`. S3: `Storage:Provider=S3` with `Storage:S3:Endpoint/Bucket/AccessKey/SecretKey` (local: `docker compose --profile storage up -d`). Tests that need a real S3 endpoint run when `HELPDESK_TEST_S3_ENDPOINT/ACCESS_KEY/SECRET_KEY` are set. Production defaults require explicit Graph and S3 settings (the host refuses to start without them) and `Attachments:RequireCleanScan=true`.

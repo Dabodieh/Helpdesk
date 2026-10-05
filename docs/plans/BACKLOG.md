@@ -37,3 +37,8 @@
 - SignalR push for open workspaces and queues (Phase 4); optimistic UI and a resizable split in the workspace
 - Multi-select priority filter and saved views in the queue (Phase 4)
 - Reverse-proxy security headers for the SPA (CSP, HSTS)
+- Rate limiting for the webhook endpoints and the API (ASP.NET rate limiter)
+- Malware scanning engine behind `IAttachmentScanner` (D-08); outbound attachments; `cid:` inline image rendering
+- Reply quoting strategy, per-reply mailbox choice, "send test email" and connection check for a mailbox
+- Hangfire ROLE=web|worker split and metrics; retention/purge of raw bodies and webhook receipts (D-09)
+- Re-run the Graph runbook findings into the provider (message-id rewriting, reply headers, SendAs needs) once a tenant exists

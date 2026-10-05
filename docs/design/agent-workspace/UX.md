@@ -28,3 +28,6 @@ Ascending chronology, newest-first fetch with "Load earlier messages". Each entr
 
 ## States
 Empty queue: one line plus hint to change filters. Empty workspace pane: "Select a ticket" with shortcut hints. Loading: skeleton rows with fixed height (no layout shift) and `role=status`. Errors: inline alert with Retry; 404 never distinguishes missing from forbidden. Conflict: banner "Someone else changed this ticket" with Reload, draft kept.
+
+## Phase 3 additions
+Delivery state under agent replies (Queued / Sent by email from the department mailbox / Failed with Retry / Recorded, not emailed); attachments list (download link, blocked or awaiting-scan reasons); "Show formatted" opens sanitised email HTML in a sandboxed frame (plain text stays default); ticket header shows the mailbox and people in copy; Administration gains Mailboxes and "Mail needing attention". Screenshots: `screenshots/email-ticket.png`, `screenshots/admin-mailboxes.png`.

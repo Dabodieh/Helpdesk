@@ -35,8 +35,8 @@ Modules are introduced when their functionality is required, not pre-created.
 | Organisation | 1 | Departments, teams, memberships, roles, permission catalogue and `IAuthorizer` (Permissions folded in, ADR-009) |
 | Audit | 1 | Append-only audit events, `IAuditWriter` |
 | Ticketing (requesters, tickets, conversation) | 2 | Tickets, department-scoped requesters, public messages and internal notes, per-department references, queues; `ITicketIngress` for Phase 3 (ADR-012, `TICKETING.md`) |
-| Mail | 3 | `IMailProvider`, Graph provider, mailboxes, inbound/outbound pipeline |
-| Attachments | 3 | `IObjectStore`, scanning/validation, metadata |
+| Mail | 3 | Mailboxes, `IMailProvider` (Graph + simulator), webhooks/delta, inbound pipeline, outbox, attention list (ADR-013) |
+| Attachments | 3 | `IObjectStore` (S3-compatible), validation, scan seam, metadata (ADR-013) |
 | Notifications, Search, SLA, BusinessHours, Automation | 4–5 | as named |
 | KnowledgeBase, Portal | 6 | |
 | Reporting | 7 | |
@@ -80,3 +80,6 @@ The authentication scheme registration (cookie session, Entra OIDC, dev sign-in,
 
 ## Phase 2 structure
 `src/Helpdesk.Modules.Ticketing` (schema `ticketing`, migration order 40) depends on SharedKernel, Audit.Contracts, Identity.Contracts and Organisation.Contracts (`IOrganisationDirectory`). Ticket history is the audit stream read through `IAuditReader`. Ticket-id routes use resource-scoped authorization (`RequireResourcePermission`) over a fail-closed department-scoped query filter. The web app has two areas: the agent workspace (queues, split ticket view; `docs/design/agent-workspace/UX.md`) and Administration under `/admin`. Realtime (SignalR) is deferred to Phase 4; workspaces poll.
+
+## Phase 3 structure
+`src/Helpdesk.Modules.Mail` (schema `mail`, order 35) and `src/Helpdesk.Modules.Attachments` (schema `attachments`, order 50). Mail never references Ticketing: it calls interfaces it declares and Ticketing implements (`IInboundTicketSink`, `IDeliveryStateSink`); Ticketing calls `IMailboxDirectory` and `IMailOutbox`. Hangfire lives only in the Host (`Jobs/`), behind `IMailJobRunner`/`IMailJobScheduler`. Webhook endpoints are the only anonymous, CSRF-exempt routes besides sign-in helpers (listed in the architecture tests). The web app gains delivery states, attachments, a sandboxed formatted-email view and mailbox administration.

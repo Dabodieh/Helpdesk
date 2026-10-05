@@ -4,7 +4,7 @@
 | ID | Decision | Notes / default | Owner |
 |---|---|---|---|
 | D-04 | PostgreSQL row-level security as an additional isolation layer | Not adopted in Phase 2. Isolation layers in place: fail-closed EF scope filter, composite foreign keys, per-action `IAuthorizer` checks, and the Phase 1 + Phase 2 isolation matrices (no leak found). Re-evaluate before production hardening or if a new bypass path appears. | Principal |
-| D-08 | Concrete malware-scanning engine (e.g. ClamAV, commercial API, cloud scanner) | Scanning is **required before any production release that accepts user attachments**. Engine choice not blocking until Phase 3. Abstraction: `IAttachmentScanner` (see SECURITY.md). | Principal / PO |
+| D-08 | Concrete malware-scanning engine (e.g. ClamAV, commercial API, cloud scanner) | Scanning is **required before any production release that accepts user attachments**. Engine choice not blocking until Phase 3. Abstraction: `IAttachmentScanner` (see SECURITY.md).  Phase 3: the scan seam and the `Attachments:RequireCleanScan` download gate exist; no engine yet. | Principal / PO |
 | D-09 | Data retention policy (periods, export, anonymisation, legal hold) | Organisational/compliance policy, **unresolved**. No automatic deletion, no age-based hard-delete. Schema must keep later retention/export/anonymisation possible. | PO / compliance |
 | D-11 | Platform-admin self-granting department membership | Currently allowed as an ordinary, audited membership change (flagged `selfGrant` in the audit event). Consider dual control or notification before production. | PO |
 | D-12 | Future audited emergency ("break-glass") ticket access | Not implemented. Constraints recorded in PERMISSIONS.md. | PO |

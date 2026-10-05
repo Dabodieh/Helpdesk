@@ -48,8 +48,8 @@ A new follow-up ticket is **not** created by default. A future per-department se
 Agents recording a requester message by hand is not a Phase 2 feature.
 Agent public replies on a Closed ticket are refused (409 `invalid_state`: reopen first); internal notes are allowed on any status.
 
-## Public reply truthfulness (Phase 2)
-There is no mail transport. A public agent reply is stored as `kind=Public, author_type=Agent, delivery_state=NotDelivered`, which the UI must label "Recorded, not emailed (email delivery is not enabled)". No state implies sending. Phase 3 adds `Pending`/`Sent`/`Failed` and a transport abstraction; Graph delivery is Phase 3.
+## Public reply truthfulness (Phase 2, extended in Phase 3)
+An agent public reply is `kind=Public, author_type=Agent` with a delivery state: `NotDelivered` when the department has no active mailbox (recorded only), `Pending` once queued in the mail outbox (same transaction as the message), `Sent` only after the provider accepted the send, `Failed` (short error code, visible and retryable) otherwise. Notes and requester messages are always `None` (database CHECK). The UI labels each state; nothing claims a send that did not happen. Phase 3 additions to the schema: `messages.source` may be `email`, `messages.source_ref` (unique per department+source: producer idempotency), `messages.body_html` (sanitised email HTML), `messages.delivery_error`; `tickets.mailbox_id` (composite FK with the department); `ticket_participants` (CC from email, copied on replies). Email enters only through the mail sink (`IInboundTicketSink`), the same D-15 rules apply (a requester reply reopens the same ticket).
 
 ## Permissions (all *content* kind: membership only, never the platform-admin flag)
 `tickets.read`, `tickets.create`, `tickets.reply`, `tickets.note`, `tickets.notes.read`, `tickets.update`, `tickets.assign.self`, `tickets.assign.any`.
