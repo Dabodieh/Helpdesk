@@ -38,6 +38,10 @@ internal static class TicketAuditActions
     public const string TeamChanged = "ticket.team_changed";
     public const string AssigneeChanged = "ticket.assignee_changed";
     public const string MessageAdded = "ticket.message_added";
+    public const string MergedIn = "ticket.merged_in";
+    public const string MergedInto = "ticket.merged_into";
+    public const string LinkAdded = "ticket.link_added";
+    public const string LinkRemoved = "ticket.link_removed";
     public const string MessageDeliveryChanged = "ticket.message_delivery_changed";
     public const string RequesterCreated = "requester.created";
     public const string CannedCreated = "canned_response.created";

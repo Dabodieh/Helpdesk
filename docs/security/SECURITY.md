@@ -72,3 +72,8 @@ Open: no malware engine (D-08), no webhook rate limiting, raw bodies stored in `
 - The execution trace stores no subject text or full addresses. Activity hides internal-note entries from callers without notes access.
 - Existence of internal notes: `updatedAt` and the row version only change for visible activity; an internal note (human or automation) does not write the ticket row, does not reorder queues, does not change list, search, detail, activity or count output, and its realtime event goes only to the notes group. Tested through detail, list order, search, activity, messages, counts and SignalR with a role that lacks `tickets.notes.read`.
 - Limits: unbounded execution-history retention (D-09), no rate limits on configuration endpoints (BACKLOG).
+
+## Ticket merge and links (refinement 3)
+- Same-department only, enforced three ways: the service (404 for unreadable tickets, `cross_department` otherwise), the composite foreign keys of `merged_into_ticket_id` and `ticket_links`, and the department scope filter on every query. Merge needs `tickets.update` on the canonical ticket's department; candidate search and link listing run through the scoped set, so hidden tickets never appear.
+- Internal notes keep the notes filter when a merged conversation is read; imported provenance (`importedFrom`) is agent-only. A merge never copies a conversation or attachment, never adds participants and never grants portal access: a requester sees the canonical ticket only if they already own it, and a merged request fails closed (404) otherwise.
+- Mail: an old thread continues on the canonical ticket only after Mail's strong correlation matched; subject references still never attach on their own.

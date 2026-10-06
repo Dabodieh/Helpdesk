@@ -41,6 +41,21 @@ export default function PortalRequest() {
     )
   }
   const r = request.data
+  if (r.mergedInto) {
+    // Safe transition: the server only says this when the requester also owns the active request.
+    return (
+      <>
+        <p>
+          <Link to="/portal/requests">← My requests</Link>
+        </p>
+        <h1>{r.subject}</h1>
+        <p className="notice info">
+          This request ({r.reference}) was combined with another request of yours. Please follow it there:{' '}
+          <Link to={`/portal/requests/${encodeURIComponent(r.mergedInto)}`}>open {r.mergedInto}</Link>.
+        </p>
+      </>
+    )
+  }
   function submit(e: FormEvent) {
     e.preventDefault()
     if (text.trim()) send.mutate()

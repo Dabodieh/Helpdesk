@@ -28,7 +28,8 @@ internal sealed record TicketListItemDto(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     MatchDto? Match = null,
-    Helpdesk.Modules.Ticketing.Sla.SlaSummaryDto? Sla = null);
+    Helpdesk.Modules.Ticketing.Sla.SlaSummaryDto? Sla = null,
+    string? MergedInto = null);
 
 internal sealed record MailboxRefDto(Guid Id, string Address, string Name);
 
@@ -57,7 +58,15 @@ internal sealed record TicketDetailDto(
     string? Source = null,
     string? RequestForm = null,
     IReadOnlyList<AgentFieldDto>? Fields = null,
-    RefDto? Type = null);
+    RefDto? Type = null,
+    MergedIntoDto? MergedInto = null,
+    IReadOnlyList<MergedTicketDto>? MergedTickets = null);
+
+/// <summary>Shown on a merged ticket: where it went, when and by whom.</summary>
+internal sealed record MergedIntoDto(Guid Id, string Reference, string Subject, DateTimeOffset MergedAt, ActorDto? MergedBy);
+
+/// <summary>Shown on a canonical ticket: a ticket that was merged into it.</summary>
+internal sealed record MergedTicketDto(Guid Id, string Reference, string Subject, DateTimeOffset MergedAt, ActorDto? MergedBy);
 
 /// <summary>A submitted custom-field value as agents see it (label and text as rendered at submission).</summary>
 internal sealed record AgentFieldDto(string Label, string Value);
@@ -76,7 +85,8 @@ internal sealed record MessageDto(
     string DeliveryState,
     string? DeliveryError,
     IReadOnlyList<Helpdesk.Modules.Attachments.Contracts.AttachmentSummary> Attachments,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    string? ImportedFrom = null);
 
 internal sealed record PostedMessageDto(MessageDto Message, TicketDetailDto Ticket);
 

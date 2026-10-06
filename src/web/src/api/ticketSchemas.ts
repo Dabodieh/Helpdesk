@@ -36,13 +36,28 @@ export const ticketListItemSchema = z.object({
   match: matchSchema.nullish(),
   /** Service-level state; absent when no SLA policy applies. */
   sla: slaSummarySchema.nullish(),
+  /** Reference of the canonical ticket when this ticket was merged (history and search results). */
+  mergedInto: z.string().nullish(),
 })
 export type TicketListItem = z.infer<typeof ticketListItemSchema>
 
 export const mailboxRefSchema = z.object({ id: z.string(), address: z.string(), name: z.string() })
 export const participantSchema = z.object({ email: z.string(), displayName: z.string().nullable().optional() })
 
-export const ticketDetailSchema = ticketListItemSchema.extend({
+const mergeActorSchema = z.object({ id: z.string(), displayName: z.string().nullish() })
+
+/** On a merged ticket: where it went. Replaces the list shape's plain reference. */
+export const mergedIntoSchema = z.object({
+  id: z.string(),
+  reference: z.string(),
+  subject: z.string(),
+  mergedAt: z.string(),
+  mergedBy: mergeActorSchema.nullish(),
+})
+
+export const mergedTicketSchema = mergedIntoSchema
+
+export const ticketDetailSchema = ticketListItemSchema.omit({ mergedInto: true }).extend({
   departmentName: z.string(),
   resolvedAt: z.string().nullable(),
   closedAt: z.string().nullable(),
@@ -56,6 +71,9 @@ export const ticketDetailSchema = ticketListItemSchema.extend({
   }),
   mailbox: mailboxRefSchema.nullable().optional(),
   participants: z.array(participantSchema).default([]),
+  mergedInto: mergedIntoSchema.nullish(),
+  /** On a canonical ticket: the tickets merged into it. */
+  mergedTickets: z.array(mergedTicketSchema).nullish(),
 })
 export type TicketDetail = z.infer<typeof ticketDetailSchema>
 
@@ -88,6 +106,8 @@ export const messageSchema = z.object({
   deliveryError: z.string().nullable().optional(),
   attachments: z.array(attachmentSchema).default([]),
   createdAt: z.string(),
+  /** Agent-only provenance: the reference of the merged ticket this entry came from. */
+  importedFrom: z.string().nullish(),
 })
 export type Message = z.infer<typeof messageSchema>
 

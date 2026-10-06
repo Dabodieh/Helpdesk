@@ -71,3 +71,7 @@
 - (Refinement 2) Queue filter UI for ticket type (the API accepts `typeId`; agents need a read-only type list per department first); type and field columns or filters in saved views.
 - (Refinement 2) Agent create-ticket dialog: choose a type and fill its fields (the API supports both); portal UI for requester-editable fields (API and `editableFields` exist).
 - (Refinement 2) Searchable or filterable custom fields; automation conditions on field values; conditional fields; a required-details report for tickets missing newly required values.
+
+- (Refinement 3) Un-merge (split) of a merged ticket; merging across departments; copying merged participants/CC to the canonical ticket (deliberately not done: replies would reach other requesters); retrying delivery of an imported public reply from the canonical ticket.
+- (Refinement 3) Searching the messages of merged tickets from the canonical ticket; showing links of a merged source on its canonical ticket; link types beyond Related/Duplicate/Parent/Child (Problem/Incident management); a requester-facing view of related tickets.
+- (Refinement 3) Browser flow (open duplicate, merge, check merged state) and a portal Vitest for the merged-request notice (covered by API tests today); a realtime event kind for merge so open workspaces refresh without polling.

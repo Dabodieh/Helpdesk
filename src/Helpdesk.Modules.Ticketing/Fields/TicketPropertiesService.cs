@@ -57,6 +57,11 @@ internal sealed class TicketPropertiesService(
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         await db.Database.ExecuteSqlAsync($"SELECT 1 FROM ticketing.tickets WHERE id = {key.Id} FOR UPDATE", ct);
         var ticket = await db.Tickets.SingleOrDefaultAsync(t => t.Id == key.Id, ct) ?? throw new NotFoundException();
+        if (ticket.IsMerged)
+        {
+            throw new ConflictException("The ticket was merged into another ticket and is read-only.", Services.TicketMergeCodes.Merged);
+        }
+
         if (ticket.Version != version)
         {
             throw new ConflictException("The ticket was changed elsewhere. Reload and retry.", ProblemCodes.VersionConflict);

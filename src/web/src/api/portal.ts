@@ -41,6 +41,8 @@ export const portalRequestSchema = z.object({
   lastActivityAt: z.string(),
   fields: z.array(z.object({ label: z.string(), value: z.string() })),
   messages: z.array(portalMessageSchema),
+  /** Set when this request was merged into another request of the same requester. */
+  mergedInto: z.string().nullish(),
 })
 export type PortalRequest = z.infer<typeof portalRequestSchema>
 

@@ -175,6 +175,38 @@ internal static class TicketEndpoints
             .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsRead, Route)
             .WithTags("Tickets");
 
+        // Merge: the route ticket is the canonical one. tickets.update on its department; sources are resolved through the caller's department scope.
+        app.MapPost("/api/tickets/{ticket}/merge", async (string ticket, MergeTicketsRequest body, TicketMergeService merges, CancellationToken ct) =>
+                TypedResults.Ok(await merges.MergeAsync(ticket, body, ct)))
+            .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsUpdate, Route)
+            .WithTags("Tickets");
+
+        app.MapGet("/api/tickets/{ticket}/link-candidates", async (string ticket, string? q, TicketMergeService merges, CancellationToken ct) =>
+                TypedResults.Ok(await merges.CandidatesAsync(ticket, q, ct)))
+            .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsUpdate, Route)
+            .WithTags("Tickets");
+
+        app.MapGet("/api/tickets/{ticket}/links", async (string ticket, TicketLinkService links, CancellationToken ct) =>
+                TypedResults.Ok(await links.ListAsync(ticket, ct)))
+            .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsRead, Route)
+            .WithTags("Tickets");
+
+        app.MapPost("/api/tickets/{ticket}/links", async (string ticket, AddTicketLinkRequest body, TicketLinkService links, CancellationToken ct) =>
+            {
+                var created = await links.AddAsync(ticket, body, ct);
+                return TypedResults.Created($"/api/tickets/{ticket}/links", created);
+            })
+            .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsUpdate, Route)
+            .WithTags("Tickets");
+
+        app.MapDelete("/api/tickets/{ticket}/links/{linkId:guid}", async (string ticket, Guid linkId, TicketLinkService links, CancellationToken ct) =>
+            {
+                await links.RemoveAsync(ticket, linkId, ct);
+                return TypedResults.NoContent();
+            })
+            .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsUpdate, Route)
+            .WithTags("Tickets");
+
         app.MapGet("/api/tickets/{ticket}/activity",
                 async (string ticket, string? cursor, int? limit, TicketService tickets, CancellationToken ct) =>
                     TypedResults.Ok(await tickets.ActivityAsync(ticket, cursor, limit, ct)))

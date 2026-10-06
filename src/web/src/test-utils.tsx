@@ -121,7 +121,7 @@ export function makeTicket(over: Partial<TicketListItem> = {}): TicketListItem {
 
 export function makeDetail(over: Partial<TicketDetail> = {}): TicketDetail {
   return {
-    ...makeTicket(),
+    ...(makeTicket() as Omit<TicketListItem, 'mergedInto'>),
     departmentName: 'IT Support',
     resolvedAt: null,
     closedAt: null,

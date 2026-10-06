@@ -2435,3 +2435,72 @@ fieldset.choice {
     grid-template-columns: 1fr;
   }
 }
+
+/* Merge and related tickets */
+.more-menu {
+  position: relative;
+  margin-left: auto;
+}
+.more-popover {
+  top: calc(100% + 4px);
+  bottom: auto;
+  left: auto;
+  right: 0;
+  display: grid;
+  min-width: 11rem;
+}
+.merged-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.4rem 0.9rem;
+  padding: 0.6rem 0.8rem;
+  border: 2px dashed var(--muted);
+  border-radius: 6px;
+}
+.merged-banner .button {
+  margin-left: auto;
+}
+.related {
+  margin: 0.4rem 0.9rem;
+}
+.related h3 {
+  margin: 0 0 0.25rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.related ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.related li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.15rem 0;
+}
+.rel-type {
+  min-width: 6.5rem;
+  font-weight: 600;
+}
+.candidate-list {
+  list-style: none;
+  margin: 0.4rem 0;
+  padding: 0;
+  max-height: 14rem;
+  overflow: auto;
+}
+.candidate-list label {
+  display: block;
+  padding: 0.25rem 0;
+}
+.merge-preview {
+  border: 1px solid var(--border, currentColor);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  margin: 0.5rem 0;
+}

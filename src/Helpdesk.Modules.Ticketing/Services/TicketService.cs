@@ -464,6 +464,11 @@ internal sealed class TicketService(
         var key = await resolver.FindAsync(route, ct) ?? throw new NotFoundException();
         await authorizer.RequireAsync(PermissionCodes.TicketsReply, key.DepartmentId, ct);
 
+        if (await db.Tickets.AsNoTracking().AnyAsync(t => t.Id == key.Id && t.MergedIntoTicketId != null, ct))
+        {
+            throw MergedConflict();
+        }
+
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var message = await db.Messages.SingleOrDefaultAsync(
             m => m.Id == messageId && m.TicketId == key.Id && m.DepartmentId == key.DepartmentId && m.Kind == MessageKind.Public && m.AuthorType == AuthorType.Agent, ct)
@@ -496,8 +501,32 @@ internal sealed class TicketService(
     public async Task<AttachmentOpenResult> OpenAttachmentAsync(string route, Guid attachmentId, CancellationToken ct)
     {
         var key = await resolver.FindAsync(route, ct) ?? throw new NotFoundException();
-        var result = await attachments.OpenAsync(key.DepartmentId, key.Id, attachmentId, ct);
-        return result.NotFound ? throw new NotFoundException() : result;
+        // Attachments of merged tickets stay on their original ticket (no copies): try this ticket, then the tickets merged into it.
+        var owners = await ConversationTicketsAsync(key, ct);
+        foreach (var owner in owners.Keys)
+        {
+            var result = await attachments.OpenAsync(key.DepartmentId, owner, attachmentId, ct);
+            if (!result.NotFound)
+            {
+                return result;
+            }
+        }
+
+        throw new NotFoundException();
+    }
+
+    /// <summary>The ticket itself first, then the tickets merged into it (id to reference). Same department by construction (composite foreign key).</summary>
+    private async Task<Dictionary<Guid, string>> ConversationTicketsAsync(TicketKey key, CancellationToken ct)
+    {
+        var map = new Dictionary<Guid, string> { [key.Id] = "" };
+        var merged = await db.Tickets.AsNoTracking().Where(t => t.MergedIntoTicketId == key.Id && t.DepartmentId == key.DepartmentId)
+            .Select(t => new { t.Id, t.Reference }).ToListAsync(ct);
+        foreach (var m in merged)
+        {
+            map[m.Id] = m.Reference;
+        }
+
+        return map;
     }
 
     public async Task<PageDto<MessageDto>> ListMessagesAsync(string route, string? cursor, int? limit, CancellationToken ct)
@@ -509,7 +538,10 @@ internal sealed class TicketService(
         }
 
         var key = await resolver.FindAsync(route, ct) ?? throw new NotFoundException();
-        var query = db.Messages.AsNoTracking().Where(m => m.TicketId == key.Id);
+        // The conversation of a canonical ticket also shows the messages of the tickets merged into it; they keep their original ticket and provenance.
+        var conversation = await ConversationTicketsAsync(key, ct);
+        var conversationIds = conversation.Keys.ToArray();
+        var query = db.Messages.AsNoTracking().Where(m => conversationIds.Contains(m.TicketId));
 
         // Internal notes have their own gate, applied in the query itself.
         if (await authorizer.CheckAsync(PermissionCodes.TicketsNotesRead, key.DepartmentId, ct) != AccessOutcome.Allowed)
@@ -554,7 +586,8 @@ internal sealed class TicketService(
             m.DeliveryState.ToString(),
             m.DeliveryError,
             files.TryGetValue(m.Id, out var list) ? list : [],
-            m.CreatedAt)).ToList();
+            m.CreatedAt,
+            m.TicketId == key.Id ? null : conversation[m.TicketId])).ToList();
         var next = hasMore ? Cursor.Encode(string.Create(CultureInfo.InvariantCulture, $"{rows[^1].CreatedAt.UtcTicks}|{rows[^1].Id}")) : null;
         return new PageDto<MessageDto>(items, next);
     }
@@ -808,6 +841,11 @@ internal sealed class TicketService(
     {
         await db.Database.ExecuteSqlAsync($"SELECT 1 FROM ticketing.tickets WHERE id = {ticketId} FOR UPDATE", ct);
         var ticket = await db.Tickets.Include(t => t.Requester).SingleOrDefaultAsync(t => t.Id == ticketId, ct) ?? throw new NotFoundException();
+        if (ticket.IsMerged)
+        {
+            throw MergedConflict();
+        }
+
         if (expectedVersion is { } version)
         {
             if (ticket.Version != version)
@@ -892,6 +930,9 @@ internal sealed class TicketService(
             throw new ConflictException("The team or assignee is no longer valid for this department.", ProblemCodes.InvalidState);
         }
     }
+
+    internal static ConflictException MergedConflict() =>
+        new("The ticket was merged into another ticket and is read-only.", TicketMergeCodes.Merged);
 
     internal static ConflictException VersionConflict() =>
         new("The ticket was changed by someone else. Reload and retry.", ProblemCodes.VersionConflict);

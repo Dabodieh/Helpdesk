@@ -125,6 +125,12 @@ internal sealed class TicketQueryService(
                 break;
         }
 
+        // Merged tickets are not independently actionable: they stay out of queues and views. Search still finds them (by reference too), marked as merged.
+        if (search is null)
+        {
+            tickets = tickets.Where(t => t.MergedIntoTicketId == null);
+        }
+
         var statusFilter = statuses.ToArray();
         tickets = statusFilter.Length == 0
             ? tickets.Where(t => t.Status != TicketStatus.Closed)
@@ -198,7 +204,7 @@ internal sealed class TicketQueryService(
             .Take(take + 1)
             .Select(t => new TicketRow(
                 t.Id, t.Reference, t.DepartmentId, t.Subject, t.Status, t.Priority, t.RequesterId, t.Requester.DisplayName, t.Requester.Email,
-                t.TeamId, t.AssigneeUserId, t.CreatedAt, t.UpdatedAt))
+                t.TeamId, t.AssigneeUserId, t.CreatedAt, t.UpdatedAt, t.MergedIntoTicketId))
             .ToListAsync(ct);
 
         var hasMore = rows.Count > take;
@@ -277,7 +283,7 @@ internal sealed class TicketQueryService(
         var slaBreached = await db.TicketSlas.AsNoTracking().CountAsync(s => s.NextDueAt != null && s.NextDueAt <= now, ct);
         var slaApproaching = await db.TicketSlas.AsNoTracking().CountAsync(s => s.NextWarnAt != null && s.NextWarnAt <= now && s.NextDueAt > now, ct);
         var counts = await db.Tickets.AsNoTracking()
-            .Where(t => t.Status == TicketStatus.Open)
+            .Where(t => t.Status == TicketStatus.Open && t.MergedIntoTicketId == null)
             .GroupBy(_ => 1)
             .Select(g => new
             {

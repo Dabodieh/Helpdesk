@@ -31,6 +31,8 @@ public static class TicketingModule
         services.AddScoped<TicketProjection>();
         services.AddScoped<TicketService>();
         services.AddScoped<TicketQueryService>();
+        services.AddScoped<TicketMergeService>();
+        services.AddScoped<TicketLinkService>();
         services.AddScoped<RequesterService>();
         services.AddScoped<RequesterHistoryService>();
         services.AddScoped<Fields.FieldCatalog>();

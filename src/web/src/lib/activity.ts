@@ -16,6 +16,17 @@ function pick(o: Obj, ...keys: string[]): string | null {
   return values.length === 1 && typeof values[0] === 'string' ? values[0] : null
 }
 
+/** Reference inside an object-valued audit field, e.g. next.mergedInto.reference. */
+function refOf(o: Obj, key: string): string | null {
+  const v = o?.[key]
+  return v && typeof v === 'object' && typeof (v as { reference?: unknown }).reference === 'string' ? (v as { reference: string }).reference : null
+}
+
+function refsOf(o: Obj, key: string): string[] {
+  const v = o?.[key]
+  return Array.isArray(v) ? v.flatMap((x) => (x && typeof x === 'object' && typeof (x as { reference?: unknown }).reference === 'string' ? [(x as { reference: string }).reference] : [])) : []
+}
+
 const quote = (s: string | null) => (s ? `"${s}"` : 'nothing')
 
 /** Message events are shown in the conversation, so the timeline omits them. */
@@ -66,6 +77,28 @@ export function describeActivity(a: Activity, names: NameLookup): string {
       if (from === null && to === null) return `changed ${label}`
       return to ? (from ? `changed ${label} from ${quote(from)} to ${quote(to)}` : `set ${label} to ${quote(to)}`) : `cleared ${label}`
     }
+    case 'ticket.merged_in': {
+      const refs = refsOf(a.next, 'merged')
+      return refs.length > 0 ? `merged ${refs.join(', ')} into this ticket` : 'merged tickets into this ticket'
+    }
+    case 'ticket.merged_into': {
+      const ref = refOf(a.next, 'mergedInto')
+      return ref ? `merged this ticket into ${ref}` : 'merged this ticket into another ticket'
+    }
+    case 'ticket.link_added': {
+      const other = refOf(a.next, 'other') ?? 'another ticket'
+      const out = pick(a.next, 'direction') === 'outgoing'
+      switch (pick(a.next, 'type')) {
+        case 'DuplicateOf':
+          return out ? `marked this ticket as a duplicate of ${other}` : `marked ${other} as a duplicate of this ticket`
+        case 'ParentOf':
+          return out ? `made this ticket the parent of ${other}` : `made ${other} the parent of this ticket`
+        default:
+          return `linked this ticket as related to ${other}`
+      }
+    }
+    case 'ticket.link_removed':
+      return `removed the link to ${refOf(a.next, 'other') ?? 'another ticket'}`
     case 'ticket.message_delivery_changed': {
       const state = pick(a.next, 'delivery')
       if (state === 'Sent') return 'sent a reply by email'

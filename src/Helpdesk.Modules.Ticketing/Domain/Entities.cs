@@ -145,6 +145,19 @@ internal sealed class Ticket
 
     public DateTimeOffset? ClosedAt { get; set; }
 
+    /// <summary>
+    /// Set when this ticket was merged into a canonical ticket of the SAME department (composite foreign key). A merged ticket keeps its
+    /// reference, subject, requester, status and conversation but is read-only and leaves queues; never chained (merging a canonical
+    /// ticket repoints its sources). Not a status: Resolved/Closed semantics stay untouched.
+    /// </summary>
+    public Guid? MergedIntoTicketId { get; set; }
+
+    public DateTimeOffset? MergedAt { get; set; }
+
+    public Guid? MergedByUserId { get; set; }
+
+    public bool IsMerged => MergedIntoTicketId is not null;
+
     /// <summary>PostgreSQL xmin; exposed to clients as the opaque <c>version</c> string.</summary>
     public uint Version { get; set; }
 
@@ -312,6 +325,42 @@ internal sealed class RequesterLink
 
     /// <summary>The verified address that justified the link (audit trail; not used for access).</summary>
     public string LinkedEmailNormalised { get; set; } = "";
+
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+
+internal static class TicketLinkTypes
+{
+    /// <summary>Symmetric; stored once with the smaller id first.</summary>
+    public const string Related = "Related";
+
+    /// <summary>Source is a duplicate of target.</summary>
+    public const string DuplicateOf = "DuplicateOf";
+
+    /// <summary>Source is the parent of target.</summary>
+    public const string ParentOf = "ParentOf";
+
+    public static readonly string[] All = [Related, DuplicateOf, ParentOf];
+}
+
+/// <summary>
+/// Informational relationship between two tickets of the same department (composite foreign keys). Both tickets stay independently active;
+/// unlike a merge nothing about either ticket changes. At most one link exists per pair of tickets.
+/// </summary>
+internal sealed class TicketLink
+{
+    public Guid Id { get; set; }
+
+    public Guid DepartmentId { get; set; }
+
+    public Guid SourceTicketId { get; set; }
+
+    public Guid TargetTicketId { get; set; }
+
+    public string Type { get; set; } = TicketLinkTypes.Related;
+
+    public Guid? CreatedByUserId { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
 }

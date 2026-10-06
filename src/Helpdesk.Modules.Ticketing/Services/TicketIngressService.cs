@@ -30,6 +30,11 @@ internal sealed class TicketIngressService(TicketingDbContext db, TicketingAudit
         await db.Database.ExecuteSqlAsync($"SELECT 1 FROM ticketing.tickets WHERE id = {ticketId} AND department_id = {departmentId} FOR UPDATE", cancellationToken);
         var ticket = await db.Tickets.IgnoreDepartmentScope()
             .SingleOrDefaultAsync(t => t.Id == ticketId && t.DepartmentId == departmentId, cancellationToken) ?? throw new NotFoundException();
+        if (ticket.IsMerged)
+        {
+            throw new ConflictException("The ticket was merged into another ticket.", TicketMergeCodes.Merged);
+        }
+
         var requesterExists = await db.Requesters.IgnoreDepartmentScope()
             .AnyAsync(r => r.Id == requesterId && r.DepartmentId == departmentId, cancellationToken);
         if (!requesterExists)

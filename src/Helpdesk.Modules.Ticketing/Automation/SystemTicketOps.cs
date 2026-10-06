@@ -149,6 +149,11 @@ internal sealed class SystemTicketOps(
         }
 
         await db.Entry(ticket).ReloadAsync(ct);
+        if (ticket.IsMerged)
+        {
+            return OpOutcome.NoChange("The ticket was merged.");
+        }
+
         var now = clock.GetUtcNowMicroseconds();
         var via = new { ruleExecutionId = executionId, action = index };
         var changes = new List<TicketChange>();

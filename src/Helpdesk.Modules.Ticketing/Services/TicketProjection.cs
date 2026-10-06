@@ -23,7 +23,8 @@ internal sealed record TicketRow(
     Guid? TeamId,
     Guid? AssigneeUserId,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    Guid? MergedIntoTicketId = null);
 
 /// <summary>Builds API shapes from tickets: resolves team, assignee and department names through the module contracts, in batches.</summary>
 internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirectory organisation, IUserDirectory users, IMailboxDirectory mailboxes, TimeProvider clock)
@@ -51,9 +52,33 @@ internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirec
             .Select(g => new
             {
                 Total = g.Count(),
-                Open = g.Count(t => t.Status == TicketStatus.Open || t.Status == TicketStatus.Pending),
+                Open = g.Count(t => t.MergedIntoTicketId == null && (t.Status == TicketStatus.Open || t.Status == TicketStatus.Pending)),
             })
             .SingleOrDefaultAsync(ct);
+
+        MergedIntoDto? mergedInto = null;
+        IReadOnlyList<MergedTicketDto>? mergedTickets = null;
+        if (ticket.MergedIntoTicketId is { } canonicalId)
+        {
+            var target = await db.Tickets.AsNoTracking().Where(t => t.Id == canonicalId).Select(t => new { t.Id, t.Reference, t.Subject }).SingleOrDefaultAsync(ct);
+            if (target is not null)
+            {
+                var by = ticket.MergedByUserId is { } actor ? await users.FindAsync(actor, ct) : null;
+                mergedInto = new MergedIntoDto(target.Id, target.Reference, target.Subject, ticket.MergedAt!.Value, by is null ? null : new ActorDto(by.Id, by.DisplayName));
+            }
+        }
+        else
+        {
+            var sources = await db.Tickets.AsNoTracking().Where(t => t.MergedIntoTicketId == ticket.Id).OrderBy(t => t.MergedAt).ThenBy(t => t.Id)
+                .Select(t => new { t.Id, t.Reference, t.Subject, t.MergedAt, t.MergedByUserId }).ToListAsync(ct);
+            if (sources.Count > 0)
+            {
+                var people = await users.GetManyAsync(sources.Where(s => s.MergedByUserId is not null).Select(s => s.MergedByUserId!.Value).Distinct().ToArray(), ct);
+                mergedTickets = [.. sources.Select(s => new MergedTicketDto(
+                    s.Id, s.Reference, s.Subject, s.MergedAt!.Value,
+                    s.MergedByUserId is { } u && people.TryGetValue(u, out var person) ? new ActorDto(person.Id, person.DisplayName) : null))];
+            }
+        }
 
         MailboxRefDto? mailbox = null;
         if (ticket.MailboxId is { } mailboxId)
@@ -97,7 +122,9 @@ internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirec
             ticket.Source,
             formName,
             fields,
-            type);
+            type,
+            mergedInto,
+            mergedTickets);
     }
 
     public async Task<IReadOnlyList<TicketListItemDto>> ListItemsAsync(IReadOnlyList<TicketRow> rows, CancellationToken ct, IReadOnlyDictionary<Guid, MatchDto>? matches = null, IReadOnlyDictionary<Guid, Helpdesk.Modules.Ticketing.Domain.TicketSla>? slas = null)
@@ -111,6 +138,11 @@ internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirec
         var departments = await organisation.GetDepartmentsAsync(rows.Select(r => r.DepartmentId).Distinct().ToArray(), ct);
         var teams = await organisation.GetTeamsAsync(rows.Where(r => r.TeamId is not null).Select(r => r.TeamId!.Value).Distinct().ToArray(), ct);
         var people = await users.GetManyAsync(rows.Where(r => r.AssigneeUserId is not null).Select(r => r.AssigneeUserId!.Value).Distinct().ToArray(), ct);
+
+        var mergedIds = rows.Where(r => r.MergedIntoTicketId is not null).Select(r => r.MergedIntoTicketId!.Value).Distinct().ToArray();
+        var mergedRefs = mergedIds.Length == 0
+            ? []
+            : await db.Tickets.AsNoTracking().Where(t => mergedIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Reference, ct);
 
         var now = clock.GetUtcNow();
         return rows.Select(r => new TicketListItemDto(
@@ -127,6 +159,7 @@ internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirec
             r.CreatedAt,
             r.UpdatedAt,
             matches is not null && matches.TryGetValue(r.Id, out var match) ? match : null,
-            slas is not null && slas.TryGetValue(r.Id, out var sla) ? Helpdesk.Modules.Ticketing.Sla.SlaSummary.Of(sla, now) : null)).ToList();
+            slas is not null && slas.TryGetValue(r.Id, out var sla) ? Helpdesk.Modules.Ticketing.Sla.SlaSummary.Of(sla, now) : null,
+            r.MergedIntoTicketId is { } mergedTo && mergedRefs.TryGetValue(mergedTo, out var mergedRef) ? mergedRef : null)).ToList();
     }
 }

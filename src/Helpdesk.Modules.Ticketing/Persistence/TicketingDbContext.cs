@@ -19,6 +19,8 @@ internal sealed partial class TicketingDbContext(DbContextOptions<TicketingDbCon
 
     public DbSet<TicketParticipant> Participants => Set<TicketParticipant>();
 
+    public DbSet<TicketLink> TicketLinks => Set<TicketLink>();
+
     public DbSet<SavedView> SavedViews => Set<SavedView>();
 
     public DbSet<CannedResponse> CannedResponses => Set<CannedResponse>();
@@ -71,6 +73,9 @@ internal sealed partial class TicketingDbContext(DbContextOptions<TicketingDbCon
                 t.HasCheckConstraint(
                     "ck_tickets_status_timestamps",
                     "(status = 'Closed') = (closed_at IS NOT NULL) AND (status IN ('Resolved','Closed')) = (resolved_at IS NOT NULL)");
+                t.HasCheckConstraint(
+                    "ck_tickets_merge_shape",
+                    "(merged_into_ticket_id IS NULL) = (merged_at IS NULL) AND (merged_into_ticket_id IS NULL OR merged_into_ticket_id <> id)");
             });
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
@@ -93,12 +98,21 @@ internal sealed partial class TicketingDbContext(DbContextOptions<TicketingDbCon
             e.Property(x => x.TicketTypeId).HasColumnName("ticket_type_id");
             e.Property(x => x.ResolvedAt).HasColumnName("resolved_at");
             e.Property(x => x.ClosedAt).HasColumnName("closed_at");
+            e.Property(x => x.MergedIntoTicketId).HasColumnName("merged_into_ticket_id");
+            e.Property(x => x.MergedAt).HasColumnName("merged_at");
+            e.Property(x => x.MergedByUserId).HasColumnName("merged_by_user_id");
+            e.Ignore(x => x.IsMerged);
             e.Property(x => x.Version).HasColumnName("xmin").HasColumnType("xid").IsRowVersion();
 
             // Composite FK target for messages; (requester_id, department_id) keeps the requester in the ticket's department.
             e.HasAlternateKey(x => new { x.Id, x.DepartmentId }).HasName("ux_tickets_id_department");
             e.HasOne(x => x.Requester).WithMany().HasForeignKey(x => new { x.RequesterId, x.DepartmentId })
                 .HasPrincipalKey(r => new { r.Id, r.DepartmentId }).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_tickets_requester_department");
+
+            // The canonical ticket must be in the same department (nullable columns: the FK is not enforced while merged_into_ticket_id is null).
+            e.HasOne<Ticket>().WithMany().HasForeignKey(x => new { x.MergedIntoTicketId, x.DepartmentId })
+                .HasPrincipalKey(t => new { t.Id, t.DepartmentId }).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_tickets_merged_into_department");
+            e.HasIndex(x => x.MergedIntoTicketId).HasFilter("merged_into_ticket_id IS NOT NULL").HasDatabaseName("ix_tickets_merged_into");
 
             e.HasOne<TicketType>().WithMany().HasForeignKey(x => new { x.TicketTypeId, x.DepartmentId })
                 .HasPrincipalKey(t => new { t.Id, t.DepartmentId }).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_tickets_type_department");
@@ -205,6 +219,30 @@ internal sealed partial class TicketingDbContext(DbContextOptions<TicketingDbCon
 
             // Department rows are visible only inside the caller's department scope; personal rows are filtered by owner in the service.
             e.HasQueryFilter(x => x.DepartmentId == null || ScopedDepartmentIds.Contains(x.DepartmentId.Value));
+        });
+
+        modelBuilder.Entity<TicketLink>(e =>
+        {
+            e.ToTable("ticket_links", t =>
+            {
+                t.HasCheckConstraint("ck_ticket_links_type", "type IN ('Related','DuplicateOf','ParentOf')");
+                t.HasCheckConstraint("ck_ticket_links_not_self", "source_ticket_id <> target_ticket_id");
+            });
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            e.Property(x => x.DepartmentId).HasColumnName("department_id");
+            e.Property(x => x.SourceTicketId).HasColumnName("source_ticket_id");
+            e.Property(x => x.TargetTicketId).HasColumnName("target_ticket_id");
+            e.Property(x => x.Type).HasColumnName("type").HasMaxLength(16);
+            e.Property(x => x.CreatedByUserId).HasColumnName("created_by_user_id");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.HasOne<Ticket>().WithMany().HasForeignKey(x => new { x.SourceTicketId, x.DepartmentId })
+                .HasPrincipalKey(t => new { t.Id, t.DepartmentId }).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_ticket_links_source_department");
+            e.HasOne<Ticket>().WithMany().HasForeignKey(x => new { x.TargetTicketId, x.DepartmentId })
+                .HasPrincipalKey(t => new { t.Id, t.DepartmentId }).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_ticket_links_target_department");
+            e.HasIndex(x => new { x.SourceTicketId, x.TargetTicketId }).IsUnique().HasDatabaseName("ux_ticket_links_pair");
+            e.HasIndex(x => x.TargetTicketId).HasDatabaseName("ix_ticket_links_target");
+            e.HasQueryFilter(x => ScopedDepartmentIds.Contains(x.DepartmentId));
         });
 
         ConfigureServiceManagement(modelBuilder);

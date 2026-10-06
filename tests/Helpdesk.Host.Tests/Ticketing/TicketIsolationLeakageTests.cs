@@ -110,7 +110,7 @@ public sealed class TicketIsolationLeakageTests(HelpdeskFixture fixture) : IClas
         Assert.DoesNotContain(sink.Lines, line => tokens.Any(t => line.Contains(t, StringComparison.Ordinal)));
     }
 
-    private sealed class DenyingAuthorizer(IAuthorizer inner, string[] denied) : IAuthorizer
+    internal sealed class DenyingAuthorizer(IAuthorizer inner, string[] denied) : IAuthorizer
     {
         public Task<AccessOutcome> CheckAsync(string permission, Guid? departmentId, CancellationToken cancellationToken = default) =>
             denied.Contains(permission) ? Task.FromResult(AccessOutcome.Forbidden) : inner.CheckAsync(permission, departmentId, cancellationToken);

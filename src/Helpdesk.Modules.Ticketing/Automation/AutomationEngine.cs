@@ -166,9 +166,9 @@ internal sealed partial class AutomationEngine(
     {
         var ticket = await db.Tickets.AsNoTracking().IgnoreDepartmentScope().Include(t => t.Requester)
             .SingleOrDefaultAsync(t => t.Id == ticketId && t.DepartmentId == departmentId, ct);
-        if (ticket is null)
+        if (ticket is null || ticket.IsMerged)
         {
-            return null;
+            return null; // a merged ticket is not independently actionable: rules neither match nor run on it
         }
 
         var sla = await db.TicketSlas.AsNoTracking().IgnoreDepartmentScope().SingleOrDefaultAsync(s => s.TicketId == ticketId && s.DepartmentId == departmentId, ct);

@@ -209,14 +209,37 @@ internal sealed class InboundTicketSink(TicketingDbContext db, TicketingAudit au
         }
 
         var now = clock.GetUtcNowMicroseconds();
+
+        // Strong correlation to a MERGED ticket's thread (headers/token matched upstream) continues on the canonical ticket instead of resurrecting
+        // the merged one. Merging flattens (a source always points at the final canonical ticket), so one hop is enough; the loop is only a bound.
+        var targetId = request.TicketId;
+        for (var hop = 0; hop < 3; hop++)
+        {
+            var mergedInto = await db.Tickets.AsNoTracking().IgnoreDepartmentScope()
+                .Where(t => t.Id == targetId && t.DepartmentId == request.DepartmentId).Select(t => t.MergedIntoTicketId).SingleOrDefaultAsync(cancellationToken);
+            if (mergedInto is not { } next)
+            {
+                break;
+            }
+
+            targetId = next;
+        }
+
         await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
         await db.Database.ExecuteSqlAsync(
-            $"SELECT 1 FROM ticketing.tickets WHERE id = {request.TicketId} AND department_id = {request.DepartmentId} FOR UPDATE", cancellationToken);
-        var ticket = await db.Tickets.IgnoreDepartmentScope().SingleOrDefaultAsync(t => t.Id == request.TicketId && t.DepartmentId == request.DepartmentId, cancellationToken);
+            $"SELECT 1 FROM ticketing.tickets WHERE id = {targetId} AND department_id = {request.DepartmentId} FOR UPDATE", cancellationToken);
+        var ticket = await db.Tickets.IgnoreDepartmentScope().SingleOrDefaultAsync(t => t.Id == targetId && t.DepartmentId == request.DepartmentId, cancellationToken);
         if (ticket is null)
         {
             await tx.RollbackAsync(cancellationToken);
             return null; // not a ticket of THIS department: the caller creates a new ticket instead
+        }
+
+        if (ticket.IsMerged)
+        {
+            // The canonical ticket was merged away between the lookup and the lock: fail so the mail job retries and resolves the new target.
+            await tx.RollbackAsync(cancellationToken);
+            throw new ConflictException("The ticket was merged while the message was processed.", TicketMergeCodes.Merged);
         }
 
         var (author, _) = await PeopleUpsert.RequesterAsync(db, request.DepartmentId, request.From.Address, request.From.Name, now, cancellationToken);
@@ -271,7 +294,8 @@ internal sealed class InboundTicketSink(TicketingDbContext db, TicketingAudit au
 
         await audit.WriteSystemAsync(
             TicketAuditActions.MessageAdded, TicketingAudit.TicketObject, ticket.Id, request.DepartmentId, null,
-            new { messageId = message.Id, kind = message.Kind.ToString(), authorType = message.AuthorType.ToString() }, cancellationToken);
+            new { messageId = message.Id, kind = message.Kind.ToString(), authorType = message.AuthorType.ToString(), receivedViaMergedTicketId = targetId == request.TicketId ? (Guid?)null : request.TicketId },
+            cancellationToken);
         if (reopened)
         {
             await audit.WriteSystemAsync(

@@ -50,7 +50,8 @@ internal sealed record PortalEditableFieldDto(string Key, string Label, string? 
 
 internal sealed record PortalRequestDto(
     string Reference, string Subject, string Status, string StatusLabel, string Department, string? Form, DateTimeOffset CreatedAt, DateTimeOffset LastActivityAt,
-    IReadOnlyList<PortalFieldValueDto> Fields, IReadOnlyList<PortalMessageDto> Messages, IReadOnlyList<PortalEditableFieldDto> EditableFields);
+    IReadOnlyList<PortalFieldValueDto> Fields, IReadOnlyList<PortalMessageDto> Messages, IReadOnlyList<PortalEditableFieldDto> EditableFields,
+    string? MergedInto = null);
 
 internal sealed record PortalReplyResultDto(PortalMessageDto Message, string Status, string StatusLabel);
 
@@ -118,7 +119,7 @@ internal sealed class PortalRequestService(
             return new PageDto<PortalRequestItemDto>([], null);
         }
 
-        var tickets = db.Tickets.AsNoTracking().IgnoreDepartmentScope().Where(t => ids.Contains(t.RequesterId));
+        var tickets = db.Tickets.AsNoTracking().IgnoreDepartmentScope().Where(t => ids.Contains(t.RequesterId) && t.MergedIntoTicketId == null);
         tickets = f switch
         {
             "active" => tickets.Where(t => t.Status == TicketStatus.Open || t.Status == TicketStatus.Pending),
@@ -149,7 +150,7 @@ internal sealed class PortalRequestService(
 
     // ----- detail -----
 
-    private async Task<Ticket> OwnTicketAsync(string reference, bool track, CancellationToken ct)
+    private async Task<Ticket> OwnTicketAsync(string reference, bool track, CancellationToken ct, bool allowMerged = false)
     {
         var ids = await identity.RequesterIdsAsync(ct);
         var normalised = reference.Trim().ToUpperInvariant();
@@ -159,12 +160,31 @@ internal sealed class PortalRequestService(
         }
 
         var query = db.Tickets.IgnoreDepartmentScope().Where(t => t.Reference == normalised && ids.Contains(t.RequesterId));
-        return await (track ? query : query.AsNoTracking()).SingleOrDefaultAsync(ct) ?? throw new NotFoundException();
+        var ticket = await (track ? query : query.AsNoTracking()).SingleOrDefaultAsync(ct) ?? throw new NotFoundException();
+        if (ticket.MergedIntoTicketId is { } canonicalId && !allowMerged)
+        {
+            // A merged request is read-only. The requester is pointed at the canonical ticket only when it is also THEIR ticket; otherwise it fails closed.
+            _ = await CanonicalReferenceAsync(ticket, ids, ct) ?? throw new NotFoundException();
+            throw new ConflictException("This request was merged into another request. Open that one instead.", "ticket_merged");
+        }
+
+        return ticket;
     }
+
+    private async Task<string?> CanonicalReferenceAsync(Ticket merged, IReadOnlyCollection<Guid> requesterIds, CancellationToken ct) =>
+        await db.Tickets.AsNoTracking().IgnoreDepartmentScope()
+            .Where(t => t.Id == merged.MergedIntoTicketId && t.DepartmentId == merged.DepartmentId && requesterIds.Contains(t.RequesterId))
+            .Select(t => t.Reference).SingleOrDefaultAsync(ct);
 
     public async Task<PortalRequestDto> GetAsync(string reference, CancellationToken ct)
     {
-        var ticket = await OwnTicketAsync(reference, track: false, ct);
+        var ticket = await OwnTicketAsync(reference, track: false, ct, allowMerged: true);
+        if (ticket.IsMerged)
+        {
+            var canonical = await CanonicalReferenceAsync(ticket, await identity.RequesterIdsAsync(ct), ct) ?? throw new NotFoundException();
+            return new PortalRequestDto(ticket.Reference, ticket.Subject, "merged", "Merged", "", null, ticket.CreatedAt, ticket.LastPublicActivityAt, [], [], [], canonical);
+        }
+
         var department = (await organisation.GetDepartmentsAsync([ticket.DepartmentId], ct)).GetValueOrDefault(ticket.DepartmentId);
         var formName = ticket.RequestFormId is { } formId
             ? await db.RequestForms.AsNoTracking().Where(f => f.Id == formId && f.DepartmentId == ticket.DepartmentId).Select(f => f.Name).SingleOrDefaultAsync(ct)

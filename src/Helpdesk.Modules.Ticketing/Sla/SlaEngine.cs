@@ -53,6 +53,7 @@ internal static class SlaEventKinds
     public const string Reopened = "Reopened";
     public const string Approaching = "Approaching";
     public const string Breached = "Breached";
+    public const string Stopped = "Stopped";
 }
 
 /// <summary>
@@ -163,6 +164,27 @@ internal sealed class SlaEngine(TicketingDbContext db)
         }
 
         return sla;
+    }
+
+    /// <summary>
+    /// A merged ticket is no longer independently actionable: its clocks stop where they are (nothing is marked met, nothing is reset or combined
+    /// with the canonical ticket's SLA). Breaches already recorded stay; no warning or breach can fire afterwards.
+    /// </summary>
+    public async Task StopOnMergeAsync(Ticket ticket, DateTimeOffset now, CancellationToken ct)
+    {
+        var sla = await db.TicketSlas.IgnoreDepartmentScope().SingleOrDefaultAsync(s => s.TicketId == ticket.Id && s.DepartmentId == ticket.DepartmentId, ct);
+        if (sla is null)
+        {
+            return;
+        }
+
+        sla.FirstResponseDueAt = sla.FirstResponseMetAt is null ? null : sla.FirstResponseDueAt;
+        sla.ResolutionDueAt = null;
+        sla.ResolutionPausedAt = null;
+        sla.ResolutionRemainingSeconds = null;
+        Recompute(sla);
+        AddEvent(sla, now, SlaEventKinds.Stopped, null, new { reason = "merged", canonicalTicketId = ticket.MergedIntoTicketId });
+        await db.SaveChangesAsync(ct);
     }
 
     private bool MeetFirstResponse(TicketSla sla, DateTimeOffset now)

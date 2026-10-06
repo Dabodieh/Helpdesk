@@ -45,14 +45,14 @@ internal sealed class RequesterHistoryService(TicketingDbContext db, IDepartment
             .Select(g => new
             {
                 Total = g.Count(),
-                Open = g.Count(t => t.Status == TicketStatus.Open || t.Status == TicketStatus.Pending),
+                Open = g.Count(t => t.MergedIntoTicketId == null && (t.Status == TicketStatus.Open || t.Status == TicketStatus.Pending)),
                 Last = g.Max(t => t.UpdatedAt),
             })
             .SingleOrDefaultAsync(ct);
         var firstSeen = await db.Requesters.AsNoTracking().Where(r => ids.Contains(r.Id)).MinAsync(r => r.CreatedAt, ct);
 
-        var open = await PageAsync(tickets.Where(t => ActiveStatuses.Contains(t.Status)), null, SummaryOpen, ct);
-        var previous = await PageAsync(tickets.Where(t => !ActiveStatuses.Contains(t.Status)), null, SummaryPrevious, ct);
+        var open = await PageAsync(tickets.Where(t => t.MergedIntoTicketId == null && ActiveStatuses.Contains(t.Status)), null, SummaryOpen, ct);
+        var previous = await PageAsync(tickets.Where(t => t.MergedIntoTicketId != null || !ActiveStatuses.Contains(t.Status)), null, SummaryPrevious, ct);
         var total = summary?.Total ?? 0;
         var openCount = summary?.Open ?? 0;
         return new RequesterProfileDto(requester.Id, requester.DisplayName, requester.Email, firstSeen, summary?.Last, openCount, total - openCount, total, open.Items, previous.Items);
@@ -81,8 +81,8 @@ internal sealed class RequesterHistoryService(TicketingDbContext db, IDepartment
         IQueryable<Ticket> tickets = db.Tickets.AsNoTracking().Where(t => ids.Contains(t.RequesterId));
         tickets = kind switch
         {
-            "active" => tickets.Where(t => ActiveStatuses.Contains(t.Status)),
-            "resolved" => tickets.Where(t => !ActiveStatuses.Contains(t.Status)),
+            "active" => tickets.Where(t => t.MergedIntoTicketId == null && ActiveStatuses.Contains(t.Status)),
+            "resolved" => tickets.Where(t => t.MergedIntoTicketId != null || !ActiveStatuses.Contains(t.Status)),
             _ => tickets,
         };
         return await PageAsync(tickets, cursor, take, ct);
@@ -102,7 +102,7 @@ internal sealed class RequesterHistoryService(TicketingDbContext db, IDepartment
         var rows = await tickets.OrderByDescending(t => t.UpdatedAt).ThenByDescending(t => t.Id).Take(take + 1)
             .Select(t => new TicketRow(
                 t.Id, t.Reference, t.DepartmentId, t.Subject, t.Status, t.Priority, t.RequesterId, t.Requester.DisplayName, t.Requester.Email,
-                t.TeamId, t.AssigneeUserId, t.CreatedAt, t.UpdatedAt))
+                t.TeamId, t.AssigneeUserId, t.CreatedAt, t.UpdatedAt, t.MergedIntoTicketId))
             .ToListAsync(ct);
         var hasMore = rows.Count > take;
         if (hasMore)

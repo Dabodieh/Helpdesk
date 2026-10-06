@@ -16,7 +16,7 @@ export function HistoryRow({ ticket, onNavigate }: { ticket: TicketListItem; onN
         <span className="ref">{ticket.reference}</span> <span className="history-subject">{ticket.subject}</span>
       </Link>
       <span className="history-meta">
-        <StatusPill status={ticket.status} />
+        {ticket.mergedInto ? <span className="badge off">Merged into {ticket.mergedInto}</span> : <StatusPill status={ticket.status} />}
         <span className="muted small">
           {ticket.departmentKey} · {ticket.assignee?.displayName ?? 'Unassigned'} · {timeAgo(ticket.updatedAt)}
         </span>

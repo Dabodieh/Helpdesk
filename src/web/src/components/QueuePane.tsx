@@ -307,7 +307,7 @@ export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
                       <RequesterName requesterId={t.requester.id} name={t.requester.displayName} />
                     </td>
                     <td className="col-status">
-                      <StatusPill status={t.status} />
+                      {t.mergedInto ? <span className="badge off">Merged into {t.mergedInto}</span> : <StatusPill status={t.status} />}
                       <span className="sla-inline">
                         <SlaBadge sla={t.sla} />
                       </span>

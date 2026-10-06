@@ -15,6 +15,7 @@ import Composer from './Composer'
 import Conversation from './Conversation'
 import History from './History'
 import { Icon } from './icons'
+import { MoreMenu, RelatedTickets } from './TicketLinks'
 import { PriorityMark, StatusPill } from './Pills'
 import { SlaStrip } from './Sla'
 import TicketProperties from './TicketProperties'
@@ -25,6 +26,7 @@ type Props = { ticketRef: string; backTo: string; composerRef: RefObject<Compose
 
 export default function TicketPane({ ticketRef, backTo, composerRef }: Props) {
   const qc = useQueryClient()
+  const me = useMe()
   const ticket = useQuery({
     queryKey: ['ticket', ticketRef],
     queryFn: () => getTicket(ticketRef),
@@ -64,6 +66,19 @@ export default function TicketPane({ ticketRef, backTo, composerRef }: Props) {
     <div className="ticket-inner">
       <TicketHeader ticket={t} routeRef={ticketRef} back={back} onProblem={setProblem} />
       <ProblemBanner error={problem} onReload={reload} onDismiss={() => setProblem(null)} />
+      {t.mergedInto && (
+        <section className="merged-banner" aria-label="Merged ticket">
+          <strong className="badge off">MERGED</strong>
+          <span>
+            This ticket was merged into <span className="ref">{t.mergedInto.reference}</span>.
+            <span className="muted small"> {formatDateTime(t.mergedInto.mergedAt)}{t.mergedInto.mergedBy?.displayName ? ` by ${t.mergedInto.mergedBy.displayName}` : ''}. It is read-only.</span>
+          </span>
+          <Link className="button" to={`/tickets/${encodeURIComponent(t.mergedInto.reference)}`}>
+            Open {t.mergedInto.reference}
+          </Link>
+        </section>
+      )}
+      <RelatedTickets ticket={t} canEdit={canTicket(me, 'tickets.update', t.departmentId) && !t.mergedInto} />
       <div className="tabs" role="group" aria-label="Ticket sections">
         <button type="button" aria-pressed={tab === 'conversation'} onClick={() => setTab('conversation')}>
           Conversation
@@ -73,7 +88,13 @@ export default function TicketPane({ ticketRef, backTo, composerRef }: Props) {
         </button>
       </div>
       {tab === 'conversation' ? <Conversation ticketId={t.id} /> : <History ticket={t} />}
-      <Composer key={t.id} ticket={t} routeRef={ticketRef} handleRef={composerRef} onReload={reload} />
+      {t.mergedInto ? (
+        <p className="empty small" role="note">
+          Replies and notes are disabled on a merged ticket. Continue on {t.mergedInto.reference}.
+        </p>
+      ) : (
+        <Composer key={t.id} ticket={t} routeRef={ticketRef} handleRef={composerRef} onReload={reload} />
+      )}
     </div>
   )
 }
@@ -92,9 +113,11 @@ function TicketHeader({
   const me = useMe()
   const apply = useApplyTicket(routeRef)
   const dir = useDirectory(t.departmentId)
-  const canUpdate = canTicket(me, 'tickets.update', t.departmentId)
-  const canAssignAny = canTicket(me, 'tickets.assign.any', t.departmentId)
-  const canAssignSelf = canTicket(me, 'tickets.assign.self', t.departmentId)
+  // A merged ticket is read-only for every normal operation.
+  const merged = !!t.mergedInto
+  const canUpdate = canTicket(me, 'tickets.update', t.departmentId) && !merged
+  const canAssignAny = canTicket(me, 'tickets.assign.any', t.departmentId) && !merged
+  const canAssignSelf = canTicket(me, 'tickets.assign.self', t.departmentId) && !merged
 
   const onSuccess = (res: TicketDetail) => {
     onProblem(null)
@@ -130,6 +153,7 @@ function TicketHeader({
         {back}
         <span className="ref">{t.reference}</span>
         <span className="muted small">{t.departmentName}</span>
+        {canUpdate && <MoreMenu ticket={t} routeRef={routeRef} />}
       </div>
       <Subject ticket={t} canEdit={canUpdate} busy={busy} save={(subject, version) => patch.mutateAsync({ subject, version })} onProblem={onProblem} />
       <div className="t-controls">
@@ -217,6 +241,21 @@ function TicketHeader({
           <div>
             <dt>Cc</dt>
             <dd>{t.participants.map((p) => p.displayName || p.email).join(', ')}</dd>
+          </div>
+        )}
+        {t.mergedTickets && t.mergedTickets.length > 0 && (
+          <div>
+            <dt>Merged tickets</dt>
+            <dd>
+              {t.mergedTickets.map((m, i) => (
+                <span key={m.id}>
+                  {i > 0 && ', '}
+                  <Link to={`/tickets/${encodeURIComponent(m.reference)}`} title={m.subject}>
+                    {m.reference}
+                  </Link>
+                </span>
+              ))}
+            </dd>
           </div>
         )}
         {t.mailbox && (

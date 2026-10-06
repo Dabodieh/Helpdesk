@@ -888,6 +888,18 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("mailbox_id");
 
+                    b.Property<DateTimeOffset?>("MergedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("merged_at");
+
+                    b.Property<Guid?>("MergedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("merged_by_user_id");
+
+                    b.Property<Guid?>("MergedIntoTicketId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("merged_into_ticket_id");
+
                     b.Property<int>("Number")
                         .HasColumnType("integer")
                         .HasColumnName("number");
@@ -955,6 +967,10 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                     b.HasAlternateKey("Id", "DepartmentId")
                         .HasName("ux_tickets_id_department");
 
+                    b.HasIndex("MergedIntoTicketId")
+                        .HasDatabaseName("ix_tickets_merged_into")
+                        .HasFilter("merged_into_ticket_id IS NOT NULL");
+
                     b.HasIndex("Reference")
                         .IsUnique()
                         .HasDatabaseName("ux_tickets_reference");
@@ -966,6 +982,8 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                     b.HasIndex("DepartmentId", "TicketTypeId")
                         .HasDatabaseName("ix_tickets_department_type")
                         .HasFilter("ticket_type_id IS NOT NULL");
+
+                    b.HasIndex("MergedIntoTicketId", "DepartmentId");
 
                     b.HasIndex("RequesterId", "CreatedAt")
                         .IsDescending(false, true)
@@ -1000,6 +1018,8 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
 
                     b.ToTable("tickets", "ticketing", t =>
                         {
+                            t.HasCheckConstraint("ck_tickets_merge_shape", "(merged_into_ticket_id IS NULL) = (merged_at IS NULL) AND (merged_into_ticket_id IS NULL OR merged_into_ticket_id <> id)");
+
                             t.HasCheckConstraint("ck_tickets_number_positive", "number > 0");
 
                             t.HasCheckConstraint("ck_tickets_priority", "priority BETWEEN 1 AND 4");
@@ -1206,6 +1226,59 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         .HasDatabaseName("ix_ticket_field_values_ticket");
 
                     b.ToTable("ticket_field_values", "ticketing");
+                });
+
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.TicketLink", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("department_id");
+
+                    b.Property<Guid>("SourceTicketId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_ticket_id");
+
+                    b.Property<Guid>("TargetTicketId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("target_ticket_id");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TargetTicketId")
+                        .HasDatabaseName("ix_ticket_links_target");
+
+                    b.HasIndex("SourceTicketId", "DepartmentId");
+
+                    b.HasIndex("SourceTicketId", "TargetTicketId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_ticket_links_pair");
+
+                    b.HasIndex("TargetTicketId", "DepartmentId");
+
+                    b.ToTable("ticket_links", "ticketing", t =>
+                        {
+                            t.HasCheckConstraint("ck_ticket_links_not_self", "source_ticket_id <> target_ticket_id");
+
+                            t.HasCheckConstraint("ck_ticket_links_type", "type IN ('Related','DuplicateOf','ParentOf')");
+                        });
                 });
 
             modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.TicketParticipant", b =>
@@ -1552,6 +1625,13 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
 
             modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.Ticket", b =>
                 {
+                    b.HasOne("Helpdesk.Modules.Ticketing.Domain.Ticket", null)
+                        .WithMany()
+                        .HasForeignKey("MergedIntoTicketId", "DepartmentId")
+                        .HasPrincipalKey("Id", "DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_tickets_merged_into_department");
+
                     b.HasOne("Helpdesk.Modules.Ticketing.Domain.Requester", "Requester")
                         .WithMany()
                         .HasForeignKey("RequesterId", "DepartmentId")
@@ -1579,6 +1659,25 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_ticket_field_values_ticket_department");
+                });
+
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.TicketLink", b =>
+                {
+                    b.HasOne("Helpdesk.Modules.Ticketing.Domain.Ticket", null)
+                        .WithMany()
+                        .HasForeignKey("SourceTicketId", "DepartmentId")
+                        .HasPrincipalKey("Id", "DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_ticket_links_source_department");
+
+                    b.HasOne("Helpdesk.Modules.Ticketing.Domain.Ticket", null)
+                        .WithMany()
+                        .HasForeignKey("TargetTicketId", "DepartmentId")
+                        .HasPrincipalKey("Id", "DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_ticket_links_target_department");
                 });
 
             modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.TicketParticipant", b =>
