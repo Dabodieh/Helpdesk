@@ -57,11 +57,11 @@ export function useSplit(containerRef: React.RefObject<HTMLElement | null>) {
   // Keep the stored width valid when the window shrinks.
   const [effective, setEffective] = useState(width)
   useEffect(() => {
-    const update = () => setEffective(clampWidth(width, bounds()))
+    const update = () => setEffective(clampWidth(width, containerRef.current?.getBoundingClientRect().width ?? 0))
     update()
     window.addEventListener('resize', update)
     return () => window.removeEventListener('resize', update)
-  }, [width])
+  }, [width, containerRef])
 
   return { width: effective, handlers: { onPointerDown, onPointerMove, onPointerUp, onKeyDown } }
 }

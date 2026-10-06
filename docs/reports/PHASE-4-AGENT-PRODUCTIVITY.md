@@ -64,7 +64,7 @@ Query behaviour changed for search only (new trigram `ILIKE` over message bodies
 - Canned responses have no variables/placeholders, no shared folders, no per-team scope.
 - Realtime is a notification channel: a single host instance only. Multi-instance deployment needs a SignalR backplane (not built, not needed for the current hosting target).
 - Split width and density are stored per browser, not per account.
-- oxlint reports 4 warnings (fast-refresh export placement in two files, one effect dependency, one set-state-in-effect); none are functional defects.
+- oxlint reports no warnings (the four earlier ones were fixed after Phase 4 acceptance).
 - Large JS bundle (about 540 kB, 157 kB gzip): no code splitting yet.
 - Accessibility is machine-checked plus keyboard review; no assistive-technology user testing.
 

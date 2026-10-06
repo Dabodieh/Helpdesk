@@ -5,23 +5,8 @@ import { bulkUpdate, type BulkChange } from '../api/tickets'
 import { PRIORITIES, STATUSES, type BulkResult, type TicketListItem } from '../api/ticketSchemas'
 import { useMe } from '../auth'
 import { useDirectory } from '../hooks/useDirectory'
+import { summarise } from '../lib/bulk'
 import { ErrorNotice } from './common'
-
-const OUTCOME_TEXT: Record<string, string> = {
-  not_found: 'not found or not accessible',
-  forbidden: 'not allowed',
-  invalid: 'not valid for the ticket’s department',
-}
-
-/** Plain-language summary of a bulk result: how many changed, and why the others did not. */
-export function summarise(r: BulkResult): string {
-  const parts = [`${r.updated} updated`]
-  if (r.unchanged) parts.push(`${r.unchanged} already up to date`)
-  const reasons = new Map<string, number>()
-  for (const item of r.results) if (OUTCOME_TEXT[item.outcome]) reasons.set(item.outcome, (reasons.get(item.outcome) ?? 0) + 1)
-  for (const [outcome, n] of reasons) parts.push(`${n} ${OUTCOME_TEXT[outcome]}`)
-  return parts.join(', ')
-}
 
 /** Bulk change bar. Shows only what the selection allows (UX only: the server authorises every ticket individually). */
 export default function BulkBar({ tickets, onClear }: { tickets: TicketListItem[]; onClear: () => void }) {

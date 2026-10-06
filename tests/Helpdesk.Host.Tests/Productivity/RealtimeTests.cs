@@ -227,4 +227,69 @@ public sealed class RealtimeTests(HelpdeskFixture fixture) : IClassFixture<Helpd
         (await d.Agent.Client.PostAsync("/api/tickets/bulk", new { ticketIds = new[] { created.Id }, priority = "High" })).Expect(HttpStatusCode.OK);
         Assert.True(await WaitForAsync(events, e => e.GetProperty("kind").GetString() == "priority" && e.GetProperty("ticketId").GetGuid() == created.Id));
     }
+
+    /// <summary>
+    /// Test-only role: reads tickets and replies publicly but lacks <c>tickets.notes.read</c>. It exists only in the test process
+    /// (<c>RoleCatalogue.RegisterTestRole</c>) and in this fixture's throw-away database (the role check constraint is widened here);
+    /// the four production roles are untouched.
+    /// </summary>
+    private const string RestrictedRole = "TestRestrictedAgent";
+
+    [Fact]
+    public async Task A_member_without_notes_read_cannot_retrieve_or_learn_about_internal_notes_through_rest_or_realtime()
+    {
+        Helpdesk.Modules.Organisation.Authorization.RoleCatalogue.RegisterTestRole(RestrictedRole,
+            ["department.read", "tickets.read", "tickets.create", "tickets.reply", "tickets.update"]);
+        await fixture.ExecuteAsync("ALTER TABLE organisation.department_memberships DROP CONSTRAINT IF EXISTS ck_department_memberships_role");
+        await fixture.ExecuteAsync($"ALTER TABLE organisation.department_memberships ADD CONSTRAINT ck_department_memberships_role CHECK (role IN ('DepartmentAdmin','TeamLead','Agent','Viewer','{RestrictedRole}'))");
+
+        var d = await fixture.NewDeptAsync();
+        var restricted = await fixture.NewMemberAsync(d.Department, RestrictedRole);
+        var (_, restrictedEvents) = await ConnectAsync(restricted);
+        var (_, agentEvents) = await ConnectAsync(d.Agent);
+
+        var ticket = await d.Agent.CreateTicketAsync(d.Department, new { subject = "Notes boundary", description = "plain description", requester = new { email = $"r{Unique.Id()}@customer.test" } });
+        Assert.True(await WaitForAsync(restrictedEvents, e => e.GetProperty("kind").GetString() == "created"));
+        lock (restrictedEvents)
+        {
+            restrictedEvents.Clear();
+        }
+
+        var note = $"NOTESECRET-{Unique.Id()}";
+        var activityBefore = (await restricted.Client.GetAsync($"/api/tickets/{ticket.Id}/activity?limit=200")).Expect(HttpStatusCode.OK).Json.GetProperty("items").GetArrayLength();
+        var listBefore = (await restricted.Client.GetAsync("/api/tickets?status=Open&limit=100")).Expect(HttpStatusCode.OK).Body;
+
+        // An internal note is posted by a normal agent. The agent (with notes.read) is told; the restricted member hears nothing at all.
+        (await d.Agent.PostMessageAsync(ticket.Id, "Internal", note)).Expect(HttpStatusCode.Created);
+        Assert.True(await WaitForAsync(agentEvents, e => e.GetProperty("kind").GetString() == "note"));
+        Assert.True(await StaysSilentAsync(restrictedEvents), "restricted member received a realtime event for an internal note");
+
+        // REST: messages, detail, activity, search, list and counts reveal neither the text nor the existence of the note.
+        var messages = (await restricted.Client.GetAsync($"/api/tickets/{ticket.Id}/messages")).Expect(HttpStatusCode.OK);
+        Assert.DoesNotContain(note, messages.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("Internal", messages.Body, StringComparison.Ordinal);
+        Assert.All(messages.Json.GetProperty("items").EnumerateArray(), m => Assert.Equal("Public", m.GetProperty("kind").GetString()));
+
+        var activity = (await restricted.Client.GetAsync($"/api/tickets/{ticket.Id}/activity?limit=200")).Expect(HttpStatusCode.OK);
+        Assert.Equal(activityBefore, activity.Json.GetProperty("items").GetArrayLength());
+        Assert.DoesNotContain("Internal", activity.Body, StringComparison.Ordinal);
+
+        foreach (var url in new[] { $"/api/tickets/{ticket.Id}", $"/api/tickets?q={note}", "/api/tickets/queue-counts" })
+        {
+            Assert.DoesNotContain(note, (await restricted.Client.GetAsync(url)).Expect(HttpStatusCode.OK).Body, StringComparison.Ordinal);
+        }
+
+        Assert.True(IsoKit.EmptyPage((await restricted.Client.GetAsync($"/api/tickets?q={note}")).Expect(HttpStatusCode.OK)), "search matched an internal note");
+        var found = Assert.Single((await d.Agent.Client.GetAsync($"/api/tickets?q={note}")).Expect(HttpStatusCode.OK).Json.GetProperty("items").EnumerateArray());
+        Assert.Equal("note", found.GetProperty("match").GetProperty("field").GetString()); // sanity: an entitled member does find it
+
+        // The restricted member cannot write notes either, and the connection still works: a public reply is delivered.
+        (await restricted.PostMessageAsync(ticket.Id, "Internal", "nope")).Expect(HttpStatusCode.Forbidden);
+        (await d.Lead.PostMessageAsync(ticket.Id, "Public", "visible to everyone")).Expect(HttpStatusCode.Created);
+        Assert.True(await WaitForAsync(restrictedEvents, e => e.GetProperty("kind").GetString() == "message"));
+        lock (restrictedEvents)
+        {
+            Assert.DoesNotContain(restrictedEvents, e => e.GetProperty("kind").GetString() == "note");
+        }
+    }
 }

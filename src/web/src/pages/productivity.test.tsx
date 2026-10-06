@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
-import { summarise } from '../components/BulkBar'
+import { summarise } from '../lib/bulk'
 import { clampWidth, SPLIT_MIN } from '../lib/split'
 import { agentMe, json, makeDetail, makeMessage, makeTicket, mockFetch, page, renderApp, workspaceRoutes } from '../test-utils'
 

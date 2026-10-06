@@ -84,17 +84,17 @@ export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
   )
 
   // Bulk selection (checkboxes). Cleared when the filters change, and never keeps ids that left the list.
-  const [checked, setChecked] = useState<Set<string>>(new Set())
   const filterKey = JSON.stringify(filters)
-  useEffect(() => setChecked(new Set()), [filterKey])
+  const [selection, setSelection] = useState<{ key: string; ids: Set<string> }>({ key: filterKey, ids: new Set() })
+  const checked = selection.key === filterKey ? selection.ids : new Set<string>()
+  const setChecked = (ids: Set<string>) => setSelection({ key: filterKey, ids })
   const checkedItems = items.filter((t) => checked.has(t.id))
-  const toggleChecked = (id: string) =>
-    setChecked((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+  const toggleChecked = (id: string) => {
+    const next = new Set(checked)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    setChecked(next)
+  }
 
   // Keyboard cursor, tracked by ticket id so it survives refreshes. Falls back to the open ticket.
   const [cursorId, setCursorId] = useState<string | null>(null)

@@ -97,11 +97,27 @@ internal static class RoleCatalogue
         ],
     };
 
-    public static bool IsValid(string? role) => role is not null && Grants.ContainsKey(role);
+    // Test seam: extra roles registered only by test assemblies (internals are visible to them alone). Empty in production, and the
+    // database check constraint on the role column rejects any name outside the four real roles anyway.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, HashSet<string>> TestRoles = new(StringComparer.Ordinal);
 
-    public static bool RoleGrants(string role, string permission) => Grants.TryGetValue(role, out var set) && set.Contains(permission);
+    internal static void RegisterTestRole(string role, IEnumerable<string> permissions)
+    {
+        if (Grants.ContainsKey(role))
+        {
+            throw new ArgumentException("Test roles cannot redefine a real role.", nameof(role));
+        }
 
-    public static IReadOnlyCollection<string> PermissionsOf(string role) => Grants.TryGetValue(role, out var set) ? set : [];
+        TestRoles[role] = [.. permissions];
+    }
+
+    private static bool TryGrants(string role, out HashSet<string> set) => Grants.TryGetValue(role, out set!) || TestRoles.TryGetValue(role, out set!);
+
+    public static bool IsValid(string? role) => role is not null && TryGrants(role, out _);
+
+    public static bool RoleGrants(string role, string permission) => TryGrants(role, out var set) && set.Contains(permission);
+
+    public static IReadOnlyCollection<string> PermissionsOf(string role) => TryGrants(role, out var set) ? set : [];
 }
 
 /// <summary>Pure decision function used by the authorization handler (unit-testable without a database).</summary>

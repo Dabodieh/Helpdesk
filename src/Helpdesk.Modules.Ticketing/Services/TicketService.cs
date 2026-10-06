@@ -528,9 +528,29 @@ internal sealed class TicketService(
         }
 
         var key = await resolver.FindAsync(route, ct) ?? throw new NotFoundException();
-        var page = await auditReader.ReadObjectEventsAsync(AuditCategories.Ticketing, TicketingAudit.TicketObject, key.Id, key.DepartmentId, cursor, take, ct);
-        return new PageDto<ActivityDto>(page.Items.Select(ToActivity).ToList(), page.NextCursor);
+        var canReadNotes = await authorizer.CheckAsync(PermissionCodes.TicketsNotesRead, key.DepartmentId, ct) == AccessOutcome.Allowed;
+        var items = new List<ActivityDto>();
+        var next = cursor;
+        string? nextCursor;
+        do
+        {
+            var page = await auditReader.ReadObjectEventsAsync(AuditCategories.Ticketing, TicketingAudit.TicketObject, key.Id, key.DepartmentId, next, take - items.Count, ct);
+            // Callers without tickets.notes.read must not learn that an internal note exists: its audit entry is skipped, and
+            // further pages are read until the page is full so the page size cannot reveal it either.
+            items.AddRange(page.Items.Where(r => canReadNotes || !IsInternalNoteEvent(r)).Select(ToActivity));
+            nextCursor = page.NextCursor;
+            next = nextCursor;
+        }
+        while (items.Count < take && nextCursor is not null);
+
+        return new PageDto<ActivityDto>(items, nextCursor);
     }
+
+    private static bool IsInternalNoteEvent(AuditRecord record) =>
+        record.Action == TicketAuditActions.MessageAdded
+        && record.Next is { ValueKind: JsonValueKind.Object } next
+        && next.TryGetProperty("kind", out var kind)
+        && kind.GetString() == nameof(MessageKind.Internal);
 
     private static ActivityDto ToActivity(AuditRecord record)
     {

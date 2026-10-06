@@ -4,22 +4,10 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { fieldErrors } from '../api/errors'
 import type { TicketFilters } from '../api/tickets'
 import { createView, deleteView, listViews, updateView, type SavedView } from '../api/views'
-import { toViewFilter, viewLocation } from '../lib/filters'
+import { describeFilter, toViewFilter, viewLocation } from '../lib/filters'
 import { ErrorNotice, Field, Loading } from './common'
 import Dialog from './Dialog'
 import { Icon } from './icons'
-
-/** Short description of what a view filters, for the list (names first, keys secondary). */
-export function describeFilter(v: SavedView): string {
-  const f = v.filter
-  const bits: string[] = []
-  if (f.queue && f.queue !== 'all') bits.push(f.queue === 'my' ? 'Assigned to me' : f.queue === 'team' ? 'My teams' : 'Unassigned')
-  if (f.status?.length) bits.push(f.status.join(' + '))
-  if (f.priority?.length) bits.push(`${f.priority.join(' / ')} priority`)
-  if (f.unassigned) bits.push('Unassigned')
-  if (f.q) bits.push(`“${f.q}”`)
-  return bits.join(' · ') || 'Everything visible to you'
-}
 
 /** Saved views: open, pin, delete, and save the filters currently showing. Views are private and re-checked by the server on every run. */
 export default function ViewsMenu({ filters, onClose }: { filters: TicketFilters; onClose: () => void }) {
