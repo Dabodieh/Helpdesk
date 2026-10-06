@@ -3,8 +3,13 @@
 Status: **built and tested; closed for Phase 5 scope.** Production readiness is still gated by the items under "Remaining production gates". Phase 6 has not been started.
 
 ## Phase 4 items closed first
-1. **Restricted role test.** A test-only role (`TestRestrictedAgent`: read, create, reply, update; no `tickets.notes.read`) exists only in the test process (`RoleCatalogue.RegisterTestRole`, internal, visible to the test assembly) and in the fixture's throw-away database (the role check constraint is widened there). Ordinary roles are unchanged. The test proves, through the real REST and SignalR paths: messages, ticket detail, search, counts and activity reveal neither the text nor the existence of an internal note; no realtime event is delivered for the note (and the connection still receives a later public reply); the restricted role cannot write notes. It found a real leak: the activity endpoint listed `message_added` entries of internal notes. It now hides them and refills the page so the page size cannot reveal them. Residual: a ticket's `updatedAt` still moves when a note is added (it records any activity).
+1. **Restricted role test.** A test-only role (`TestRestrictedAgent`: read, create, reply, update; no `tickets.notes.read`) exists only in the test process (`RoleCatalogue.RegisterTestRole`, internal, visible to the test assembly) and in the fixture's throw-away database (the role check constraint is widened there). Ordinary roles are unchanged. The test proves, through the real REST and SignalR paths: messages, ticket detail, search, counts and activity reveal neither the text nor the existence of an internal note; no realtime event is delivered for the note (and the connection still receives a later public reply); the restricted role cannot write notes. It found a real leak: the activity endpoint listed `message_added` entries of internal notes. It now hides them and refills the page so the page size cannot reveal them. The remaining `updatedAt` leak was closed in the Phase 5 closeout (below).
 2. **Lint.** The four oxlint warnings were local and are fixed (a selection reset derived from the filter key instead of an effect, two helpers moved out of component files, one effect dependency). Lint is clean.
+
+## Closeout items (after acceptance)
+1. **Internal-note existence leak closed at the domain level.** `updatedAt` now means *visible* activity: public messages, status, priority, team, assignee and other authorised state changes. Adding an internal note (by a person or by automation) no longer writes the ticket row at all, so `updatedAt`, the row version (`version`, so no spurious `version_conflict`), queue order, list/search metadata and counts are unchanged for everyone. The note itself still appears for callers with `tickets.notes.read` (messages, search match, `note` realtime event to the notes group). A note posted together with a status change is visible to restricted callers only as that status change. Consequence for note readers: a note alone does not move the ticket up their queue.
+2. **Dedicated failed-automation resume tests.** (a) A rule with three actions where the third fails (its team was deactivated after saving): the execution is `Failed` with outcomes Done, Done, Failed; after the team is usable and the same event is delivered again it resumes at the failed action only; priority and note are not repeated (one note, one priority audit entry, one team audit entry); the state becomes `Completed`; delivering the event two more times changes nothing and the history stays one coherent row. (b) An execution abandoned part-way (worker died): a fresh `Running` execution is left alone, one older than the lease is resumed, the note is not added again, the remaining action is applied, repeats are harmless. No engine defect was found.
+3. **Dedicated SLA realtime tests.** The `sla` event reaches members who can read the ticket (agent, viewer), not a member of another department, not a department member without `tickets.read`, and not a removed member who reconnects. Its payload has only the six content-free fields; the test asserts that no policy name, rule name, calendar name, due times, ticket subject or body, or priority appears anywhere in the events.
 
 ## What was built
 - **Business hours** per department: name, IANA time zone, active flag, weekly intervals (several per day), full-day closures and date-specific alternative hours. `BusinessCalendar` is pure arithmetic over `TimeZoneInfo` (add business time, business time between instants, next working instant), with defined behaviour for the spring-forward gap and the autumn repeat.
@@ -23,12 +28,12 @@ Design: ADR-014, `docs/api/PHASE5_API.md`.
 
 ## Loop protection and idempotency
 - Every automation run belongs to a chain (id, depth, provenance). A (rule, ticket) pair runs at most once per chain; depth is capped at 4, a chain at 25 executions. Tested with a two-rule cycle (A: High to Urgent, B: Urgent to High): it terminates, both rules run once, the repeat is stored as `Skipped / loop_detected`.
-- `(rule, ticket, trigger key)` is unique. A user change gets a fresh key per change; SLA events use `sla:{clock}:{cycle}:{kind}`; a retried event is a no-op (tested: three deliveries of one event add one evaluation, one note, one assignment). Notes also carry a unique source reference. Failed or abandoned executions resume at their first incomplete action (implemented; not covered by a dedicated test).
+- `(rule, ticket, trigger key)` is unique. A user change gets a fresh key per change; SLA events use `sla:{clock}:{cycle}:{kind}`; a retried event is a no-op (tested: three deliveries of one event add one evaluation, one note, one assignment). Notes also carry a unique source reference. Failed or abandoned executions resume at their first incomplete action (tested: failed third action, and a worker abandoned after the lease).
 
 ## Test results (one broad pass at the phase boundary)
 | Suite | Result |
 |---|---|
-| `Helpdesk.Host.Tests` | 782/782. New: business-calendar arithmetic 16, SLA flows 14, automation 12, conditions 4, realtime automation 1, restricted-role notes 1 (plus updated shape/leak/architecture expectations) |
+| `Helpdesk.Host.Tests` | see "Closeout verification" below. New in Phase 5: business-calendar arithmetic 16, SLA flows 14, automation 14, conditions 4, realtime (automation, SLA event, note observability x2, restricted-role notes) 5 (plus updated shape/leak/architecture expectations) |
 | `Helpdesk.ArchitectureTests` | 61/61 (reviewed scope-bypass callers extended with the SLA/automation system code; `ISlaMonitor` lives in Contracts) |
 | `Helpdesk.GraphSpike.Tests` | 43/43 |
 | Web lint / build / vitest | clean / builds / 74/74 |
@@ -53,9 +58,11 @@ Per-ticket state is indexed, not recomputed: `next_event_at` (monitor), `(depart
 - The monitor runs every minute, so a warning or breach is recorded up to a minute after the moment; the queue filters and badges use the stored deadlines and are exact.
 - No notification channel exists beyond realtime events and internal notes; "internal escalation" is an internal note plus priority/assignment actions.
 - Mailbox conditions are covered by evaluator and validation tests; no end-to-end inbound-mail-with-rules test was added.
-- The `sla` realtime event is published but has no dedicated test (automation events do).
 - The weekly editor shows an end of `24:00` as 23:59 in the time input (the stored value is kept until edited).
 - Hangfire shares the main database; the monitor is safe on several hosts but SignalR still assumes one.
+
+## Closeout verification
+One pass after the three closeout items: `dotnet test` whole solution (Host.Tests 787/787, ArchitectureTests 61/61, GraphSpike 43/43), Release build 0 warnings and 0 errors, web lint clean, vitest 74/74, web build OK. Playwright and the migration round trip were not repeated: no UI behaviour and no schema changed in the closeout (the earlier results above stand). Targeted runs during the work: realtime tests 12/12, automation tests 14/14.
 
 ## Remaining production gates (unchanged, not closed)
 D-16 / ADR-011 real Microsoft 365 validation; D-08 malware scanner engine (`RequireCleanScan` stays fail-closed); D-13 Data Protection key persistence; D-09 retention. Production readiness is not claimed.

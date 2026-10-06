@@ -5,6 +5,8 @@ using Helpdesk.Host.Tests.Ticketing;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 
 namespace Helpdesk.Host.Tests.Productivity;
 
@@ -316,5 +318,183 @@ public sealed class RealtimeTests(HelpdeskFixture fixture) : IClassFixture<Helpd
             Assert.All(events, e => Assert.All(e.EnumerateObject(), p => Assert.Contains(p.Name, allowed)));
             Assert.DoesNotContain(events, e => e.GetRawText().Contains("AUTONOTE", StringComparison.Ordinal));
         }
+    }
+
+    private static readonly string[] RestrictedPermissions = ["department.read", "tickets.read", "tickets.create", "tickets.reply", "tickets.update"];
+
+    private async Task RegisterRestrictedRoleAsync()
+    {
+        Helpdesk.Modules.Organisation.Authorization.RoleCatalogue.RegisterTestRole(RestrictedRole, RestrictedPermissions);
+        await fixture.ExecuteAsync("ALTER TABLE organisation.department_memberships DROP CONSTRAINT IF EXISTS ck_department_memberships_role");
+        await fixture.ExecuteAsync($"ALTER TABLE organisation.department_memberships ADD CONSTRAINT ck_department_memberships_role CHECK (role IN ('DepartmentAdmin','TeamLead','Agent','Viewer','{RestrictedRole}'))");
+    }
+
+    /// <summary>Everything a restricted caller can observe about two tickets: detail, list order and timestamps, search, activity, counts.</summary>
+    private static async Task<string> ObservationAsync(TestUser user, Guid older, Guid newer, string term)
+    {
+        var parts = new List<string>
+        {
+            (await user.Client.GetAsync($"/api/tickets/{older}")).Expect(HttpStatusCode.OK).Body,
+            (await user.Client.GetAsync($"/api/tickets/{newer}")).Expect(HttpStatusCode.OK).Body,
+            (await user.Client.GetAsync("/api/tickets?status=Open&limit=100")).Expect(HttpStatusCode.OK).Body,
+            (await user.Client.GetAsync($"/api/tickets?q={term}&limit=100")).Expect(HttpStatusCode.OK).Body,
+            (await user.Client.GetAsync("/api/tickets?sort=updated_asc&limit=100")).Expect(HttpStatusCode.OK).Body,
+            (await user.Client.GetAsync($"/api/tickets/{older}/activity?limit=200")).Expect(HttpStatusCode.OK).Body,
+            (await user.Client.GetAsync($"/api/tickets/{older}/messages?limit=200")).Expect(HttpStatusCode.OK).Body,
+            (await user.Client.GetAsync("/api/tickets/queue-counts")).Expect(HttpStatusCode.OK).Body,
+        };
+        return string.Join("\n", parts);
+    }
+
+    [Fact]
+    public async Task An_internal_note_changes_nothing_a_caller_without_notes_read_can_observe()
+    {
+        await RegisterRestrictedRoleAsync();
+        var d = await fixture.NewDeptAsync();
+        var restricted = await fixture.NewMemberAsync(d.Department, RestrictedRole);
+        var tag = Unique.Id();
+        var older = await d.Agent.CreateTicketAsync(d.Department, new { subject = $"Older {tag}", description = "first", requester = new { email = $"a{tag}@customer.test" } });
+        await Task.Delay(20);
+        var newer = await d.Agent.CreateTicketAsync(d.Department, new { subject = $"Newer {tag}", description = "second", requester = new { email = $"b{tag}@customer.test" } });
+        var (_, restrictedEvents) = await ConnectAsync(restricted);
+        var (_, agentEvents) = await ConnectAsync(d.Agent);
+        await Task.Delay(300);
+        lock (restrictedEvents)
+        {
+            restrictedEvents.Clear();
+        }
+
+        var before = await ObservationAsync(restricted, older.Id, newer.Id, tag);
+        var versionBefore = await fixture.ScalarAsync<long>("SELECT xmin::text::bigint FROM ticketing.tickets WHERE id = @t", new NpgsqlParameter("t", older.Id));
+        var updatedBefore = await fixture.ScalarAsync<DateTime>("SELECT updated_at FROM ticketing.tickets WHERE id = @t", new NpgsqlParameter("t", older.Id));
+
+        // A person adds a private note, then automation adds one: neither may be observable.
+        await Task.Delay(50);
+        (await d.Agent.PostMessageAsync(older.Id, "Internal", $"private {tag}")).Expect(HttpStatusCode.Created);
+        (await d.Admin.Client.PostAsync($"{d.Department.Url}/automations", new
+        {
+            name = "Note",
+            trigger = "TicketCreated",
+            conditions = Array.Empty<object>(),
+            actions = new object[] { new { type = "addInternalNote", text = $"auto {tag}" } },
+        })).Expect(HttpStatusCode.Created);
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var engine = scope.ServiceProvider.GetRequiredService<Helpdesk.Modules.Ticketing.Automation.AutomationEngine>();
+            await engine.RunAsync(d.Id, older.Id, "TicketCreated", $"replay-{tag}", Helpdesk.Modules.Ticketing.Automation.AutomationChain.Start("test"), CancellationToken.None);
+        }
+
+        // Authorised readers do get the note (events and content), proving the notes really were written.
+        Assert.True(await WaitForAsync(agentEvents, e => e.GetProperty("kind").GetString() == "note"));
+        Assert.Equal(2, (await d.Agent.Client.GetAsync($"/api/tickets/{older.Id}/messages?limit=200")).Expect(HttpStatusCode.OK).Json.GetProperty("items").EnumerateArray().Count(m => m.GetProperty("kind").GetString() == "Internal"));
+
+        // The restricted caller sees byte-identical detail (including updatedAt and version), list order, search, activity, messages and counts.
+        Assert.Equal(before, await ObservationAsync(restricted, older.Id, newer.Id, tag));
+        Assert.Equal(versionBefore, await fixture.ScalarAsync<long>("SELECT xmin::text::bigint FROM ticketing.tickets WHERE id = @t", new NpgsqlParameter("t", older.Id)));
+        Assert.Equal(updatedBefore, await fixture.ScalarAsync<DateTime>("SELECT updated_at FROM ticketing.tickets WHERE id = @t", new NpgsqlParameter("t", older.Id)));
+        Assert.True(await StaysSilentAsync(restrictedEvents), "restricted member received a realtime event for an internal note");
+
+        // The note did not reorder the restricted caller's queue: the older ticket is still the older one.
+        var order = (await restricted.Client.GetAsync("/api/tickets?limit=100")).Expect(HttpStatusCode.OK).Json.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetGuid()).ToArray();
+        Assert.True(Array.IndexOf(order, newer.Id) < Array.IndexOf(order, older.Id));
+
+        // Visible activity still moves the timestamp normally: a public reply from the same agent.
+        (await d.Agent.PostMessageAsync(older.Id, "Public", "visible reply")).Expect(HttpStatusCode.Created);
+        Assert.NotEqual(before, await ObservationAsync(restricted, older.Id, newer.Id, tag));
+        Assert.True(await WaitForAsync(restrictedEvents, e => e.GetProperty("kind").GetString() == "message"));
+        Assert.True(await fixture.ScalarAsync<DateTime>("SELECT updated_at FROM ticketing.tickets WHERE id = @t", new NpgsqlParameter("t", older.Id)) > updatedBefore);
+    }
+
+    [Fact]
+    public async Task A_note_posted_together_with_a_status_change_is_visible_only_as_the_status_change()
+    {
+        await RegisterRestrictedRoleAsync();
+        var d = await fixture.NewDeptAsync();
+        var restricted = await fixture.NewMemberAsync(d.Department, RestrictedRole);
+        var ticket = await d.Agent.CreateTicketAsync(d.Department);
+        var (_, restrictedEvents) = await ConnectAsync(restricted);
+        await Task.Delay(300);
+        lock (restrictedEvents)
+        {
+            restrictedEvents.Clear();
+        }
+
+        (await d.Agent.PostMessageAsync(ticket.Id, "Internal", "private reasoning", status: "Pending")).Expect(HttpStatusCode.Created);
+        Assert.True(await WaitForAsync(restrictedEvents, e => e.GetProperty("kind").GetString() == "status"));
+        lock (restrictedEvents)
+        {
+            Assert.DoesNotContain(restrictedEvents, e => e.GetProperty("kind").GetString() == "note");
+        }
+
+        var activity = (await restricted.Client.GetAsync($"/api/tickets/{ticket.Id}/activity?limit=200")).Expect(HttpStatusCode.OK).Body;
+        Assert.DoesNotContain("Internal", activity, StringComparison.Ordinal);
+        Assert.Contains("ticket.status_changed", activity, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task The_sla_event_reaches_only_members_who_can_read_the_ticket_and_carries_no_configuration()
+    {
+        Helpdesk.Modules.Organisation.Authorization.RoleCatalogue.RegisterTestRole("TestNoTicketRead", ["department.read"]);
+        await fixture.ExecuteAsync("ALTER TABLE organisation.department_memberships DROP CONSTRAINT IF EXISTS ck_department_memberships_role");
+        await fixture.ExecuteAsync($"ALTER TABLE organisation.department_memberships ADD CONSTRAINT ck_department_memberships_role CHECK (role IN ('DepartmentAdmin','TeamLead','Agent','Viewer','{RestrictedRole}','TestNoTicketRead'))");
+
+        var a = await fixture.NewDeptAsync();
+        var b = await fixture.NewDeptAsync();
+        var noRead = await fixture.NewMemberAsync(a.Department, "TestNoTicketRead");
+        const string secretPolicy = "SECRETPOLICY-Platinum";
+        const string secretRule = "SECRETRULE-Escalate";
+        var calendar = (await a.Admin.Client.PostAsync($"{a.Department.Url}/business-hours", new { name = "SECRETCAL", timeZone = "Europe/London", weekly = new[] { new { day = "Monday", intervals = new[] { new { start = "09:00", end = "17:00" } } } } })).Expect(HttpStatusCode.Created);
+        (await a.Admin.Client.PostAsync($"{a.Department.Url}/sla-policies", new { name = secretPolicy, calendarId = calendar.Id, firstResponseMinutes = 60, resolutionMinutes = 480 })).Expect(HttpStatusCode.Created);
+        (await a.Admin.Client.PostAsync($"{a.Department.Url}/automations", new { name = secretRule, trigger = "SlaBreached", conditions = Array.Empty<object>(), actions = new object[] { new { type = "setPriority", value = "Urgent" } } })).Expect(HttpStatusCode.Created);
+
+        var (_, agentEvents) = await ConnectAsync(a.Agent);
+        var (_, viewerEvents) = await ConnectAsync(a.Viewer);
+        var (_, outsiderEvents) = await ConnectAsync(b.Agent);
+        var (_, noReadEvents) = await ConnectAsync(noRead);
+        await Task.Delay(300);
+
+        var ticket = await a.Agent.CreateTicketAsync(a.Department, new { subject = "UNRELATEDSUBJECT-xyz", description = "UNRELATEDBODY-xyz", requester = new { email = $"r{Unique.Id()}@customer.test" } });
+        foreach (var events in new[] { agentEvents, viewerEvents })
+        {
+            Assert.True(await WaitForAsync(events, e => e.GetProperty("kind").GetString() == "sla" && e.GetProperty("ticketId").GetGuid() == ticket.Id));
+        }
+
+        // Resolving completes the SLA: another sla event, same shape.
+        (await a.Lead.PatchTicketAsync(ticket, new { Status = "Resolved" })).Expect(HttpStatusCode.OK);
+        Assert.True(await WaitForAsync(agentEvents, e => e.GetProperty("kind").GetString() == "status"));
+        Assert.True(await StaysSilentAsync(outsiderEvents), "a member of another department received an event");
+        Assert.True(await StaysSilentAsync(noReadEvents), "a member without tickets.read received an event");
+
+        string[] allowed = ["ticketId", "departmentId", "reference", "kind", "actorUserId", "at"];
+        foreach (var events in new[] { agentEvents, viewerEvents })
+        {
+            lock (events)
+            {
+                var sla = events.Where(e => e.GetProperty("kind").GetString() == "sla").ToArray();
+                Assert.NotEmpty(sla);
+                Assert.All(events, e => Assert.All(e.EnumerateObject(), p => Assert.Contains(p.Name, allowed)));
+                Assert.All(sla, e => Assert.Equal(a.Id, e.GetProperty("departmentId").GetGuid()));
+                var raw = string.Concat(events.Select(e => e.GetRawText()));
+                foreach (var forbidden in new[] { secretPolicy, secretRule, "SECRETCAL", "UNRELATEDSUBJECT", "UNRELATEDBODY", "Urgent", "firstResponse", "dueAt" })
+                {
+                    Assert.DoesNotContain(forbidden, raw, StringComparison.Ordinal);
+                }
+            }
+        }
+
+        // Re-subscription does not bypass authorization: a member removed from the department and reconnecting hears nothing.
+        var (_, removedBefore) = await ConnectAsync(a.Viewer);
+        (await a.Admin.Client.DeleteAsync($"{a.Department.Url}/members/{a.Viewer.Id}")).Expect(HttpStatusCode.NoContent);
+        await Task.Delay(300);
+        var (_, removedAfter) = await ConnectAsync(a.Viewer);
+        lock (removedAfter)
+        {
+            removedAfter.Clear();
+        }
+
+        await a.Agent.CreateTicketAsync(a.Department);
+        Assert.True(await WaitForAsync(agentEvents, e => e.GetProperty("kind").GetString() == "sla" && e.GetProperty("ticketId").GetGuid() != ticket.Id));
+        Assert.True(await StaysSilentAsync(removedAfter), "a removed member received an event after reconnecting");
+        Assert.NotNull(removedBefore);
     }
 }

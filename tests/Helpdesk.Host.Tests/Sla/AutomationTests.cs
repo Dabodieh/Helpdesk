@@ -343,4 +343,101 @@ public sealed class AutomationTests(HelpdeskFixture fixture) : IClassFixture<Hel
         (await w.Lead.AssignAsync(ticket.Id, detail.Version, null, w.Agent.Id)).Expect(HttpStatusCode.OK);
         Assert.Single((await MessagesAsync(w, ticket.Id)).EnumerateArray(), m => m.GetProperty("body").GetString() == "Someone took it");
     }
+
+    private async Task<(string State, string Actions, string TriggerKey)> ExecutionOfAsync(Guid ticketId)
+    {
+        await using var connection = new NpgsqlConnection(fixture.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("SELECT state, actions::text, trigger_key FROM ticketing.automation_executions WHERE ticket_id = @t", connection);
+        command.Parameters.AddWithValue("t", ticketId);
+        await using var reader = await command.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync(), "expected one execution row");
+        var row = (reader.GetString(0), reader.GetString(1), reader.GetString(2));
+        Assert.False(await reader.ReadAsync(), "expected exactly one execution row");
+        return row;
+    }
+
+    [Fact]
+    public async Task A_failed_execution_resumes_at_the_failed_action_without_repeating_what_succeeded()
+    {
+        await using var w = await TimedWorld.CreateAsync(fixture, Start);
+        var team = await fixture.CreateTeamAsync(w.Dept.Department);
+        await RuleAsync(w, "Three steps", "TicketCreated", [], [Action("setPriority", "High"), Action("addInternalNote", text: "Step two note"), Action("assignTeam", team.Id.ToString())]);
+
+        // The team is deactivated after the rule was saved: step three fails when the rule runs, steps one and two succeed.
+        (await w.Admin.Client.PatchAsync($"{w.Base}/teams/{team.Id}", new { version = team.Version, isActive = false })).Expect(HttpStatusCode.OK);
+        var ticket = await w.NewTicketAsync();
+        var (state, actions, key) = await ExecutionOfAsync(ticket.Id);
+        Assert.Equal("Failed", state);
+        Assert.Equal(["Done", "Done", "Failed"], JsonDocument.Parse(actions).RootElement.EnumerateArray().Select(a => a.GetProperty("outcome").GetString()!).ToArray());
+        Assert.Equal("High", (await w.TicketAsync(ticket.Id)).Json.GetProperty("priority").GetString());
+        Assert.Equal(JsonValueKind.Null, (await w.TicketAsync(ticket.Id)).Json.GetProperty("team").ValueKind);
+        var notesBefore = (await MessagesAsync(w, ticket.Id)).EnumerateArray().Count(m => m.GetProperty("authorType").GetString() == "System");
+        var priorityAuditBefore = await w.CountAsync("SELECT count(*) FROM audit.audit_events WHERE object_id = @t AND action = 'ticket.priority_changed'", new NpgsqlParameter("t", ticket.Id));
+        Assert.Equal(1, notesBefore);
+
+        // The team is usable again; the same event is delivered again (a retry) and resumes the failed action only.
+        var current = (await w.Admin.Client.GetAsync($"{w.Base}/teams/{team.Id}")).Expect(HttpStatusCode.OK);
+        (await w.Admin.Client.PatchAsync($"{w.Base}/teams/{team.Id}", new { version = current.Version, isActive = true })).Expect(HttpStatusCode.OK);
+        await using var scope = fixture.Factory.Services.CreateAsyncScope();
+        var engine = scope.ServiceProvider.GetRequiredService<AutomationEngine>();
+        await engine.RunAsync(w.Dept.Id, ticket.Id, "TicketCreated", key, AutomationChain.Start("retry"), CancellationToken.None);
+
+        var resumed = await ExecutionOfAsync(ticket.Id);
+        Assert.Equal("Completed", resumed.State);
+        Assert.Equal(["Done", "Done", "Done"], JsonDocument.Parse(resumed.Actions).RootElement.EnumerateArray().Select(a => a.GetProperty("outcome").GetString()!).ToArray());
+        Assert.Equal(team.Id, (await w.TicketAsync(ticket.Id)).Json.GetProperty("team").GetProperty("id").GetGuid());
+        Assert.Equal(notesBefore, (await MessagesAsync(w, ticket.Id)).EnumerateArray().Count(m => m.GetProperty("authorType").GetString() == "System"));
+        Assert.Equal(priorityAuditBefore, await w.CountAsync("SELECT count(*) FROM audit.audit_events WHERE object_id = @t AND action = 'ticket.priority_changed'", new NpgsqlParameter("t", ticket.Id)));
+        Assert.Equal(1, await w.CountAsync("SELECT count(*) FROM audit.audit_events WHERE object_id = @t AND action = 'ticket.team_changed'", new NpgsqlParameter("t", ticket.Id)));
+
+        // Delivering the same event again after success is harmless, and the history stays one coherent row.
+        await engine.RunAsync(w.Dept.Id, ticket.Id, "TicketCreated", key, AutomationChain.Start("retry"), CancellationToken.None);
+        await engine.RunAsync(w.Dept.Id, ticket.Id, "TicketCreated", key, AutomationChain.Start("retry"), CancellationToken.None);
+        Assert.Equal(resumed, await ExecutionOfAsync(ticket.Id));
+        Assert.Equal(notesBefore, (await MessagesAsync(w, ticket.Id)).EnumerateArray().Count(m => m.GetProperty("authorType").GetString() == "System"));
+        var history = await HistoryAsync(w, ticket.Json.GetProperty("reference").GetString());
+        var item = Assert.Single(history.EnumerateArray());
+        Assert.Equal("Completed", item.GetProperty("state").GetString());
+        Assert.True(item.GetProperty("finishedAt").ValueKind == JsonValueKind.String && item.GetProperty("error").ValueKind == JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task An_execution_abandoned_part_way_is_resumed_after_its_lease_and_not_before()
+    {
+        await using var w = await TimedWorld.CreateAsync(fixture, Start);
+        await RuleAsync(w, "Two steps", "TicketCreated", [], [Action("addInternalNote", text: "Only once"), Action("setPriority", "Urgent")]);
+        var ticket = await w.NewTicketAsync();
+        var (_, _, key) = await ExecutionOfAsync(ticket.Id);
+
+        // Simulate a worker that died after the note but before the priority change: Running, note Done, priority Pending, priority reverted.
+        await fixture.ExecuteAsync(
+            "UPDATE ticketing.automation_executions SET state = 'Running', finished_at = NULL, started_at = now() - interval '10 minutes', "
+            + "actions = jsonb_set(actions, '{1,outcome}', '\"Pending\"') WHERE ticket_id = @t",
+            new NpgsqlParameter("t", ticket.Id));
+        await fixture.ExecuteAsync("UPDATE ticketing.tickets SET priority = 2 WHERE id = @t", new NpgsqlParameter("t", ticket.Id));
+
+        // A retry is a new delivery in a new scope (a scope remembers what it already loaded).
+        async Task RetryAsync()
+        {
+            await using var scope = fixture.Factory.Services.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<AutomationEngine>().RunAsync(w.Dept.Id, ticket.Id, "TicketCreated", key, AutomationChain.Start("retry"), CancellationToken.None);
+        }
+
+        // A still-fresh Running execution belongs to a live worker: it is left alone.
+        await fixture.ExecuteAsync("UPDATE ticketing.automation_executions SET started_at = now() WHERE ticket_id = @t", new NpgsqlParameter("t", ticket.Id));
+        await RetryAsync();
+        Assert.Equal("Running", (await ExecutionOfAsync(ticket.Id)).State);
+        Assert.Equal("Normal", (await w.TicketAsync(ticket.Id)).Json.GetProperty("priority").GetString());
+
+        // After the lease the abandoned execution resumes: the note is not added again, the priority is applied.
+        await fixture.ExecuteAsync("UPDATE ticketing.automation_executions SET started_at = now() - interval '10 minutes' WHERE ticket_id = @t", new NpgsqlParameter("t", ticket.Id));
+        await RetryAsync();
+        var done = await ExecutionOfAsync(ticket.Id);
+        Assert.Equal("Completed", done.State);
+        Assert.Equal("Urgent", (await w.TicketAsync(ticket.Id)).Json.GetProperty("priority").GetString());
+        Assert.Equal(1, (await MessagesAsync(w, ticket.Id)).EnumerateArray().Count(m => m.GetProperty("authorType").GetString() == "System"));
+        await RetryAsync();
+        Assert.Equal(done, await ExecutionOfAsync(ticket.Id));
+    }
 }

@@ -367,7 +367,14 @@ internal sealed class TicketService(
 
         var previousStatus = ticket.Status;
         var statusChanged = status is { } requested && ticket.ApplyStatus(requested, now);
-        ticket.UpdatedAt = now;
+
+        // UpdatedAt means visible activity (public messages, state changes). An internal note alone must not move it: the ticket row is
+        // not even written, so UpdatedAt, the row version and queue order give callers without tickets.notes.read nothing to infer from.
+        if (kind == MessageKind.Public || statusChanged)
+        {
+            ticket.UpdatedAt = now;
+        }
+
         await SaveAsync(ct);
 
         await audit.WriteAsync(TicketAuditActions.MessageAdded, TicketingAudit.TicketObject, ticket.Id, ticket.DepartmentId, null,

@@ -54,5 +54,7 @@
 - (Phase 5) Retention and pruning of automation execution history; store only matched and failed evaluations if volume demands it.
 - (Phase 5) Notification channel (email or chat) for SLA warnings and escalation; automation actions for tags and categories once they exist.
 - (Phase 5) Dry run that follows chained triggers; a rule "impact preview" over recent tickets.
-- (Phase 5) Dedicated test for resuming failed automation executions and for the `sla` realtime event; inbound-mail-with-rules end-to-end test.
+- (Phase 5) Inbound-mail-with-rules end-to-end test. (Failed-execution resume and the `sla` realtime event now have dedicated tests.)
 - (Phase 5) Rate limits for configuration endpoints; per-department business-hours templates and public-holiday imports.
+
+- (Phase 5 closeout) Optional: a separate "last note activity" timestamp visible only to note readers if agents want notes to reorder their queue.

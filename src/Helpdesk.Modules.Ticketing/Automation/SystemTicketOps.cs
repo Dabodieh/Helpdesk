@@ -248,8 +248,7 @@ internal sealed class SystemTicketOps(
                     DeliveryState = DeliveryState.None,
                     CreatedAt = now,
                 };
-                db.Messages.Add(message);
-                ticket.UpdatedAt = now;
+                db.Messages.Add(message); // the ticket row is untouched: a private note must not change UpdatedAt or the row version
                 await db.SaveChangesAsync(ct);
                 await audit.WriteSystemAsync(TicketAuditActions.MessageAdded, TicketingAudit.TicketObject, ticket.Id, departmentId, null,
                     new { messageId = message.Id, kind = message.Kind.ToString(), authorType = message.AuthorType.ToString(), reason = TicketAuditActions.ReasonAutomation, via }, ct);

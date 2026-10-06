@@ -98,3 +98,4 @@ SLA, automation, tags/categories, merge/link, rich text, requester portal, cross
 - **Indexing:** partial indexes on the three summary columns; see ADR-014 and the Phase 5 report for the scale check.
 - **Queue:** `sla` filter, `sla_due_asc` sort and SLA counts read `ticket_sla` (department scoped like tickets).
 - **Activity:** audit entries of internal notes are hidden from callers without `tickets.notes.read`.
+- **`updatedAt` semantics:** the time of the last *visible* activity (public message, status, priority, team, assignee, subject). Adding an internal note does not touch the ticket row, so it cannot be inferred from `updatedAt`, `version`, ordering or counts.

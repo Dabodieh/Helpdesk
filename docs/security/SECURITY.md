@@ -70,4 +70,5 @@ Open: no malware engine (D-08), no webhook rate limiting, raw bodies stored in `
 - Loop protection (chain, once per rule and ticket, depth and size caps) and idempotent execution keys; failures are recorded, never thrown into the user's request.
 - Automation writes through the same domain methods, audit and SLA hooks as people; its internal notes are Internal, system-authored, never queued for email and never satisfy first response.
 - The execution trace stores no subject text or full addresses. Activity hides internal-note entries from callers without notes access.
+- Existence of internal notes: `updatedAt` and the row version only change for visible activity; an internal note (human or automation) does not write the ticket row, does not reorder queues, does not change list, search, detail, activity or count output, and its realtime event goes only to the notes group. Tested through detail, list order, search, activity, messages, counts and SignalR with a role that lacks `tickets.notes.read`.
 - Limits: unbounded execution-history retention (D-09), no rate limits on configuration endpoints (BACKLOG).
