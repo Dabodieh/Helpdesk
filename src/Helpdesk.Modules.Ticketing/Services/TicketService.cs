@@ -6,8 +6,10 @@ using Helpdesk.Modules.Audit.Contracts;
 using Helpdesk.Modules.Identity.Contracts;
 using Helpdesk.Modules.Mail.Contracts;
 using Helpdesk.Modules.Organisation.Contracts;
+using Helpdesk.Modules.Ticketing.Automation;
 using Helpdesk.Modules.Ticketing.Domain;
 using Helpdesk.Modules.Ticketing.Persistence;
+using Helpdesk.Modules.Ticketing.Sla;
 using Helpdesk.SharedKernel.Authorization;
 using Helpdesk.SharedKernel.Database;
 using Helpdesk.SharedKernel.Errors;
@@ -39,6 +41,7 @@ internal sealed class TicketService(
     IMailOutbox outbox,
     IAttachmentStore attachments,
     ITicketEvents events,
+    TicketLifecycle lifecycle,
     TimeProvider clock)
 {
     public const int DefaultMessageLimit = 100;
@@ -80,6 +83,7 @@ internal sealed class TicketService(
         var now = clock.GetUtcNowMicroseconds();
         Ticket ticket;
         Requester requester;
+        TicketChange[] createdChange = [new TicketChange(ChangeKind.Created)];
         await using (var tx = await db.Database.BeginTransactionAsync(ct))
         {
             var requesterCreated = false;
@@ -144,10 +148,12 @@ internal sealed class TicketService(
                 }, ct);
             await audit.WriteAsync(TicketAuditActions.MessageAdded, TicketingAudit.TicketObject, ticket.Id, departmentId, null,
                 new { messageId = first.Id, kind = first.Kind.ToString(), authorType = first.AuthorType.ToString() }, ct);
+            await lifecycle.BeforeCommitAsync(ticket, requester.EmailNormalised, createdChange, ct);
             await tx.CommitAsync(ct);
         }
 
         await events.PublishAsync(departmentId, ticket.Id, ticket.Reference, TicketEventKinds.Created, current.UserId, ct);
+        await lifecycle.AfterCommitAsync(ticket, createdChange, Provenances.User, ct);
         return await projection.DetailAsync(ticket, requester, ct);
     }
 
@@ -203,6 +209,7 @@ internal sealed class TicketService(
         var ticket = await LockAndLoadAsync(key.Id, version, ct);
 
         var changes = new List<(string Action, object Previous, object Next)>();
+        var lc = new List<TicketChange>();
         var now = clock.GetUtcNowMicroseconds();
         var newSubject = request.Subject?.Trim();
         if (newSubject is not null && newSubject != ticket.Subject)
@@ -214,6 +221,7 @@ internal sealed class TicketService(
         if (priority is { } newPriority && newPriority != ticket.Priority)
         {
             changes.Add((TicketAuditActions.PriorityChanged, new { priority = ticket.Priority.ToString() }, new { priority = newPriority.ToString() }));
+            lc.Add(new TicketChange(ChangeKind.Priority, ticket.Priority.ToString(), newPriority.ToString()));
             ticket.Priority = newPriority;
         }
 
@@ -222,6 +230,7 @@ internal sealed class TicketService(
             var previous = ticket.Status;
             ticket.ApplyStatus(newStatus, now);
             changes.Add((TicketAuditActions.StatusChanged, new { status = previous.ToString() }, new { status = newStatus.ToString() }));
+            lc.Add(new TicketChange(ChangeKind.Status, previous.ToString(), newStatus.ToString()));
         }
 
         if (changes.Count > 0)
@@ -232,6 +241,11 @@ internal sealed class TicketService(
             {
                 await audit.WriteAsync(action, TicketingAudit.TicketObject, ticket.Id, ticket.DepartmentId, previous, next, ct);
             }
+        }
+
+        if (lc.Count > 0)
+        {
+            await lifecycle.BeforeCommitAsync(ticket, ticket.Requester.EmailNormalised, lc, ct);
         }
 
         await tx.CommitAsync(ct);
@@ -245,6 +259,7 @@ internal sealed class TicketService(
             await events.PublishAsync(ticket.DepartmentId, ticket.Id, ticket.Reference, kind, current.UserId, ct);
         }
 
+        await lifecycle.AfterCommitAsync(ticket, lc, Provenances.User, ct);
         return await projection.DetailAsync(ticket, ticket.Requester, ct);
     }
 
@@ -264,16 +279,19 @@ internal sealed class TicketService(
 
         // Validate only what actually changes, so keeping an existing (since deactivated) team or assignee stays possible.
         var changes = new List<(string Action, object Previous, object Next)>();
+        var lc = new List<TicketChange>();
         if (request.TeamId != ticket.TeamId)
         {
             await ValidateTeamAsync(ticket.DepartmentId, request.TeamId, ct);
             changes.Add((TicketAuditActions.TeamChanged, new { teamId = ticket.TeamId }, new { teamId = request.TeamId }));
+            lc.Add(new TicketChange(ChangeKind.Team, ticket.TeamId?.ToString(), request.TeamId?.ToString()));
         }
 
         if (request.AssigneeUserId != ticket.AssigneeUserId)
         {
             await ValidateAssigneeAsync(ticket.DepartmentId, request.AssigneeUserId, ct);
             changes.Add((TicketAuditActions.AssigneeChanged, new { assigneeUserId = ticket.AssigneeUserId }, new { assigneeUserId = request.AssigneeUserId }));
+            lc.Add(new TicketChange(ChangeKind.Assignee, ticket.AssigneeUserId?.ToString(), request.AssigneeUserId?.ToString()));
         }
 
         if (changes.Count > 0)
@@ -292,6 +310,7 @@ internal sealed class TicketService(
         if (changes.Count > 0)
         {
             await events.PublishAsync(ticket.DepartmentId, ticket.Id, ticket.Reference, TicketEventKinds.Assignment, current.UserId, ct);
+            await lifecycle.AfterCommitAsync(ticket, lc, Provenances.User, ct);
         }
 
         return await projection.DetailAsync(ticket, ticket.Requester, ct);
@@ -370,6 +389,22 @@ internal sealed class TicketService(
                     new MailParticipant(ticket.Requester.Email, ticket.Requester.DisplayName), cc, message.Body, current.UserId), db, ct);
         }
 
+        var messageChanges = new List<TicketChange>();
+        if (kind == MessageKind.Public)
+        {
+            messageChanges.Add(new TicketChange(ChangeKind.AgentPublicReply, MessageId: message.Id));
+        }
+
+        if (statusChanged)
+        {
+            messageChanges.Add(new TicketChange(ChangeKind.Status, previousStatus.ToString(), ticket.Status.ToString()));
+        }
+
+        if (messageChanges.Count > 0)
+        {
+            await lifecycle.BeforeCommitAsync(ticket, ticket.Requester.EmailNormalised, messageChanges, ct);
+        }
+
         await tx.CommitAsync(ct);
         if (outboundId is { } queued)
         {
@@ -382,6 +417,7 @@ internal sealed class TicketService(
             await events.PublishAsync(ticket.DepartmentId, ticket.Id, ticket.Reference, TicketEventKinds.Status, current.UserId, ct);
         }
 
+        await lifecycle.AfterCommitAsync(ticket, messageChanges, Provenances.User, ct);
         var dto = new MessageDto(message.Id, message.TicketId, message.Kind.ToString(), message.AuthorType.ToString(),
             new MessageAuthorDto(current.UserId, current.DisplayName), message.Body, null, message.Source, message.DeliveryState.ToString(), message.DeliveryError, [], message.CreatedAt);
         return new PostedMessageDto(dto, await projection.DetailAsync(ticket, ticket.Requester, ct));
@@ -647,6 +683,7 @@ internal sealed class TicketService(
         var ticket = await LockAndLoadAsync(key.Id, expectedVersion: null, ct);
         var now = clock.GetUtcNowMicroseconds();
         var changes = new List<(string Action, object Previous, object Next, string Kind)>();
+        var (oldStatus, oldPriority, oldTeam, oldAssignee) = (ticket.Status, ticket.Priority, ticket.TeamId, ticket.AssigneeUserId);
 
         var wantedTeam = team is null ? ticket.TeamId : team.Id;
         var wantedAssignee = assignee is null ? ticket.AssigneeUserId : assignee.Id;
@@ -694,12 +731,35 @@ internal sealed class TicketService(
             await audit.WriteAsync(action, TicketingAudit.TicketObject, ticket.Id, ticket.DepartmentId, previous, next, ct);
         }
 
+        var lc = new List<TicketChange>();
+        if (ticket.Status != oldStatus)
+        {
+            lc.Add(new TicketChange(ChangeKind.Status, oldStatus.ToString(), ticket.Status.ToString()));
+        }
+
+        if (ticket.Priority != oldPriority)
+        {
+            lc.Add(new TicketChange(ChangeKind.Priority, oldPriority.ToString(), ticket.Priority.ToString()));
+        }
+
+        if (ticket.TeamId != oldTeam)
+        {
+            lc.Add(new TicketChange(ChangeKind.Team, oldTeam?.ToString(), ticket.TeamId?.ToString()));
+        }
+
+        if (ticket.AssigneeUserId != oldAssignee)
+        {
+            lc.Add(new TicketChange(ChangeKind.Assignee, oldAssignee?.ToString(), ticket.AssigneeUserId?.ToString()));
+        }
+
+        await lifecycle.BeforeCommitAsync(ticket, ticket.Requester.EmailNormalised, lc, ct);
         await tx.CommitAsync(ct);
         foreach (var kind in changes.Select(c => c.Kind).Distinct())
         {
             await events.PublishAsync(ticket.DepartmentId, ticket.Id, ticket.Reference, kind, current.UserId, ct);
         }
 
+        await lifecycle.AfterCommitAsync(ticket, lc, Provenances.User, ct);
         return new BulkItemDto(ticket.Id, ticket.Reference, "updated", null);
     }
 

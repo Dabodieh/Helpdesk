@@ -20,7 +20,8 @@ internal sealed record ViewFilter(
     string[]? Status,
     string[]? Priority,
     string? Q,
-    string? Sort);
+    string? Sort,
+    string? Sla = null);
 
 internal sealed record SavedViewDto(Guid Id, string Name, ViewFilter Filter, bool IsPinned, string Version);
 
@@ -192,13 +193,19 @@ internal sealed class SavedViewService(TicketingDbContext db, ICurrentUser curre
         }
 
         var sort = (filter.Sort ?? "updated_desc").Trim().ToLowerInvariant();
-        if (sort is not ("updated_desc" or "updated_asc" or "created_desc" or "created_asc" or "priority_desc"))
+        if (sort is not ("updated_desc" or "updated_asc" or "created_desc" or "created_asc" or "priority_desc" or "sla_due_asc"))
         {
-            errors["filter.sort"] = ["sort must be one of updated_desc, updated_asc, created_desc, created_asc, priority_desc."];
+            errors["filter.sort"] = ["sort must be one of updated_desc, updated_asc, created_desc, created_asc, priority_desc, sla_due_asc."];
+        }
+
+        var sla = filter.Sla?.Trim().ToLowerInvariant();
+        if (!string.IsNullOrEmpty(sla) && !TicketQueryService.SlaFilters.Contains(sla))
+        {
+            errors["filter.sla"] = [$"sla must be one of {string.Join(", ", TicketQueryService.SlaFilters)}."];
         }
 
         return new ViewFilter(queue, filter.DepartmentId, filter.TeamId, filter.AssigneeUserId, filter.Unassigned == true ? true : null, status, priority,
-            string.IsNullOrEmpty(q) ? null : q, sort);
+            string.IsNullOrEmpty(q) ? null : q, sort, string.IsNullOrEmpty(sla) ? null : sla);
     }
 
     private SavedViewDto ToDto(SavedView v) =>

@@ -13,7 +13,13 @@ public sealed class DepartmentScopeBypassTests
 {
     /// <summary>System work with an explicit department (ingestion). Add a type here only after review.</summary>
     private static readonly Type[] AllowedBypassCallers =
-        [typeof(TicketIngressService), typeof(InboundTicketSink), typeof(DeliveryStateSink), typeof(PeopleUpsert)];
+        [
+            typeof(TicketIngressService), typeof(InboundTicketSink), typeof(DeliveryStateSink), typeof(PeopleUpsert),
+            // Phase 5: system work that always carries an explicit department (SLA clocks, automation, the SLA monitor).
+            typeof(Helpdesk.Modules.Ticketing.Sla.SlaEngine), typeof(Helpdesk.Modules.Ticketing.Automation.AutomationEngine),
+            typeof(Helpdesk.Modules.Ticketing.Automation.SystemTicketOps), typeof(Helpdesk.Modules.Ticketing.Automation.TicketLifecycle),
+            typeof(Helpdesk.Modules.Ticketing.Automation.SlaMonitor),
+        ];
 
     private static readonly BindingFlags AllMembers =
         BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;

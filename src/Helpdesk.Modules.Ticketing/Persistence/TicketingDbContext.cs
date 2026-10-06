@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore.Design;
 
 namespace Helpdesk.Modules.Ticketing.Persistence;
 
-internal sealed class TicketingDbContext(DbContextOptions<TicketingDbContext> options, IDepartmentScope scope) : DbContext(options)
+internal sealed partial class TicketingDbContext(DbContextOptions<TicketingDbContext> options, IDepartmentScope scope) : DbContext(options)
 {
     public const string Schema = "ticketing";
 
@@ -114,7 +114,7 @@ internal sealed class TicketingDbContext(DbContextOptions<TicketingDbContext> op
             {
                 t.HasCheckConstraint("ck_messages_kind", "kind IN ('Public','Internal')");
                 t.HasCheckConstraint("ck_messages_author_type", "author_type IN ('Agent','Requester','System')");
-                t.HasCheckConstraint("ck_messages_source", "source IN ('web','manual','email')");
+                t.HasCheckConstraint("ck_messages_source", "source IN ('web','manual','email','automation')");
                 t.HasCheckConstraint("ck_messages_delivery_state", "delivery_state IN ('None','NotDelivered','Pending','Sent','Failed')");
 
                 // Only an agent's public reply has a delivery state; requester mail and notes are always None.
@@ -195,6 +195,8 @@ internal sealed class TicketingDbContext(DbContextOptions<TicketingDbContext> op
             // Department rows are visible only inside the caller's department scope; personal rows are filtered by owner in the service.
             e.HasQueryFilter(x => x.DepartmentId == null || ScopedDepartmentIds.Contains(x.DepartmentId.Value));
         });
+
+        ConfigureServiceManagement(modelBuilder);
 
         modelBuilder.Entity<TicketParticipant>(e =>
         {

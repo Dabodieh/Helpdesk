@@ -1,8 +1,10 @@
 using System.Globalization;
 using Helpdesk.Modules.Mail.Contracts;
 using Helpdesk.Modules.Organisation.Contracts;
+using Helpdesk.Modules.Ticketing.Automation;
 using Helpdesk.Modules.Ticketing.Domain;
 using Helpdesk.Modules.Ticketing.Persistence;
+using Helpdesk.Modules.Ticketing.Sla;
 using Helpdesk.SharedKernel.Database;
 using Helpdesk.SharedKernel.Errors;
 using Microsoft.EntityFrameworkCore;
@@ -59,7 +61,7 @@ internal static class PeopleUpsert
 /// idempotent on <c>SourceRef</c> through the unique message index, so a retry after a crash returns the earlier result instead of
 /// creating a second ticket or message. Uses the named scope bypass and always filters by department itself.
 /// </summary>
-internal sealed class InboundTicketSink(TicketingDbContext db, TicketingAudit audit, IOrganisationDirectory organisation, ITicketEvents events, TimeProvider clock) : IInboundTicketSink
+internal sealed class InboundTicketSink(TicketingDbContext db, TicketingAudit audit, IOrganisationDirectory organisation, ITicketEvents events, TicketLifecycle lifecycle, TimeProvider clock) : IInboundTicketSink
 {
     public async Task<InboundTicketResult> CreateTicketAsync(InboundTicketRequest request, CancellationToken cancellationToken = default)
     {
@@ -179,8 +181,11 @@ internal sealed class InboundTicketSink(TicketingDbContext db, TicketingAudit au
                 new { messageId = note.Id, kind = note.Kind.ToString(), authorType = note.AuthorType.ToString() }, cancellationToken);
         }
 
+        TicketChange[] createdChange = [new TicketChange(ChangeKind.Created)];
+        await lifecycle.BeforeCommitAsync(ticket, requester.EmailNormalised, createdChange, cancellationToken);
         await tx.CommitAsync(cancellationToken);
         await events.PublishAsync(request.DepartmentId, ticket.Id, ticket.Reference, TicketEventKinds.Created, null, cancellationToken);
+        await lifecycle.AfterCommitAsync(ticket, createdChange, Provenances.Email, cancellationToken);
         return new InboundTicketResult(ticket.Id, ticket.Reference, first.Id, Created: true, Reopened: false);
     }
 
@@ -269,12 +274,21 @@ internal sealed class InboundTicketSink(TicketingDbContext db, TicketingAudit au
                 new { status = ticket.Status.ToString(), reason = TicketAuditActions.ReasonRequesterReply }, cancellationToken);
         }
 
+        var changes = new List<TicketChange> { new(ChangeKind.RequesterMessage, MessageId: message.Id) };
+        if (reopened)
+        {
+            changes.Add(new TicketChange(ChangeKind.Status, previous.ToString(), ticket.Status.ToString()));
+        }
+
+        await lifecycle.BeforeCommitAsync(ticket, "", changes, cancellationToken);
         await tx.CommitAsync(cancellationToken);
         await events.PublishAsync(request.DepartmentId, ticket.Id, ticket.Reference, TicketEventKinds.Message, null, cancellationToken);
         if (reopened)
         {
             await events.PublishAsync(request.DepartmentId, ticket.Id, ticket.Reference, TicketEventKinds.Status, null, cancellationToken);
         }
+
+        await lifecycle.AfterCommitAsync(ticket, changes, Provenances.Email, cancellationToken);
 
         return new InboundTicketResult(ticket.Id, ticket.Reference, message.Id, Created: false, Reopened: reopened);
     }

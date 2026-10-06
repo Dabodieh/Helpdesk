@@ -19,6 +19,7 @@ internal static class TicketEndpoints
         MapQueues(app);
         MapViewsAndCanned(app);
         MapTicket(app);
+        ServiceManagementEndpoints.Map(app);
     }
 
     private static void MapDepartmentScoped(IEndpointRouteBuilder app)

@@ -24,6 +24,7 @@ internal static class HangfireSetup
             .UsePostgreSqlStorage(o => o.UseNpgsqlConnection(connectionString), new PostgreSqlStorageOptions { SchemaName = "hangfire" }));
         services.AddHangfireServer(o => o.WorkerCount = 4);
         services.AddScoped<MailJobs>();
+        services.AddScoped<SlaJobs>();
         services.AddSingleton<IMailJobScheduler, HangfireMailJobScheduler>();
         services.AddHostedService<RecurringJobsRegistration>();
         return services;
@@ -65,6 +66,7 @@ internal sealed class RecurringJobsRegistration(IRecurringJobManager recurring) 
         recurring.AddOrUpdate<MailJobs>("mail-sync-all", j => j.SyncAll(CancellationToken.None), "*/5 * * * *");
         recurring.AddOrUpdate<MailJobs>("mail-dispatch", j => j.Dispatch(CancellationToken.None), "* * * * *");
         recurring.AddOrUpdate<MailJobs>("mail-subscriptions", j => j.MaintainSubscriptions(CancellationToken.None), "0 */6 * * *");
+        recurring.AddOrUpdate<SlaJobs>("sla-monitor", j => j.Monitor(CancellationToken.None), "* * * * *");
         return Task.CompletedTask;
     }
 

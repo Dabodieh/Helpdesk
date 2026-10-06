@@ -21,8 +21,14 @@ internal sealed class TicketQueryService(
     TicketProjection projection,
     ICurrentUser current,
     IAuthorizer authorizer,
-    SavedViewService views)
+    SavedViewService views,
+    TimeProvider clock)
 {
+    /// <summary>Values of the <c>sla</c> list filter. Breached: past its deadline and unmet; approaching: inside its warning window; duesoon: due within four hours; paused: resolution clock paused.</summary>
+    public static readonly string[] SlaFilters = ["breached", "approaching", "duesoon", "paused"];
+
+    private static readonly TimeSpan DueSoonWindow = TimeSpan.FromHours(4);
+
     public const int DefaultLimit = 50;
     public const int MaxLimit = 100;
 
@@ -33,6 +39,7 @@ internal sealed class TicketQueryService(
         CreatedDesc,
         CreatedAsc,
         PriorityDesc,
+        SlaDueAsc,
     }
 
     public async Task<PageDto<TicketListItemDto>> ListAsync(TicketListQuery query, CancellationToken ct)
@@ -44,7 +51,7 @@ internal sealed class TicketQueryService(
             query = query with
             {
                 Queue = f.Queue, DepartmentId = f.DepartmentId, Status = f.Status, Priority = f.Priority, TeamId = f.TeamId,
-                AssigneeUserId = f.AssigneeUserId, Unassigned = f.Unassigned, Q = f.Q, Sort = f.Sort,
+                AssigneeUserId = f.AssigneeUserId, Unassigned = f.Unassigned, Q = f.Q, Sort = f.Sort, Sla = f.Sla,
             };
         }
 
@@ -86,10 +93,17 @@ internal sealed class TicketQueryService(
             errors["limit"] = [$"limit must be between 1 and {MaxLimit}."];
         }
 
+        var slaFilter = query.Sla?.Trim().ToLowerInvariant();
+        if (!string.IsNullOrEmpty(slaFilter) && !SlaFilters.Contains(slaFilter))
+        {
+            errors["sla"] = [$"sla must be one of {string.Join(", ", SlaFilters)}."];
+        }
+
         TicketValidation.ThrowIfAny(errors);
 
         await scope.EnsureLoadedAsync(ct);
         IQueryable<Ticket> tickets = db.Tickets.AsNoTracking();
+        var now = clock.GetUtcNow();
 
         if (query.DepartmentId is { } departmentId)
         {
@@ -137,6 +151,24 @@ internal sealed class TicketQueryService(
             tickets = tickets.Where(t => t.AssigneeUserId == null);
         }
 
+        // SLA filters read the indexed summary columns of ticket_sla (itself department scoped), never the ticket history.
+        switch (slaFilter)
+        {
+            case "breached":
+                tickets = tickets.Where(t => db.TicketSlas.Any(s => s.TicketId == t.Id && s.NextDueAt != null && s.NextDueAt <= now));
+                break;
+            case "approaching":
+                tickets = tickets.Where(t => db.TicketSlas.Any(s => s.TicketId == t.Id && s.NextWarnAt != null && s.NextWarnAt <= now && s.NextDueAt > now));
+                break;
+            case "duesoon":
+                var soon = now + DueSoonWindow;
+                tickets = tickets.Where(t => db.TicketSlas.Any(s => s.TicketId == t.Id && s.NextDueAt != null && s.NextDueAt > now && s.NextDueAt <= soon));
+                break;
+            case "paused":
+                tickets = tickets.Where(t => db.TicketSlas.Any(s => s.TicketId == t.Id && s.ResolutionPausedAt != null));
+                break;
+        }
+
         // Search (trigram-indexed ILIKE): reference, subject, requester name/email, message text. Internal notes are searched only in
         // departments where the caller may read notes, so a match can never reveal a note's existence or content.
         string? like = null;
@@ -156,7 +188,7 @@ internal sealed class TicketQueryService(
                 || db.Messages.Any(m => m.TicketId == t.Id && EF.Functions.ILike(m.Body, pattern, "\\") && (m.Kind == MessageKind.Public || notes.Contains(m.DepartmentId))));
         }
 
-        var ordered = ApplyCursorAndOrder(tickets, sort, query.Cursor);
+        var ordered = ApplyCursorAndOrder(db, tickets, sort, query.Cursor);
         var rows = await ordered
             .Take(take + 1)
             .Select(t => new TicketRow(
@@ -171,8 +203,10 @@ internal sealed class TicketQueryService(
         }
 
         var matches = search is null ? null : await MatchesAsync(rows, search, like!, notesDepartments, ct);
-        var items = await projection.ListItemsAsync(rows, ct, matches);
-        return new PageDto<TicketListItemDto>(items, hasMore ? EncodeCursor(sort, rows[^1]) : null);
+        var rowIds = rows.Select(r => r.Id).ToArray();
+        var slas = await db.TicketSlas.AsNoTracking().Where(s => rowIds.Contains(s.TicketId)).ToDictionaryAsync(s => s.TicketId, ct);
+        var items = await projection.ListItemsAsync(rows, ct, matches, slas);
+        return new PageDto<TicketListItemDto>(items, hasMore ? EncodeCursor(sort, rows[^1], slas.TryGetValue(rows[^1].Id, out var last) ? last.NextDueAt : null) : null);
     }
 
     /// <summary>Why each row matched, with a plain-text snippet for message hits. Snippets come only from visible messages and are never HTML.</summary>
@@ -234,6 +268,9 @@ internal sealed class TicketQueryService(
         await scope.EnsureLoadedAsync(ct);
         var me = current.UserId;
         var teamIds = (await organisation.GetTeamIdsOfUserAsync(me, scope.DepartmentIds, ct)).ToArray();
+        var now = clock.GetUtcNow();
+        var slaBreached = await db.TicketSlas.AsNoTracking().CountAsync(s => s.NextDueAt != null && s.NextDueAt <= now, ct);
+        var slaApproaching = await db.TicketSlas.AsNoTracking().CountAsync(s => s.NextWarnAt != null && s.NextWarnAt <= now && s.NextDueAt > now, ct);
         var counts = await db.Tickets.AsNoTracking()
             .Where(t => t.Status == TicketStatus.Open)
             .GroupBy(_ => 1)
@@ -245,7 +282,7 @@ internal sealed class TicketQueryService(
                 Team = g.Count(t => t.TeamId != null && teamIds.Contains(t.TeamId.Value)),
             })
             .SingleOrDefaultAsync(ct);
-        return counts is null ? new QueueCountsDto(0, 0, 0, 0) : new QueueCountsDto(counts.My, counts.Team, counts.Unassigned, counts.All);
+        return counts is null ? new QueueCountsDto(0, 0, 0, 0, slaBreached, slaApproaching) : new QueueCountsDto(counts.My, counts.Team, counts.Unassigned, counts.All, slaBreached, slaApproaching);
     }
 
     // ----- sorting and keyset pagination -----
@@ -264,8 +301,10 @@ internal sealed class TicketQueryService(
                 return Sort.CreatedAsc;
             case "priority_desc":
                 return Sort.PriorityDesc;
+            case "sla_due_asc":
+                return Sort.SlaDueAsc;
             default:
-                errors["sort"] = ["sort must be one of updated_desc, updated_asc, created_desc, created_asc, priority_desc."];
+                errors["sort"] = ["sort must be one of updated_desc, updated_asc, created_desc, created_asc, priority_desc, sla_due_asc."];
                 return Sort.UpdatedDesc;
         }
     }
@@ -276,22 +315,24 @@ internal sealed class TicketQueryService(
         Sort.UpdatedAsc => "ua",
         Sort.CreatedDesc => "cd",
         Sort.CreatedAsc => "ca",
+        Sort.SlaDueAsc => "sa",
         _ => "pd",
     };
 
     /// <summary>Cursor = sort code | key values | id. Ties on the sort key are broken by id, so pages never skip or repeat rows.</summary>
-    private static string EncodeCursor(Sort sort, TicketRow last)
+    private static string EncodeCursor(Sort sort, TicketRow last, DateTimeOffset? slaDue)
     {
         var parts = sort switch
         {
             Sort.CreatedDesc or Sort.CreatedAsc => $"{last.CreatedAt.UtcTicks}|{last.Id}",
             Sort.PriorityDesc => $"{(short)last.Priority}|{last.UpdatedAt.UtcTicks}|{last.Id}",
+            Sort.SlaDueAsc => $"{(slaDue ?? DateTimeOffset.MaxValue).UtcTicks}|{last.Id}",
             _ => $"{last.UpdatedAt.UtcTicks}|{last.Id}",
         };
         return Cursor.Encode(string.Create(CultureInfo.InvariantCulture, $"{Code(sort)}|{parts}"));
     }
 
-    private static IQueryable<Ticket> ApplyCursorAndOrder(IQueryable<Ticket> tickets, Sort sort, string? cursor)
+    private static IQueryable<Ticket> ApplyCursorAndOrder(TicketingDbContext db, IQueryable<Ticket> tickets, Sort sort, string? cursor)
     {
         string[] parts = [];
         if (cursor is not null)
@@ -310,6 +351,20 @@ internal sealed class TicketQueryService(
 
         switch (sort)
         {
+            case Sort.SlaDueAsc:
+            {
+                // Lists the tickets that have a running deadline, soonest first (a ticket without one has no place in this order).
+                var withDue = db.TicketSlas.Where(s => s.NextDueAt != null);
+                tickets = tickets.Where(t => withDue.Any(s => s.TicketId == t.Id));
+                if (cursor is not null)
+                {
+                    var (at, id) = TimeAndId(parts, 1);
+                    tickets = tickets.Where(t => withDue.Any(s => s.TicketId == t.Id && (s.NextDueAt > at || (s.NextDueAt == at && t.Id.CompareTo(id) > 0))));
+                }
+
+                return tickets.OrderBy(t => withDue.Where(s => s.TicketId == t.Id).Select(s => s.NextDueAt).FirstOrDefault()).ThenBy(t => t.Id);
+            }
+
             case Sort.UpdatedDesc:
                 if (cursor is not null)
                 {

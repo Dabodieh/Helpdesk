@@ -27,7 +27,8 @@ internal sealed record TicketListItemDto(
     RefDto? Assignee,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    MatchDto? Match = null);
+    MatchDto? Match = null,
+    Helpdesk.Modules.Ticketing.Sla.SlaSummaryDto? Sla = null);
 
 internal sealed record MailboxRefDto(Guid Id, string Address, string Name);
 
@@ -51,7 +52,8 @@ internal sealed record TicketDetailDto(
     DateTimeOffset? ClosedAt,
     string Version,
     MailboxRefDto? Mailbox,
-    IReadOnlyList<ParticipantDto> Participants);
+    IReadOnlyList<ParticipantDto> Participants,
+    Helpdesk.Modules.Ticketing.Sla.SlaSummaryDto? Sla = null);
 
 internal sealed record MessageAuthorDto(Guid? Id, string DisplayName);
 
@@ -77,7 +79,7 @@ internal sealed record ActivityDto(Guid Id, DateTimeOffset OccurredAt, ActorDto?
 
 internal sealed record PageDto<T>(IReadOnlyList<T> Items, string? NextCursor);
 
-internal sealed record QueueCountsDto(int My, int Team, int Unassigned, int All);
+internal sealed record QueueCountsDto(int My, int Team, int Unassigned, int All, int SlaBreached = 0, int SlaApproaching = 0);
 
 internal sealed record RequesterLookupDto(Guid Id, string DisplayName, string Email);
 
@@ -122,4 +124,5 @@ internal sealed record TicketListQuery(
     string? Sort,
     string? Cursor,
     int? Limit,
-    Guid? View = null);
+    Guid? View = null,
+    string? Sla = null);

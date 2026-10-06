@@ -15,6 +15,8 @@ public static class PermissionCodes
     public const string TeamsManage = "teams.manage";
     public const string DepartmentMailboxesManage = "department.mailboxes.manage";
     public const string DepartmentCannedManage = "department.canned.manage";
+    public const string DepartmentSlaManage = "department.sla.manage";
+    public const string DepartmentAutomationManage = "department.automation.manage";
     public const string DepartmentAuditRead = "department.audit.read";
     public const string TicketsRead = "tickets.read";
     public const string TicketsCreate = "tickets.create";

@@ -1,4 +1,6 @@
 using Helpdesk.Modules.Mail.Contracts;
+using Helpdesk.Modules.Ticketing.Automation;
+using Helpdesk.Modules.Ticketing.Sla;
 using Helpdesk.Modules.Ticketing.Contracts;
 using Helpdesk.Modules.Ticketing.Endpoints;
 using Helpdesk.Modules.Ticketing.Persistence;
@@ -36,6 +38,16 @@ public static class TicketingModule
         services.AddSingleton<HubAccess>();
         services.AddSingleton<IAccessChangeListener>(sp => sp.GetRequiredService<HubAccess>());
         services.AddHostedService<HubAccessRefresher>();
+        services.AddScoped<SlaEngine>();
+        services.AddScoped<RuleReferenceChecker>();
+        services.AddScoped<SystemTicketOps>();
+        services.AddScoped<AutomationEngine>();
+        services.AddScoped<TicketLifecycle>();
+        services.AddScoped<ISlaMonitor, SlaMonitor>();
+        services.AddScoped<BusinessHoursService>();
+        services.AddScoped<SlaPolicyService>();
+        services.AddScoped<AutomationAdminService>();
+        services.AddScoped<SlaReadService>();
         services.AddScoped<ITicketIngress, TicketIngressService>();
         services.AddScoped<IInboundTicketSink, InboundTicketSink>();
         services.AddScoped<IDeliveryStateSink, DeliveryStateSink>();

@@ -42,6 +42,13 @@ internal static class TicketAuditActions
     public const string RequesterCreated = "requester.created";
     public const string CannedCreated = "canned_response.created";
     public const string CannedUpdated = "canned_response.updated";
+    public const string BusinessHoursCreated = "business_hours.created";
+    public const string BusinessHoursUpdated = "business_hours.updated";
+    public const string SlaPolicyCreated = "sla_policy.created";
+    public const string SlaPolicyUpdated = "sla_policy.updated";
+    public const string AutomationRuleCreated = "automation_rule.created";
+    public const string AutomationRuleUpdated = "automation_rule.updated";
+    public const string ReasonAutomation = "automation";
 
     public const string ReasonRequesterReply = "requester_reply";
 }

@@ -23,6 +23,7 @@ internal static class TicketEventKinds
     public const string Note = "note";
     public const string Delivery = "delivery";
     public const string Attachment = "attachment";
+    public const string Sla = "sla";
 }
 
 /// <summary>Payload of the <c>ticketChanged</c> hub message. No subject, body, names or addresses: ids and a kind only.</summary>

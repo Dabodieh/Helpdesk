@@ -34,3 +34,11 @@ internal sealed class HangfireMailJobScheduler(IBackgroundJobClient client) : IM
 
     public void EnqueueSend(Guid outboundId) => client.Enqueue<MailJobs>(j => j.Send(outboundId, CancellationToken.None));
 }
+
+/// <summary>Records SLA warnings and breaches that are due and runs the SLA automation triggers (an indexed selection; no per-ticket jobs).</summary>
+public sealed class SlaJobs(Helpdesk.Modules.Ticketing.Contracts.ISlaMonitor monitor)
+{
+    [DisableConcurrentExecution(120)]
+    [AutomaticRetry(Attempts = 0)]
+    public Task Monitor(CancellationToken cancellationToken) => monitor.RunAsync(cancellationToken);
+}

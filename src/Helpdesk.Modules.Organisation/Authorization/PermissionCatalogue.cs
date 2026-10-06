@@ -38,6 +38,8 @@ internal static class PermissionCatalogue
         new(PermissionCodes.TeamsManage, PermissionKind.Administrative),
         new(PermissionCodes.DepartmentMailboxesManage, PermissionKind.Administrative),
         new(PermissionCodes.DepartmentCannedManage, PermissionKind.Administrative),
+        new(PermissionCodes.DepartmentSlaManage, PermissionKind.Administrative),
+        new(PermissionCodes.DepartmentAutomationManage, PermissionKind.Administrative),
         new(PermissionCodes.DepartmentAuditRead, PermissionKind.Administrative),
         new(PermissionCodes.TicketsRead, PermissionKind.Content),
         new(PermissionCodes.TicketsCreate, PermissionKind.Content),
@@ -94,6 +96,8 @@ internal static class RoleCatalogue
             PermissionCodes.TeamsManage,
             PermissionCodes.DepartmentMailboxesManage,
             PermissionCodes.DepartmentCannedManage,
+            PermissionCodes.DepartmentSlaManage,
+            PermissionCodes.DepartmentAutomationManage,
         ],
     };
 

@@ -26,7 +26,7 @@ internal sealed record TicketRow(
     DateTimeOffset UpdatedAt);
 
 /// <summary>Builds API shapes from tickets: resolves team, assignee and department names through the module contracts, in batches.</summary>
-internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirectory organisation, IUserDirectory users, IMailboxDirectory mailboxes)
+internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirectory organisation, IUserDirectory users, IMailboxDirectory mailboxes, TimeProvider clock)
 {
     public async Task<TicketDetailDto> DetailAsync(Ticket ticket, Requester requester, CancellationToken ct)
     {
@@ -65,6 +65,8 @@ internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirec
         var participants = await db.Participants.AsNoTracking().Where(p => p.TicketId == ticket.Id).OrderBy(p => p.CreatedAt).ThenBy(p => p.EmailNormalised)
             .Select(p => new ParticipantDto(p.Email, p.DisplayName)).ToListAsync(ct);
 
+        var sla = await db.TicketSlas.AsNoTracking().SingleOrDefaultAsync(s => s.TicketId == ticket.Id, ct);
+
         return new TicketDetailDto(
             ticket.Id,
             ticket.Reference,
@@ -83,10 +85,11 @@ internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirec
             ticket.ClosedAt,
             ConcurrencyVersion.ToToken(ticket.Version),
             mailbox,
-            participants);
+            participants,
+            Helpdesk.Modules.Ticketing.Sla.SlaSummary.Of(sla, clock.GetUtcNow()));
     }
 
-    public async Task<IReadOnlyList<TicketListItemDto>> ListItemsAsync(IReadOnlyList<TicketRow> rows, CancellationToken ct, IReadOnlyDictionary<Guid, MatchDto>? matches = null)
+    public async Task<IReadOnlyList<TicketListItemDto>> ListItemsAsync(IReadOnlyList<TicketRow> rows, CancellationToken ct, IReadOnlyDictionary<Guid, MatchDto>? matches = null, IReadOnlyDictionary<Guid, Helpdesk.Modules.Ticketing.Domain.TicketSla>? slas = null)
     {
         if (rows.Count == 0)
         {
@@ -98,6 +101,7 @@ internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirec
         var teams = await organisation.GetTeamsAsync(rows.Where(r => r.TeamId is not null).Select(r => r.TeamId!.Value).Distinct().ToArray(), ct);
         var people = await users.GetManyAsync(rows.Where(r => r.AssigneeUserId is not null).Select(r => r.AssigneeUserId!.Value).Distinct().ToArray(), ct);
 
+        var now = clock.GetUtcNow();
         return rows.Select(r => new TicketListItemDto(
             r.Id,
             r.Reference,
@@ -111,6 +115,7 @@ internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirec
             r.AssigneeUserId is { } userId && people.TryGetValue(userId, out var person) ? new RefDto(person.Id, person.DisplayName) : null,
             r.CreatedAt,
             r.UpdatedAt,
-            matches is not null && matches.TryGetValue(r.Id, out var match) ? match : null)).ToList();
+            matches is not null && matches.TryGetValue(r.Id, out var match) ? match : null,
+            slas is not null && slas.TryGetValue(r.Id, out var sla) ? Helpdesk.Modules.Ticketing.Sla.SlaSummary.Of(sla, now) : null)).ToList();
     }
 }

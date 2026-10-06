@@ -292,4 +292,29 @@ public sealed class RealtimeTests(HelpdeskFixture fixture) : IClassFixture<Helpd
             Assert.DoesNotContain(restrictedEvents, e => e.GetProperty("kind").GetString() == "note");
         }
     }
+
+    [Fact]
+    public async Task Automation_changes_reach_connected_members_as_content_free_events()
+    {
+        var d = await fixture.NewDeptAsync();
+        var team = await fixture.CreateTeamAsync(d.Department);
+        (await d.Admin.Client.PostAsync($"{d.Department.Url}/automations", new
+        {
+            name = "Route",
+            trigger = "TicketCreated",
+            conditions = Array.Empty<object>(),
+            actions = new object[] { new { type = "assignTeam", value = team.Id.ToString() }, new { type = "addInternalNote", text = "AUTONOTE secret" } },
+        })).Expect(HttpStatusCode.Created);
+        var (_, events) = await ConnectAsync(d.Viewer);
+        await d.Agent.CreateTicketAsync(d.Department, new { subject = "Routed", description = "x", requester = new { email = $"r{Unique.Id()}@customer.test" } });
+
+        Assert.True(await WaitForAsync(events, e => e.GetProperty("kind").GetString() == "assignment"));
+        Assert.True(await WaitForAsync(events, e => e.GetProperty("kind").GetString() == "note"));
+        string[] allowed = ["ticketId", "departmentId", "reference", "kind", "actorUserId", "at"];
+        lock (events)
+        {
+            Assert.All(events, e => Assert.All(e.EnumerateObject(), p => Assert.Contains(p.Name, allowed)));
+            Assert.DoesNotContain(events, e => e.GetRawText().Contains("AUTONOTE", StringComparison.Ordinal));
+        }
+    }
 }

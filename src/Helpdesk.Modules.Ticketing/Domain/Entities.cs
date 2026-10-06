@@ -48,6 +48,7 @@ internal static class MessageSources
     public const string Web = "web";
     public const string Manual = "manual";
     public const string Email = "email";
+    public const string Automation = "automation";
 
     /// <summary>Sources a caller of <c>ITicketIngress</c> may name (email enters through the mail sink only).</summary>
     public static bool IsValid(string? source) => source is Web or Manual;

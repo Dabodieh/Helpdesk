@@ -23,6 +23,261 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.AutomationExecution", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Actions")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("actions");
+
+                    b.Property<Guid>("ChainId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("chain_id");
+
+                    b.Property<string>("Conditions")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("conditions");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("department_id");
+
+                    b.Property<int>("Depth")
+                        .HasColumnType("integer")
+                        .HasColumnName("depth");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("error");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finished_at");
+
+                    b.Property<bool>("Matched")
+                        .HasColumnType("boolean")
+                        .HasColumnName("matched");
+
+                    b.Property<string>("Provenance")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("provenance");
+
+                    b.Property<Guid>("RuleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("rule_id");
+
+                    b.Property<string>("RuleName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("rule_name");
+
+                    b.Property<string>("SkipReason")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("skip_reason");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("state");
+
+                    b.Property<Guid>("TicketId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ticket_id");
+
+                    b.Property<string>("TicketReference")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("ticket_reference");
+
+                    b.Property<string>("Trigger")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("trigger");
+
+                    b.Property<string>("TriggerKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("trigger_key");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DepartmentId", "StartedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_automation_executions_department");
+
+                    b.HasIndex("RuleId", "DepartmentId");
+
+                    b.HasIndex("TicketId", "DepartmentId");
+
+                    b.HasIndex("TicketId", "StartedAt")
+                        .HasDatabaseName("ix_automation_executions_ticket");
+
+                    b.HasIndex("RuleId", "TicketId", "TriggerKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_automation_executions_event");
+
+                    b.ToTable("automation_executions", "ticketing", t =>
+                        {
+                            t.HasCheckConstraint("ck_automation_executions_state", "state IN ('Running','Completed','Failed','Skipped')");
+                        });
+                });
+
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.AutomationRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Actions")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("actions");
+
+                    b.Property<string>("Conditions")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("conditions");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("department_id");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<bool>("StopProcessing")
+                        .HasColumnType("boolean")
+                        .HasColumnName("stop_processing");
+
+                    b.Property<string>("Trigger")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("trigger");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("Id", "DepartmentId")
+                        .HasName("ux_automation_rules_id_department");
+
+                    b.HasIndex("DepartmentId", "Trigger", "SortOrder")
+                        .HasDatabaseName("ix_automation_rules_trigger")
+                        .HasFilter("is_active");
+
+                    b.ToTable("automation_rules", "ticketing", t =>
+                        {
+                            t.HasCheckConstraint("ck_automation_rules_name", "length(btrim(name)) BETWEEN 1 AND 100");
+                        });
+                });
+
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.BusinessHoursCalendar", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("department_id");
+
+                    b.Property<string>("Exceptions")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("exceptions");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("TimeZoneId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("time_zone");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<string>("Weekly")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("weekly");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("Id", "DepartmentId")
+                        .HasName("ux_business_hours_id_department");
+
+                    b.HasIndex("DepartmentId", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("ux_business_hours_department_name");
+
+                    b.ToTable("business_hours", "ticketing", t =>
+                        {
+                            t.HasCheckConstraint("ck_business_hours_name", "length(btrim(name)) BETWEEN 1 AND 100");
+                        });
+                });
+
             modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.CannedResponse", b =>
                 {
                     b.Property<Guid>("Id")
@@ -210,7 +465,7 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_messages_kind", "kind IN ('Public','Internal')");
 
-                            t.HasCheckConstraint("ck_messages_source", "source IN ('web','manual','email')");
+                            t.HasCheckConstraint("ck_messages_source", "source IN ('web','manual','email','automation')");
                         });
                 });
 
@@ -310,6 +565,130 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                     b.ToTable("saved_views", "ticketing", t =>
                         {
                             t.HasCheckConstraint("ck_saved_views_name", "length(btrim(name)) BETWEEN 1 AND 80");
+                        });
+                });
+
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.SlaEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("at");
+
+                    b.Property<string>("Clock")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("clock");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("department_id");
+
+                    b.Property<string>("Detail")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("detail");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("kind");
+
+                    b.Property<Guid>("TicketId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ticket_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TicketId", "At")
+                        .HasDatabaseName("ix_sla_events_ticket");
+
+                    b.HasIndex("TicketId", "DepartmentId");
+
+                    b.ToTable("sla_events", "ticketing");
+                });
+
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.SlaPolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("ApproachingLeadMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("approaching_lead_minutes");
+
+                    b.Property<Guid?>("CalendarId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("calendar_id");
+
+                    b.Property<string>("Conditions")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("conditions");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("department_id");
+
+                    b.Property<int?>("FirstResponseMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("first_response_minutes");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<bool>("PauseWhenPending")
+                        .HasColumnType("boolean")
+                        .HasColumnName("pause_when_pending");
+
+                    b.Property<int?>("ResolutionMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("resolution_minutes");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CalendarId", "DepartmentId");
+
+                    b.HasIndex("DepartmentId", "SortOrder")
+                        .HasDatabaseName("ix_sla_policies_department_order");
+
+                    b.ToTable("sla_policies", "ticketing", t =>
+                        {
+                            t.HasCheckConstraint("ck_sla_policies_lead", "approaching_lead_minutes BETWEEN 0 AND 10080");
+
+                            t.HasCheckConstraint("ck_sla_policies_name", "length(btrim(name)) BETWEEN 1 AND 100");
+
+                            t.HasCheckConstraint("ck_sla_policies_targets", "(first_response_minutes IS NOT NULL OR resolution_minutes IS NOT NULL) AND COALESCE(first_response_minutes, 1) > 0 AND COALESCE(resolution_minutes, 1) > 0");
                         });
                 });
 
@@ -485,6 +864,135 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.TicketSla", b =>
+                {
+                    b.Property<Guid>("TicketId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ticket_id");
+
+                    b.Property<DateTimeOffset>("AppliedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("applied_at");
+
+                    b.Property<int>("ApproachingLeadMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("approaching_lead_minutes");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("department_id");
+
+                    b.Property<DateTimeOffset?>("FirstResponseBreachedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fr_breached_at");
+
+                    b.Property<DateTimeOffset?>("FirstResponseDueAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fr_due_at");
+
+                    b.Property<DateTimeOffset?>("FirstResponseMetAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fr_met_at");
+
+                    b.Property<int?>("FirstResponseTargetMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("fr_target_minutes");
+
+                    b.Property<DateTimeOffset?>("FirstResponseWarnedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fr_warned_at");
+
+                    b.Property<DateTimeOffset?>("NextDueAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_due_at");
+
+                    b.Property<DateTimeOffset?>("NextEventAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_event_at");
+
+                    b.Property<DateTimeOffset?>("NextWarnAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_warn_at");
+
+                    b.Property<Guid?>("PolicyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("policy_id");
+
+                    b.Property<DateTimeOffset?>("ResolutionBreachedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("res_breached_at");
+
+                    b.Property<int>("ResolutionCycle")
+                        .HasColumnType("integer")
+                        .HasColumnName("res_cycle");
+
+                    b.Property<DateTimeOffset?>("ResolutionDueAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("res_due_at");
+
+                    b.Property<DateTimeOffset?>("ResolutionMetAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("res_met_at");
+
+                    b.Property<DateTimeOffset?>("ResolutionPausedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("res_paused_at");
+
+                    b.Property<long?>("ResolutionRemainingSeconds")
+                        .HasColumnType("bigint")
+                        .HasColumnName("res_remaining_seconds");
+
+                    b.Property<int?>("ResolutionTargetMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("res_target_minutes");
+
+                    b.Property<DateTimeOffset?>("ResolutionWarnedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("res_warned_at");
+
+                    b.Property<string>("Snapshot")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("snapshot");
+
+                    b.HasKey("TicketId");
+
+                    b.HasIndex("NextEventAt")
+                        .HasDatabaseName("ix_ticket_sla_next_event")
+                        .HasFilter("next_event_at IS NOT NULL");
+
+                    b.HasIndex("DepartmentId", "NextDueAt")
+                        .HasDatabaseName("ix_ticket_sla_department_due")
+                        .HasFilter("next_due_at IS NOT NULL");
+
+                    b.HasIndex("DepartmentId", "NextWarnAt")
+                        .HasDatabaseName("ix_ticket_sla_department_warn")
+                        .HasFilter("next_warn_at IS NOT NULL");
+
+                    b.HasIndex("TicketId", "DepartmentId");
+
+                    b.ToTable("ticket_sla", "ticketing");
+                });
+
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.AutomationExecution", b =>
+                {
+                    b.HasOne("Helpdesk.Modules.Ticketing.Domain.AutomationRule", null)
+                        .WithMany()
+                        .HasForeignKey("RuleId", "DepartmentId")
+                        .HasPrincipalKey("Id", "DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_automation_executions_rule_department");
+
+                    b.HasOne("Helpdesk.Modules.Ticketing.Domain.Ticket", null)
+                        .WithMany()
+                        .HasForeignKey("TicketId", "DepartmentId")
+                        .HasPrincipalKey("Id", "DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_automation_executions_ticket_department");
+                });
+
             modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.Message", b =>
                 {
                     b.HasOne("Helpdesk.Modules.Ticketing.Domain.Ticket", null)
@@ -494,6 +1002,27 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_messages_ticket_department");
+                });
+
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.SlaEvent", b =>
+                {
+                    b.HasOne("Helpdesk.Modules.Ticketing.Domain.Ticket", null)
+                        .WithMany()
+                        .HasForeignKey("TicketId", "DepartmentId")
+                        .HasPrincipalKey("Id", "DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_sla_events_ticket_department");
+                });
+
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.SlaPolicy", b =>
+                {
+                    b.HasOne("Helpdesk.Modules.Ticketing.Domain.BusinessHoursCalendar", null)
+                        .WithMany()
+                        .HasForeignKey("CalendarId", "DepartmentId")
+                        .HasPrincipalKey("Id", "DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_sla_policies_calendar_department");
                 });
 
             modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.Ticket", b =>
@@ -518,6 +1047,17 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_ticket_participants_ticket_department");
+                });
+
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.TicketSla", b =>
+                {
+                    b.HasOne("Helpdesk.Modules.Ticketing.Domain.Ticket", null)
+                        .WithMany()
+                        .HasForeignKey("TicketId", "DepartmentId")
+                        .HasPrincipalKey("Id", "DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_ticket_sla_ticket_department");
                 });
 #pragma warning restore 612, 618
         }

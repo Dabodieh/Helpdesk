@@ -1,6 +1,8 @@
+using Helpdesk.Modules.Ticketing.Automation;
 using Helpdesk.Modules.Ticketing.Contracts;
 using Helpdesk.Modules.Ticketing.Domain;
 using Helpdesk.Modules.Ticketing.Persistence;
+using Helpdesk.Modules.Ticketing.Sla;
 using Helpdesk.SharedKernel.Errors;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,7 +12,7 @@ namespace Helpdesk.Modules.Ticketing.Services;
 /// <see cref="ITicketIngress"/>: system-principal writes with an explicit department (the receiving mailbox). Runs without a
 /// caller scope, so it uses the named <c>IgnoreDepartmentScope()</c> bypass and always filters by department id itself.
 /// </summary>
-internal sealed class TicketIngressService(TicketingDbContext db, TicketingAudit audit, TimeProvider clock) : ITicketIngress
+internal sealed class TicketIngressService(TicketingDbContext db, TicketingAudit audit, TicketLifecycle lifecycle, TimeProvider clock) : ITicketIngress
 {
     public async Task<RequesterMessageResult> AddRequesterMessageAsync(
         Guid departmentId, Guid ticketId, Guid requesterId, string body, string source, CancellationToken cancellationToken = default)
@@ -66,7 +68,15 @@ internal sealed class TicketIngressService(TicketingDbContext db, TicketingAudit
                 new { status = ticket.Status.ToString(), reason = TicketAuditActions.ReasonRequesterReply }, cancellationToken);
         }
 
+        var changes = new List<TicketChange> { new(ChangeKind.RequesterMessage, MessageId: message.Id) };
+        if (reopened)
+        {
+            changes.Add(new TicketChange(ChangeKind.Status, previous.ToString(), ticket.Status.ToString()));
+        }
+
+        await lifecycle.BeforeCommitAsync(ticket, "", changes, cancellationToken);
         await tx.CommitAsync(cancellationToken);
+        await lifecycle.AfterCommitAsync(ticket, changes, source == MessageSources.Web || source == MessageSources.Manual ? Provenances.User : Provenances.Email, cancellationToken);
         return new RequesterMessageResult(message.Id, reopened);
     }
 }
