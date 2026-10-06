@@ -43,15 +43,23 @@ internal enum DeliveryState
     Failed,
 }
 
+internal static class TicketSources
+{
+    public const string Agent = "agent";
+    public const string Email = "email";
+    public const string Portal = "portal";
+}
+
 internal static class MessageSources
 {
+    public const string Portal = "portal";
     public const string Web = "web";
     public const string Manual = "manual";
     public const string Email = "email";
     public const string Automation = "automation";
 
     /// <summary>Sources a caller of <c>ITicketIngress</c> may name (email enters through the mail sink only).</summary>
-    public static bool IsValid(string? source) => source is Web or Manual;
+    public static bool IsValid(string? source) => source is Web or Manual or Portal;
 }
 
 /// <summary>A person who raises tickets within one department. Not a user; the same address in two departments is two requesters.</summary>
@@ -118,6 +126,18 @@ internal sealed class Ticket
 
     public DateTimeOffset UpdatedAt { get; set; }
 
+    /// <summary>
+    /// The last activity a REQUESTER can see: the first message, public messages (either side) and status changes. Assignment, priority,
+    /// team, internal notes and automation never move it, so portal ordering, timestamps and realtime reveal nothing private.
+    /// </summary>
+    public DateTimeOffset LastPublicActivityAt { get; set; }
+
+    /// <summary>Where the ticket came from (<see cref="TicketSources"/>); the conversation is one and the same whatever the channel.</summary>
+    public string Source { get; set; } = TicketSources.Agent;
+
+    /// <summary>The request form the requester used (portal tickets only).</summary>
+    public Guid? RequestFormId { get; set; }
+
     public DateTimeOffset? ResolvedAt { get; set; }
 
     public DateTimeOffset? ClosedAt { get; set; }
@@ -153,7 +173,15 @@ internal sealed class Ticket
         }
 
         Status = status;
+        LastPublicActivityAt = now; // a status change is visible to the requester
         return true;
+    }
+
+    /// <summary>A public message or other requester-visible event happened now.</summary>
+    public void RecordPublicActivity(DateTimeOffset now)
+    {
+        UpdatedAt = now;
+        LastPublicActivityAt = now;
     }
 }
 
@@ -263,4 +291,24 @@ internal sealed class CannedResponse
     public DateTimeOffset UpdatedAt { get; set; }
 
     public uint Version { get; set; }
+}
+/// <summary>
+/// Explicit association of an authenticated application user with a department Requester. Created from the VERIFIED email of the signed-in
+/// principal (never from client input) and then used by id, so a later change of display name or address does not change who owns a request.
+/// A requester belongs to at most one user.
+/// </summary>
+internal sealed class RequesterLink
+{
+    public Guid Id { get; set; }
+
+    public Guid RequesterId { get; set; }
+
+    public Guid DepartmentId { get; set; }
+
+    public Guid UserId { get; set; }
+
+    /// <summary>The verified address that justified the link (audit trail; not used for access).</summary>
+    public string LinkedEmailNormalised { get; set; } = "";
+
+    public DateTimeOffset CreatedAt { get; set; }
 }

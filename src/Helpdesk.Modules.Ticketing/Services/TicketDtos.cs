@@ -53,7 +53,13 @@ internal sealed record TicketDetailDto(
     string Version,
     MailboxRefDto? Mailbox,
     IReadOnlyList<ParticipantDto> Participants,
-    Helpdesk.Modules.Ticketing.Sla.SlaSummaryDto? Sla = null);
+    Helpdesk.Modules.Ticketing.Sla.SlaSummaryDto? Sla = null,
+    string? Source = null,
+    string? RequestForm = null,
+    IReadOnlyList<AgentFieldDto>? Fields = null);
+
+/// <summary>A submitted custom-field value as agents see it (label and text as rendered at submission).</summary>
+internal sealed record AgentFieldDto(string Label, string Value);
 
 internal sealed record MessageAuthorDto(Guid? Id, string DisplayName);
 

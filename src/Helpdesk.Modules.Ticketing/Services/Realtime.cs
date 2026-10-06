@@ -5,6 +5,7 @@ using Helpdesk.SharedKernel.Authorization;
 using Helpdesk.SharedKernel.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -29,6 +30,9 @@ internal static class TicketEventKinds
 /// <summary>Payload of the <c>ticketChanged</c> hub message. No subject, body, names or addresses: ids and a kind only.</summary>
 internal sealed record TicketChangedMessage(Guid TicketId, Guid DepartmentId, string Reference, string Kind, Guid? ActorUserId, DateTimeOffset At);
 
+/// <summary>Payload of the requester portal event <c>requestChanged</c>: the request reference and a coarse kind (reply, status, attachment). Nothing else.</summary>
+internal sealed record PortalRequestChanged(string Reference, string Kind, DateTimeOffset At);
+
 internal interface ITicketEvents
 {
     /// <summary>Publishes after the change committed. Never throws into the request: realtime is best-effort, REST/database state is the truth.</summary>
@@ -45,9 +49,12 @@ internal static class HubGroups
     public static string Department(Guid departmentId) => "d:" + departmentId.ToString("N");
 
     public static string Notes(Guid departmentId) => "n:" + departmentId.ToString("N");
+
+    /// <summary>The requester portal group of one Requester: only requester-visible events are ever sent to it.</summary>
+    public static string Requester(Guid requesterId) => "r:" + requesterId.ToString("N");
 }
 
-internal sealed partial class TicketEventPublisher(IHubContext<TicketHub> hub, TimeProvider clock, ILogger<TicketEventPublisher> log) : ITicketEvents
+internal sealed partial class TicketEventPublisher(IHubContext<TicketHub> hub, IServiceScopeFactory scopes, TimeProvider clock, ILogger<TicketEventPublisher> log) : ITicketEvents
 {
     public async Task PublishAsync(Guid departmentId, Guid ticketId, string reference, string kind, Guid? actorUserId, CancellationToken cancellationToken = default)
     {
@@ -56,10 +63,40 @@ internal sealed partial class TicketEventPublisher(IHubContext<TicketHub> hub, T
             var message = new TicketChangedMessage(ticketId, departmentId, reference, kind, actorUserId, clock.GetUtcNow());
             var group = kind == TicketEventKinds.Note ? HubGroups.Notes(departmentId) : HubGroups.Department(departmentId);
             await hub.Clients.Group(group).SendAsync("ticketChanged", message, cancellationToken);
+            await PublishToRequesterAsync(departmentId, ticketId, reference, kind, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             PublishFailed(log, ex.GetType().Name);
+        }
+    }
+
+    /// <summary>
+    /// Requester-safe fan-out. Only events a requester can see (a public message, a status change, an attachment) are forwarded, and the payload is a
+    /// reference and a coarse kind: no ids, no department, no actor, no internal-note or assignment information. The target group is chosen by the server
+    /// from the ticket's requester; clients can never pick it.
+    /// </summary>
+    private async Task PublishToRequesterAsync(Guid departmentId, Guid ticketId, string reference, string kind, CancellationToken ct)
+    {
+        var portalKind = kind switch
+        {
+            TicketEventKinds.Message => "reply",
+            TicketEventKinds.Status => "status",
+            TicketEventKinds.Attachment => "attachment",
+            _ => null,
+        };
+        if (portalKind is null)
+        {
+            return;
+        }
+
+        await using var scope = scopes.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<Persistence.TicketingDbContext>();
+        var requesterId = await Persistence.DepartmentScopeBypass.IgnoreDepartmentScope(db.Tickets.AsNoTracking())
+            .Where(t => t.Id == ticketId && t.DepartmentId == departmentId).Select(t => (Guid?)t.RequesterId).SingleOrDefaultAsync(ct);
+        if (requesterId is { } id)
+        {
+            await hub.Clients.Group(HubGroups.Requester(id)).SendAsync("requestChanged", new PortalRequestChanged(reference, portalKind, clock.GetUtcNow()), ct);
         }
     }
 
@@ -147,7 +184,11 @@ internal sealed partial class HubAccess(IHubContext<TicketHub> hub, IServiceScop
             var organisation = scope.ServiceProvider.GetRequiredService<IOrganisationDirectory>();
             var readers = await organisation.GetDepartmentsWithPermissionAsync(connection.UserId, PermissionCodes.TicketsRead, ct);
             var noteReaders = await organisation.GetDepartmentsWithPermissionAsync(connection.UserId, PermissionCodes.TicketsNotesRead, ct);
-            var wanted = new HashSet<string>(readers.Select(HubGroups.Department).Concat(noteReaders.Intersect(readers).Select(HubGroups.Notes)), StringComparer.Ordinal);
+            var requesterIds = await scope.ServiceProvider.GetRequiredService<Persistence.TicketingDbContext>().RequesterLinks.AsNoTracking()
+                .Where(l => l.UserId == connection.UserId).Select(l => l.RequesterId).ToListAsync(ct);
+            var wanted = new HashSet<string>(
+                readers.Select(HubGroups.Department).Concat(noteReaders.Intersect(readers).Select(HubGroups.Notes)).Concat(requesterIds.Select(HubGroups.Requester)),
+                StringComparer.Ordinal);
 
             await _gate.WaitAsync(ct);
             try

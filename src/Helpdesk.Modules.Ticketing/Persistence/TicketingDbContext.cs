@@ -46,6 +46,7 @@ internal sealed partial class TicketingDbContext(DbContextOptions<TicketingDbCon
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.HasAlternateKey(x => new { x.Id, x.DepartmentId }).HasName("ux_requesters_id_department");
             e.HasIndex(x => new { x.DepartmentId, x.EmailNormalised }).IsUnique().HasDatabaseName("ux_requesters_department_email");
+            e.HasIndex(x => x.EmailNormalised).HasDatabaseName("ix_requesters_email");
             e.HasQueryFilter(x => ScopedDepartmentIds.Contains(x.DepartmentId));
         });
 
@@ -66,6 +67,7 @@ internal sealed partial class TicketingDbContext(DbContextOptions<TicketingDbCon
                 t.HasCheckConstraint("ck_tickets_subject", "length(btrim(subject)) BETWEEN 1 AND 200");
                 t.HasCheckConstraint("ck_tickets_status", "status IN ('Open','Pending','Resolved','Closed')");
                 t.HasCheckConstraint("ck_tickets_priority", "priority BETWEEN 1 AND 4");
+                t.HasCheckConstraint("ck_tickets_source", "source IN ('agent','email','portal')");
                 t.HasCheckConstraint(
                     "ck_tickets_status_timestamps",
                     "(status = 'Closed') = (closed_at IS NOT NULL) AND (status IN ('Resolved','Closed')) = (resolved_at IS NOT NULL)");
@@ -85,6 +87,9 @@ internal sealed partial class TicketingDbContext(DbContextOptions<TicketingDbCon
             e.Property(x => x.MailboxId).HasColumnName("mailbox_id");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            e.Property(x => x.LastPublicActivityAt).HasColumnName("last_public_activity_at");
+            e.Property(x => x.Source).HasColumnName("source").HasMaxLength(16);
+            e.Property(x => x.RequestFormId).HasColumnName("request_form_id");
             e.Property(x => x.ResolvedAt).HasColumnName("resolved_at");
             e.Property(x => x.ClosedAt).HasColumnName("closed_at");
             e.Property(x => x.Version).HasColumnName("xmin").HasColumnType("xid").IsRowVersion();
@@ -105,6 +110,7 @@ internal sealed partial class TicketingDbContext(DbContextOptions<TicketingDbCon
             e.HasIndex(x => new { x.DepartmentId, x.UpdatedAt, x.Id }).IsDescending(false, true, true)
                 .HasFilter("assignee_user_id IS NULL").HasDatabaseName("ix_tickets_unassigned_updated");
             e.HasIndex(x => new { x.RequesterId, x.CreatedAt }).IsDescending(false, true).HasDatabaseName("ix_tickets_requester_created");
+            e.HasIndex(x => new { x.RequesterId, x.LastPublicActivityAt, x.Id }).IsDescending(false, true, true).HasDatabaseName("ix_tickets_requester_public_activity");
             e.HasQueryFilter(x => ScopedDepartmentIds.Contains(x.DepartmentId));
         });
 
@@ -114,7 +120,7 @@ internal sealed partial class TicketingDbContext(DbContextOptions<TicketingDbCon
             {
                 t.HasCheckConstraint("ck_messages_kind", "kind IN ('Public','Internal')");
                 t.HasCheckConstraint("ck_messages_author_type", "author_type IN ('Agent','Requester','System')");
-                t.HasCheckConstraint("ck_messages_source", "source IN ('web','manual','email','automation')");
+                t.HasCheckConstraint("ck_messages_source", "source IN ('web','manual','email','automation','portal')");
                 t.HasCheckConstraint("ck_messages_delivery_state", "delivery_state IN ('None','NotDelivered','Pending','Sent','Failed')");
 
                 // Only an agent's public reply has a delivery state; requester mail and notes are always None.
@@ -197,6 +203,7 @@ internal sealed partial class TicketingDbContext(DbContextOptions<TicketingDbCon
         });
 
         ConfigureServiceManagement(modelBuilder);
+        ConfigurePortal(modelBuilder);
 
         modelBuilder.Entity<TicketParticipant>(e =>
         {

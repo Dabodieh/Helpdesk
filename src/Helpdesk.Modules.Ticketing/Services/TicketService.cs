@@ -119,6 +119,8 @@ internal sealed class TicketService(
                 CreatedByUserId = current.UserId,
                 CreatedAt = now,
                 UpdatedAt = now,
+                LastPublicActivityAt = now,
+                Source = TicketSources.Agent,
             };
             var first = new Message
             {
@@ -370,7 +372,11 @@ internal sealed class TicketService(
 
         // UpdatedAt means visible activity (public messages, state changes). An internal note alone must not move it: the ticket row is
         // not even written, so UpdatedAt, the row version and queue order give callers without tickets.notes.read nothing to infer from.
-        if (kind == MessageKind.Public || statusChanged)
+        if (kind == MessageKind.Public)
+        {
+            ticket.RecordPublicActivity(now);
+        }
+        else if (statusChanged)
         {
             ticket.UpdatedAt = now;
         }

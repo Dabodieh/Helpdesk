@@ -66,6 +66,9 @@ internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirec
             .Select(p => new ParticipantDto(p.Email, p.DisplayName)).ToListAsync(ct);
 
         var sla = await db.TicketSlas.AsNoTracking().SingleOrDefaultAsync(s => s.TicketId == ticket.Id, ct);
+        var fields = await db.TicketFieldValues.AsNoTracking().Where(v => v.TicketId == ticket.Id && v.AgentVisible).OrderBy(v => v.SortOrder)
+            .Select(v => new AgentFieldDto(v.Label, v.Display)).ToListAsync(ct);
+        var formName = ticket.RequestFormId is { } formId ? await db.RequestForms.AsNoTracking().Where(f => f.Id == formId).Select(f => f.Name).SingleOrDefaultAsync(ct) : null;
 
         return new TicketDetailDto(
             ticket.Id,
@@ -86,7 +89,10 @@ internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirec
             ConcurrencyVersion.ToToken(ticket.Version),
             mailbox,
             participants,
-            Helpdesk.Modules.Ticketing.Sla.SlaSummary.Of(sla, clock.GetUtcNow()));
+            Helpdesk.Modules.Ticketing.Sla.SlaSummary.Of(sla, clock.GetUtcNow()),
+            ticket.Source,
+            formName,
+            fields);
     }
 
     public async Task<IReadOnlyList<TicketListItemDto>> ListItemsAsync(IReadOnlyList<TicketRow> rows, CancellationToken ct, IReadOnlyDictionary<Guid, MatchDto>? matches = null, IReadOnlyDictionary<Guid, Helpdesk.Modules.Ticketing.Domain.TicketSla>? slas = null)

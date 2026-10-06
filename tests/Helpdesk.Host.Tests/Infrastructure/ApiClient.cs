@@ -54,6 +54,19 @@ public sealed class ApiClient(HttpClient http)
 
     public Task<ApiResponse> DeleteAsync(string url) => SendAsync(HttpMethod.Delete, url, null);
 
+    /// <summary>A multipart upload (the CSRF header is added like for any mutation).</summary>
+    public async Task<ApiResponse> PostMultipartAsync(string url, HttpContent content)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
+        if (_csrfHeader is not null && _csrfToken is not null)
+        {
+            request.Headers.Add(_csrfHeader, _csrfToken);
+        }
+
+        var message = await Http.SendAsync(request);
+        return new ApiResponse(message.StatusCode, await message.Content.ReadAsStringAsync(), message);
+    }
+
     public async Task<ApiResponse> SendAsync(HttpMethod method, string url, object? body, bool includeCsrf = true)
     {
         using var request = new HttpRequestMessage(method, url);

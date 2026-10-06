@@ -14,6 +14,7 @@ internal static class Provenances
     public const string Email = "email";
     public const string Sla = "sla";
     public const string Schedule = "schedule";
+    public const string Portal = "portal";
 }
 
 /// <summary>

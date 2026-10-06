@@ -1,0 +1,128 @@
+#pragma warning disable CA1861 // one-off request payloads
+using System.Net;
+using System.Text.Json;
+using Helpdesk.Host.Tests.Infrastructure;
+using Helpdesk.Host.Tests.Ticketing;
+using Microsoft.AspNetCore.Http.Connections;
+using Microsoft.AspNetCore.SignalR.Client;
+
+namespace Helpdesk.Host.Tests.Portal;
+
+/// <summary>Helpers for the requester portal tests: employees with a verified address, request forms, and a portal SignalR client.</summary>
+public static class PortalKit
+{
+    public sealed record Employee(TestUser User, string Email);
+
+    /// <summary>A signed-in employee (no department membership) whose verified address is unique to the test.</summary>
+    public static async Task<Employee> EmployeeAsync(this HelpdeskFixture fixture, string prefix = "emp")
+    {
+        var id = Unique.Id();
+        var email = $"{prefix}-{id}@example.test";
+        var user = await fixture.SignInAsync($"{prefix}-{id}", $"{prefix} {id}", email);
+        return new Employee(user, email);
+    }
+
+    /// <summary>An agent creates a ticket for the requester address (as the email channel or an agent would), so the employee can later claim it.</summary>
+    public static async Task<ApiResponse> TicketForAsync(this Dept d, string requesterEmail, string? subject = null, object? extra = null) =>
+        await d.Agent.CreateTicketAsync(d.Department, TicketHelpers.NewTicketBody(subject, requesterEmail, extra));
+
+    public static async Task<JsonElement> PortalListAsync(this Employee e, string query = "") =>
+        (await e.User.Client.GetAsync("/api/portal/requests" + query)).Expect(HttpStatusCode.OK).Json;
+
+    public static string Reference(this ApiResponse ticket) => ticket.Json.GetProperty("reference").GetString()!;
+
+    /// <summary>Creates a request form (and optional fields) through the real admin API.</summary>
+    public static async Task<(Guid FormId, string Version)> FormAsync(this Dept d, string name, object? extra = null, params object[] fields)
+    {
+        var body = new Dictionary<string, object?> { ["name"] = name };
+        if (extra is not null)
+        {
+            foreach (var p in extra.GetType().GetProperties())
+            {
+                body[char.ToLowerInvariant(p.Name[0]) + p.Name[1..]] = p.GetValue(extra);
+            }
+        }
+
+        var form = (await d.Admin.Client.PostAsync($"{d.Department.Url}/request-forms", body)).Expect(HttpStatusCode.Created);
+        foreach (var field in fields)
+        {
+            (await d.Admin.Client.PostAsync($"{d.Department.Url}/request-forms/{form.Id}/fields", field)).Expect(HttpStatusCode.OK);
+        }
+
+        return (form.Id, form.Version);
+    }
+
+    public static object Field(string label, string type, bool required = false, object[]? options = null, bool requesterVisible = true, bool agentVisible = true, string? key = null) =>
+        new { key, label, type, required, options, requesterVisible, agentVisible };
+
+    /// <summary>A portal SignalR connection for the employee through the real hub (cookie session + CSRF header).</summary>
+    public static async Task<(HubConnection Connection, List<JsonElement> Events)> ConnectPortalAsync(this HelpdeskFixture fixture, Employee e, List<HubConnection> sink)
+    {
+        using var http = fixture.Factory.CreateClient(new() { AllowAutoRedirect = false, HandleCookies = false });
+        var login = await http.GetAsync($"/api/auth/dev-login?subject={Uri.EscapeDataString(e.User.Subject)}&name=x&email={Uri.EscapeDataString(e.Email)}&returnUrl=/");
+        var cookies = Pairs(login);
+        using var csrfRequest = new HttpRequestMessage(HttpMethod.Get, "/api/csrf");
+        csrfRequest.Headers.Add("Cookie", string.Join("; ", cookies));
+        var csrf = await http.SendAsync(csrfRequest);
+        cookies.AddRange(Pairs(csrf));
+        var token = JsonDocument.Parse(await csrf.Content.ReadAsStringAsync()).RootElement.GetProperty("token").GetString()!;
+        var events = new List<JsonElement>();
+        var connection = new HubConnectionBuilder()
+            .WithUrl(new Uri(fixture.Factory.Server.BaseAddress, "hubs/tickets"), o =>
+            {
+                o.Transports = HttpTransportType.LongPolling;
+                o.HttpMessageHandlerFactory = _ => fixture.Factory.Server.CreateHandler();
+                o.Headers["Cookie"] = string.Join("; ", cookies);
+                o.Headers["X-CSRF-TOKEN"] = token;
+            })
+            .Build();
+        connection.On<JsonElement>("requestChanged", ev =>
+        {
+            lock (events)
+            {
+                events.Add(ev.Clone());
+            }
+        });
+        connection.On<JsonElement>("ticketChanged", ev =>
+        {
+            lock (events)
+            {
+                events.Add(ev.Clone());
+            }
+        });
+        sink.Add(connection);
+        await connection.StartAsync();
+        return (connection, events);
+    }
+
+    private static List<string> Pairs(HttpResponseMessage response) =>
+        response.Headers.TryGetValues("Set-Cookie", out var values) ? [.. values.Select(v => v.Split(';')[0])] : [];
+
+    public static async Task<bool> WaitForAsync(List<JsonElement> events, Func<JsonElement, bool> match, int milliseconds = 6000)
+    {
+        var until = DateTime.UtcNow.AddMilliseconds(milliseconds);
+        while (DateTime.UtcNow < until)
+        {
+            lock (events)
+            {
+                if (events.Any(match))
+                {
+                    return true;
+                }
+            }
+
+            await Task.Delay(50);
+        }
+
+        return false;
+    }
+
+    public static async Task<bool> SilentAsync(List<JsonElement> events, int milliseconds = 1200)
+    {
+        await Task.Delay(milliseconds);
+        lock (events)
+        {
+            return events.Count == 0;
+        }
+    }
+}

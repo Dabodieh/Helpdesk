@@ -48,6 +48,10 @@ internal static class TicketAuditActions
     public const string SlaPolicyUpdated = "sla_policy.updated";
     public const string AutomationRuleCreated = "automation_rule.created";
     public const string AutomationRuleUpdated = "automation_rule.updated";
+    public const string RequestFormCreated = "request_form.created";
+    public const string RequestFormUpdated = "request_form.updated";
+    public const string FormFieldCreated = "form_field.created";
+    public const string FormFieldUpdated = "form_field.updated";
     public const string ReasonAutomation = "automation";
 
     public const string ReasonRequesterReply = "requester_reply";

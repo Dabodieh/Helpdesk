@@ -102,6 +102,8 @@ internal sealed class InboundTicketSink(TicketingDbContext db, TicketingAudit au
             MailboxId = request.MailboxId,
             CreatedAt = now,
             UpdatedAt = now,
+            LastPublicActivityAt = now,
+            Source = TicketSources.Email,
         };
         var first = new Message
         {
@@ -235,7 +237,7 @@ internal sealed class InboundTicketSink(TicketingDbContext db, TicketingAudit au
         // D-15: a late requester reply reopens the same ticket (team and assignee are retained).
         var previous = ticket.Status;
         var reopened = ticket.ApplyStatus(TicketStatus.Open, now);
-        ticket.UpdatedAt = now;
+        ticket.RecordPublicActivity(now);
         try
         {
             await db.SaveChangesAsync(cancellationToken);

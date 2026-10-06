@@ -4,6 +4,7 @@ using Helpdesk.Modules.Ticketing.Sla;
 using Helpdesk.Modules.Ticketing.Contracts;
 using Helpdesk.Modules.Ticketing.Endpoints;
 using Helpdesk.Modules.Ticketing.Persistence;
+using Helpdesk.Modules.Ticketing.Portal;
 using Helpdesk.Modules.Ticketing.Services;
 using Helpdesk.SharedKernel.Database;
 using Helpdesk.SharedKernel.Authorization;
@@ -48,6 +49,10 @@ public static class TicketingModule
         services.AddScoped<SlaPolicyService>();
         services.AddScoped<AutomationAdminService>();
         services.AddScoped<SlaReadService>();
+        services.AddScoped<RequesterIdentityService>();
+        services.AddScoped<PortalFormsService>();
+        services.AddScoped<PortalRequestService>();
+        services.AddScoped<FormsAdminService>();
         services.AddScoped<ITicketIngress, TicketIngressService>();
         services.AddScoped<IInboundTicketSink, InboundTicketSink>();
         services.AddScoped<IDeliveryStateSink, DeliveryStateSink>();

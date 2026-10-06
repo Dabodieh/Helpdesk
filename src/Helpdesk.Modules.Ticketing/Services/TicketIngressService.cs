@@ -56,7 +56,7 @@ internal sealed class TicketIngressService(TicketingDbContext db, TicketingAudit
         // D-15: a late reply reopens the same ticket (team and assignee are retained); an Open ticket stays Open.
         var previous = ticket.Status;
         var reopened = ticket.ApplyStatus(TicketStatus.Open, now);
-        ticket.UpdatedAt = now;
+        ticket.RecordPublicActivity(now);
         await db.SaveChangesAsync(cancellationToken);
 
         await audit.WriteSystemAsync(TicketAuditActions.MessageAdded, TicketingAudit.TicketObject, ticket.Id, departmentId, null,
