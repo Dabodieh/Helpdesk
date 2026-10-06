@@ -64,7 +64,7 @@ internal sealed class AuditDbContext(DbContextOptions<AuditDbContext> options) :
             e.HasIndex(x => new { x.Category, x.OccurredAt, x.Id }).HasDatabaseName("ix_audit_events_category_time");
             // Object history (e.g. ticket activity): newest first per object.
             e.HasIndex(x => new { x.ObjectId, x.OccurredAt, x.Id }).IsDescending(false, true, true).HasDatabaseName("ix_audit_events_object_time");
-            e.ToTable(t => t.HasCheckConstraint("ck_audit_events_category", "category IN ('organisation','identity','ticketing','mail')"));
+            e.ToTable(t => t.HasCheckConstraint("ck_audit_events_category", "category IN ('organisation','identity','ticketing','mail','knowledge')"));
         });
     }
 

@@ -31,6 +31,20 @@ public sealed class EndpointAuthorizationTests(AppFixture app) : IClassFixture<A
         "POST /api/canned-responses",
         "POST /api/tickets/bulk",
         "POST /api/views",
+
+        // Phase 6 requester portal: any signed-in employee; the services constrain every query to the caller's own requesters and to published
+        // knowledge in the caller's audience (docs/security/PHASE6_THREAT_MODEL.md).
+        "GET /api/portal/forms",
+        "GET /api/portal/forms/{formId:guid}",
+        "GET /api/portal/knowledge/articles",
+        "GET /api/portal/knowledge/articles/{slug}",
+        "GET /api/portal/knowledge/categories",
+        "GET /api/portal/requests",
+        "GET /api/portal/requests/{reference}",
+        "GET /api/portal/requests/{reference}/attachments/{attachmentId:guid}",
+        "POST /api/portal/requests",
+        "POST /api/portal/requests/{reference}/replies",
+        "PUT /api/portal/knowledge/articles/{slug}/feedback",
     ];
 
     private static readonly string[] AllowedAnonymous =

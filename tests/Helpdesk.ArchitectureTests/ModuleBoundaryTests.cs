@@ -42,6 +42,19 @@ public sealed class ModuleBoundaryTests
         { "Identity", "Attachments" },
         { "Organisation", "Mail" },
         { "Organisation", "Attachments" },
+        // Knowledge reaches other modules through Contracts only; Ticketing implements Knowledge's IRequesterAudience.
+        { "Knowledge", "Audit" },
+        { "Knowledge", "Identity" },
+        { "Knowledge", "Organisation" },
+        { "Knowledge", "Ticketing" },
+        { "Knowledge", "Mail" },
+        { "Knowledge", "Attachments" },
+        { "Ticketing", "Knowledge" },
+        { "Audit", "Knowledge" },
+        { "Identity", "Knowledge" },
+        { "Organisation", "Knowledge" },
+        { "Mail", "Knowledge" },
+        { "Attachments", "Knowledge" },
     };
 
     private static Assembly ByName(string name) => name switch
@@ -52,6 +65,7 @@ public sealed class ModuleBoundaryTests
         "Ticketing" => Modules.Ticketing,
         "Mail" => Modules.Mail,
         "Attachments" => Modules.Attachments,
+        "Knowledge" => Modules.Knowledge,
         _ => throw new ArgumentOutOfRangeException(nameof(name)),
     };
 
@@ -93,8 +107,9 @@ public sealed class ModuleBoundaryTests
         Assert.Empty(ModuleRefs(Modules.Attachments));
         Assert.Equal(["Helpdesk.Modules.Attachments", "Helpdesk.Modules.Audit", "Helpdesk.Modules.Organisation"], ModuleRefs(Modules.Mail).Order());
         Assert.Equal(
-            ["Helpdesk.Modules.Attachments", "Helpdesk.Modules.Audit", "Helpdesk.Modules.Identity", "Helpdesk.Modules.Mail", "Helpdesk.Modules.Organisation"],
+            ["Helpdesk.Modules.Attachments", "Helpdesk.Modules.Audit", "Helpdesk.Modules.Identity", "Helpdesk.Modules.Knowledge", "Helpdesk.Modules.Mail", "Helpdesk.Modules.Organisation"],
             ModuleRefs(Modules.Ticketing).Order());
+        Assert.Equal(["Helpdesk.Modules.Audit", "Helpdesk.Modules.Organisation"], ModuleRefs(Modules.Knowledge).Order());
         Assert.Empty(ModuleRefs(Modules.SharedKernel));
     }
 

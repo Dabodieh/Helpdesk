@@ -2,6 +2,7 @@ using System.Reflection;
 using Helpdesk.Modules.Attachments;
 using Helpdesk.Modules.Audit;
 using Helpdesk.Modules.Identity;
+using Helpdesk.Modules.Knowledge;
 using Helpdesk.Modules.Mail;
 using Helpdesk.Modules.Organisation;
 using Helpdesk.Modules.Ticketing;
@@ -20,9 +21,10 @@ internal static class Modules
     public static readonly Assembly Ticketing = typeof(TicketingModule).Assembly;
     public static readonly Assembly Mail = typeof(MailModule).Assembly;
     public static readonly Assembly Attachments = typeof(AttachmentsModule).Assembly;
+    public static readonly Assembly Knowledge = typeof(KnowledgeModule).Assembly;
     public static readonly Assembly Host = typeof(Program).Assembly;
 
-    public static readonly IReadOnlyList<Assembly> All = [Audit, Identity, Organisation, Ticketing, Mail, Attachments];
+    public static readonly IReadOnlyList<Assembly> All = [Audit, Identity, Organisation, Ticketing, Mail, Attachments, Knowledge];
 
     public static string Root(Assembly module) => module.GetName().Name!; // e.g. Helpdesk.Modules.Identity
 

@@ -9,6 +9,7 @@ public static class AuditCategories
     public const string Identity = "identity";
     public const string Mail = "mail";
     public const string Ticketing = "ticketing";
+    public const string Knowledge = "knowledge";
 }
 
 public static class AuditSources

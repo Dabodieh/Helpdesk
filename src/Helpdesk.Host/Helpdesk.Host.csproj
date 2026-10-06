@@ -17,6 +17,7 @@
     <ProjectReference Include="../Helpdesk.Modules.Identity/Helpdesk.Modules.Identity.csproj" />
     <ProjectReference Include="../Helpdesk.Modules.Organisation/Helpdesk.Modules.Organisation.csproj" />
     <ProjectReference Include="../Helpdesk.Modules.Ticketing/Helpdesk.Modules.Ticketing.csproj" />
+    <ProjectReference Include="../Helpdesk.Modules.Knowledge/Helpdesk.Modules.Knowledge.csproj" />
     <ProjectReference Include="../Helpdesk.Modules.Attachments/Helpdesk.Modules.Attachments.csproj" />
     <ProjectReference Include="../Helpdesk.Modules.Mail/Helpdesk.Modules.Mail.csproj" />
   </ItemGroup>

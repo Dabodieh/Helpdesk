@@ -13,6 +13,7 @@
     <ProjectReference Include="../Helpdesk.Modules.Organisation/Helpdesk.Modules.Organisation.csproj" />
     <ProjectReference Include="../Helpdesk.Modules.Attachments/Helpdesk.Modules.Attachments.csproj" />
     <ProjectReference Include="../Helpdesk.Modules.Mail/Helpdesk.Modules.Mail.csproj" />
+    <ProjectReference Include="../Helpdesk.Modules.Knowledge/Helpdesk.Modules.Knowledge.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Helpdesk.Host.Tests" />

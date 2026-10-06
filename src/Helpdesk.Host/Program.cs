@@ -3,6 +3,7 @@ using Helpdesk.Host.Jobs;
 using Helpdesk.Modules.Attachments;
 using Helpdesk.Modules.Audit;
 using Helpdesk.Modules.Identity;
+using Helpdesk.Modules.Knowledge;
 using Helpdesk.Modules.Mail;
 using Helpdesk.Modules.Organisation;
 using Helpdesk.Modules.Ticketing;
@@ -46,6 +47,7 @@ try
     builder.Services.AddAttachmentsModule(builder.Configuration);
     builder.Services.AddMailModule(builder.Configuration, builder.Environment);
     builder.Services.AddBackgroundJobs(builder.Configuration);
+    builder.Services.AddKnowledgeModule();
     builder.Services.AddTicketingModule();
 
     builder.Services.AddProblemDetails();
@@ -133,6 +135,7 @@ try
     app.MapIdentityEndpoints();
     app.MapOrganisationEndpoints();
     app.MapTicketingEndpoints();
+    app.MapKnowledgeEndpoints();
     app.MapMailEndpoints(app.Environment);
     app.MapAuditEndpoints();
 
