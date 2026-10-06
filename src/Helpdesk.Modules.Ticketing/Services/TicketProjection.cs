@@ -46,7 +46,7 @@ internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirec
         }
 
         var counts = await db.Tickets.AsNoTracking()
-            .Where(t => t.RequesterId == requester.Id)
+            .Where(t => t.Requester.EmailNormalised == requester.EmailNormalised)
             .GroupBy(_ => 1)
             .Select(g => new
             {

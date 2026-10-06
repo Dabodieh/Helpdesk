@@ -15,6 +15,7 @@ import { Icon } from './icons'
 import { SlaBadge } from './Sla'
 import { PriorityMark, StatusPill } from './Pills'
 import QueueFilters from './QueueFilters'
+import { RequesterName } from './RequesterDrawer'
 
 type Props = {
   queue: Queue
@@ -302,7 +303,9 @@ export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
                         </span>
                       )}
                     </td>
-                    <td className="col-requester">{t.requester.displayName}</td>
+                    <td className="col-requester">
+                      <RequesterName requesterId={t.requester.id} name={t.requester.displayName} />
+                    </td>
                     <td className="col-status">
                       <StatusPill status={t.status} />
                       <span className="sla-inline">

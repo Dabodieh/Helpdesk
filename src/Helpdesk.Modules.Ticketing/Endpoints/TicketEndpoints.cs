@@ -44,6 +44,18 @@ internal static class TicketEndpoints
 
     private static void MapQueues(IEndpointRouteBuilder app)
     {
+        // Requester history: scoped by the department filter of the queries themselves, like the queues; an unreadable requester is a 404.
+        app.MapGet("/api/requesters/{requesterId:guid}", async (Guid requesterId, RequesterHistoryService history, CancellationToken ct) =>
+                TypedResults.Ok(await history.GetAsync(requesterId, ct)))
+            .RequireAuthenticatedOnly()
+            .WithTags("Requesters");
+
+        app.MapGet("/api/requesters/{requesterId:guid}/tickets",
+                async (Guid requesterId, string? state, string? cursor, int? limit, RequesterHistoryService history, CancellationToken ct) =>
+                    TypedResults.Ok(await history.TicketsAsync(requesterId, state, cursor, limit, ct)))
+            .RequireAuthenticatedOnly()
+            .WithTags("Requesters");
+
         // Authorization is the department scope of the query itself (accessible departments for tickets.read).
         app.MapGet("/api/tickets", async ([AsParameters] TicketListQuery query, TicketQueryService queries, CancellationToken ct) =>
                 TypedResults.Ok(await queries.ListAsync(query, ct)))

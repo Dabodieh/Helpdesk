@@ -19,3 +19,9 @@ All portal endpoints require authentication and are scoped to the caller's reque
 
 ## Realtime
 Hub group `r:{requesterId}`; event `requestChanged {reference, kind: reply|status|attachment, at}`.
+
+## Agent requester history (refinement 1)
+- `GET /api/requesters/{id}`: profile (display name, email, first seen, last visible activity, open/resolved/total counts) plus up to 5 open and 3 previous tickets.
+- `GET /api/requesters/{id}/tickets?state=active|resolved|all&cursor=&limit=`: keyset-paged (max 50) by visible `updatedAt` desc. Open means Open or Pending; resolved means Resolved or Closed.
+- A requester row exists per department (D-05), so a person is the set of rows sharing the normalised email. Everything runs through the department-scope filter: tickets in departments the caller cannot read are absent from lists, counts, last-activity and paging, and a requester row in an unreadable department is a 404. Internal notes never move `updatedAt`. No audit event for reads. The ticket header counts (`openTicketCount`, `totalTicketCount`) use the same scoped, per-person rule.
+- UI: requester name in the ticket header and queue opens a drawer; `View full history` goes to `/requesters/{id}`.

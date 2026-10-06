@@ -20,6 +20,8 @@ public sealed class EndpointAuthorizationTests(AppFixture app) : IClassFixture<A
         "DELETE /api/views/{viewId:guid}",
         "GET /api/canned-responses",
         "GET /api/departments",
+        "GET /api/requesters/{requesterId:guid}",
+        "GET /api/requesters/{requesterId:guid}/tickets",
         "GET /api/me",
         "GET /api/tickets",
         "GET /api/tickets/queue-counts",

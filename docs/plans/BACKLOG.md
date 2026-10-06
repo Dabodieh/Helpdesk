@@ -66,3 +66,5 @@
 - (Phase 6) Retention of requester links and portal feedback; per-department portal branding; requester notifications by email on agent replies are the existing email path only.
 - (Phase 6) Light/dark screenshot review of the portal; vitest component tests for portal pages beyond markdown safety (covered by Playwright flows today).
 - (Phase 6) Scale check of My requests at 50k+ tickets per requester (index `ix_tickets_requester_public_activity` exists; only knowledge search was measured).
+
+- (Refinement 1) Requester merge/deduplication (person identity is the normalised email across department requester rows today, so a merge would unify rows or add an explicit person link); requester/people directory and search; phone and site fields (not held today); requester history link from the portal-linked identity.

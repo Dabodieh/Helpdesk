@@ -18,6 +18,7 @@ import { Icon } from './icons'
 import { PriorityMark, StatusPill } from './Pills'
 import { SlaStrip } from './Sla'
 import ProblemBanner from './ProblemBanner'
+import { RequesterName } from './RequesterDrawer'
 
 type Props = { ticketRef: string; backTo: string; composerRef: RefObject<ComposerHandle | null> }
 
@@ -203,10 +204,11 @@ function TicketHeader({
         <div>
           <dt>Requester</dt>
           <dd>
-            {t.requester.displayName} <span className="muted">&lt;{t.requester.email}&gt;</span>
+            <RequesterName requesterId={t.requester.id} name={t.requester.displayName} /> <span className="muted">&lt;{t.requester.email}&gt;</span>
             <span className="muted small">
               {' '}
-              · {t.requester.openTicketCount} open / {t.requester.totalTicketCount} total
+              · {t.requester.openTicketCount} open / {t.requester.totalTicketCount} total ·{' '}
+              <Link to={`/requesters/${encodeURIComponent(t.requester.id)}`}>View history</Link>
             </span>
           </dd>
         </div>

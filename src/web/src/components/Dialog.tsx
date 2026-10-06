@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react'
 
 /** Minimal modal: Esc closes, focus moves in and returns to the opener, Tab is kept inside. */
-export default function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export default function Dialog({ title, onClose, children, variant }: { title: string; onClose: () => void; children: ReactNode; variant?: 'drawer' }) {
   const ref = useRef<HTMLDivElement>(null)
   const titleId = useId()
   const closeRef = useRef(onClose)
@@ -44,8 +44,8 @@ export default function Dialog({ title, onClose, children }: { title: string; on
   }, [])
 
   return (
-    <div className="dialog-backdrop">
-      <div ref={ref} className="dialog" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+    <div className={variant === 'drawer' ? 'dialog-backdrop drawer-backdrop' : 'dialog-backdrop'}>
+      <div ref={ref} className={variant === 'drawer' ? 'dialog drawer' : 'dialog'} role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <div className="dialog-head">
           <h2 id={titleId}>{title}</h2>
           <button type="button" className="ghost" onClick={onClose} aria-label="Close dialog">

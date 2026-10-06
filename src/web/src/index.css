@@ -2349,3 +2349,62 @@ fieldset.choice {
     padding: 0.5rem 0.7rem;
   }
 }
+
+/* Requester history */
+.requester-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  border-bottom: 1px dotted var(--muted);
+}
+.requester-link:hover,
+.requester-link:focus-visible {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.drawer-backdrop {
+  place-items: stretch end;
+  padding-top: 0;
+}
+.dialog.drawer {
+  width: min(26rem, 100vw);
+  min-height: 100vh;
+  border-radius: 0;
+  border-width: 0 0 0 1px;
+}
+.requester-card .requester-counts {
+  margin: 0.25rem 0 0.75rem;
+}
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.history-group h3 {
+  margin: 0.9rem 0 0.25rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.history-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.history-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.requester-page {
+  max-width: 52rem;
+}
