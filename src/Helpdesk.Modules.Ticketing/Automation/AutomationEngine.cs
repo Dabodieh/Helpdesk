@@ -177,7 +177,7 @@ internal sealed partial class AutomationEngine(
 
     public static TicketFacts FactsOf(Ticket ticket, TicketSla? sla, DateTimeOffset now) =>
         new(ticket.Status, ticket.Priority, ticket.TeamId, ticket.AssigneeUserId, ticket.MailboxId, ticket.Subject, ticket.Requester.EmailNormalised,
-            SlaEngine.FirstResponseState(sla, now), SlaEngine.ResolutionState(sla, now));
+            SlaEngine.FirstResponseState(sla, now), SlaEngine.ResolutionState(sla, now), ticket.TicketTypeId);
 
     /// <summary>
     /// Records the start of an evaluation. Returns null for an event this rule already handled (duplicate), the existing row when it

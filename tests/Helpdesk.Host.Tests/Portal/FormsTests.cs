@@ -49,28 +49,31 @@ public sealed class FormsTests(HelpdeskFixture fixture) : IClassFixture<Helpdesk
         var (formId, _) = await d.FormAsync("General", null, PortalKit.Field("Colour", "SingleSelect", options: Colours, key: "colour"));
         var admin = d.Admin.Client;
 
-        var forms = (await admin.GetAsync($"{d.Department.Url}/request-forms")).Expect(HttpStatusCode.OK).Json;
-        var field = forms[0].GetProperty("fields")[0];
+        var fields = (await admin.GetAsync($"{d.Department.Url}/ticket-fields")).Expect(HttpStatusCode.OK).Json;
+        var field = fields[0];
         Assert.Equal("colour", field.GetProperty("key").GetString());
         Assert.Equal(["red", "blue"], field.GetProperty("options").EnumerateArray().Select(o => o.GetProperty("value").GetString()!).ToArray());
+        Assert.Equal(formId, field.GetProperty("forms")[0].GetProperty("id").GetGuid()); // where the field is used
+        var linked = (await admin.GetAsync($"{d.Department.Url}/request-forms")).Expect(HttpStatusCode.OK).Json[0].GetProperty("fields")[0];
+        Assert.Equal(field.GetProperty("id").GetGuid(), linked.GetProperty("fieldId").GetGuid());
 
         // Label and options can change; the key and type cannot; options cannot be removed (deactivate instead).
-        var url = $"{d.Department.Url}/request-forms/{formId}/fields/{field.GetProperty("id").GetGuid()}";
+        var url = $"{d.Department.Url}/ticket-fields/{field.GetProperty("id").GetGuid()}";
         var version = field.GetProperty("version").GetString();
         (await admin.PatchAsync(url, new { version, type = "Number" })).Expect(HttpStatusCode.BadRequest);
         (await admin.PatchAsync(url, new { version, key = "other" })).Expect(HttpStatusCode.BadRequest);
         (await admin.PatchAsync(url, new { version, options = new object[] { new { value = "red", label = "Red" } } })).Expect(HttpStatusCode.BadRequest);
         var renamed = (await admin.PatchAsync(url, new { version, label = "Favourite colour", options = new object[] { new { value = "red", label = "Crimson" }, new { value = "blue", label = "Blue", isActive = false }, new { label = "Green" } } })).Expect(HttpStatusCode.OK);
-        var after = renamed.Json.GetProperty("fields")[0];
-        Assert.Equal("Favourite colour", after.GetProperty("label").GetString());
-        Assert.Equal(["red", "blue", "green"], after.GetProperty("options").EnumerateArray().Select(o => o.GetProperty("value").GetString()!).ToArray());
+        Assert.Equal("Favourite colour", renamed.Json.GetProperty("label").GetString());
+        Assert.Equal(["red", "blue", "green"], renamed.Json.GetProperty("options").EnumerateArray().Select(o => o.GetProperty("value").GetString()!).ToArray());
         (await admin.PatchAsync(url, new { version, label = "stale" })).Expect(HttpStatusCode.Conflict);
 
         // Validation and limits.
-        (await admin.PostAsync($"{d.Department.Url}/request-forms/{formId}/fields", new { label = "", type = "ShortText" })).Expect(HttpStatusCode.BadRequest);
-        (await admin.PostAsync($"{d.Department.Url}/request-forms/{formId}/fields", new { label = "Script", type = "Formula" })).Expect(HttpStatusCode.BadRequest);
-        (await admin.PostAsync($"{d.Department.Url}/request-forms/{formId}/fields", new { label = "Pick", type = "SingleSelect" })).Expect(HttpStatusCode.BadRequest);
-        (await admin.PostAsync($"{d.Department.Url}/request-forms/{formId}/fields", new { label = "Colour again", key = "colour", type = "ShortText" })).Expect(HttpStatusCode.Conflict);
+        (await admin.PostAsync($"{d.Department.Url}/ticket-fields", new { label = "", type = "ShortText" })).Expect(HttpStatusCode.BadRequest);
+        (await admin.PostAsync($"{d.Department.Url}/ticket-fields", new { label = "Script", type = "Formula" })).Expect(HttpStatusCode.BadRequest);
+        (await admin.PostAsync($"{d.Department.Url}/ticket-fields", new { label = "Pick", type = "SingleSelect" })).Expect(HttpStatusCode.BadRequest);
+        (await admin.PostAsync($"{d.Department.Url}/ticket-fields", new { label = "Colour again", key = "colour", type = "ShortText" })).Expect(HttpStatusCode.Conflict);
+        (await admin.PostAsync($"{d.Department.Url}/ticket-fields", new { label = "Nope", type = "ShortText", requesterVisible = false, requesterEditable = true })).Expect(HttpStatusCode.BadRequest);
         (await admin.PostAsync($"{d.Department.Url}/request-forms", new { name = "General" })).Expect(HttpStatusCode.Conflict);
         (await admin.PostAsync($"{d.Department.Url}/request-forms", new { name = "x", defaultTeamId = Guid.NewGuid() })).Expect(HttpStatusCode.BadRequest);
 
@@ -79,7 +82,8 @@ public sealed class FormsTests(HelpdeskFixture fixture) : IClassFixture<Helpdesk
         (await d.Lead.Client.PostAsync($"{d.Department.Url}/request-forms", new { name = "nope" })).Expect(HttpStatusCode.Forbidden);
         (await admin.GetAsync($"{other.Department.Url}/request-forms")).Expect(HttpStatusCode.NotFound);
         (await admin.PatchAsync($"{other.Department.Url}/request-forms/{formId}", new { version = "x", name = "hijack" })).Expect(HttpStatusCode.NotFound);
-        Assert.True(await fixture.CountAsync("SELECT count(*) FROM audit.audit_events WHERE department_id = @d AND action IN ('request_form.created','form_field.created','form_field.updated')", TicketKit.P("d", d.Id)) >= 3);
+        (await admin.GetAsync($"{other.Department.Url}/ticket-fields")).Expect(HttpStatusCode.NotFound);
+        Assert.True(await fixture.CountAsync("SELECT count(*) FROM audit.audit_events WHERE department_id = @d AND action IN ('request_form.created','ticket_field.created','ticket_field.updated')", TicketKit.P("d", d.Id)) >= 3);
     }
 
     [Fact]
@@ -193,13 +197,11 @@ public sealed class FormsTests(HelpdeskFixture fixture) : IClassFixture<Helpdesk
             .Expect(HttpStatusCode.Created).Json.GetProperty("reference").GetString()!;
 
         // Rename the field, relabel the option, then deactivate the field.
-        var form = (await d.Admin.Client.GetAsync($"{d.Department.Url}/request-forms")).Json.EnumerateArray().Single(f => f.GetProperty("id").GetGuid() == formId);
-        var colour = form.GetProperty("fields").EnumerateArray().Single(f => f.GetProperty("key").GetString() == "colour");
+        var colour = (await d.Admin.Client.GetAsync($"{d.Department.Url}/ticket-fields")).Json.EnumerateArray().Single(f => f.GetProperty("key").GetString() == "colour");
         Assert.True(colour.GetProperty("hasValues").GetBoolean());
-        var url = $"{d.Department.Url}/request-forms/{formId}/fields/{colour.GetProperty("id").GetGuid()}";
+        var url = $"{d.Department.Url}/ticket-fields/{colour.GetProperty("id").GetGuid()}";
         var renamed = (await d.Admin.Client.PatchAsync(url, new { version = colour.GetProperty("version").GetString(), label = "Shade", options = new object[] { new { value = "red", label = "Scarlet" }, new { value = "blue", label = "Blue" } } })).Expect(HttpStatusCode.OK);
-        var latest = renamed.Json.GetProperty("fields").EnumerateArray().Single(f => f.GetProperty("key").GetString() == "colour");
-        (await d.Admin.Client.PatchAsync(url, new { version = latest.GetProperty("version").GetString(), isActive = false })).Expect(HttpStatusCode.OK);
+        (await d.Admin.Client.PatchAsync(url, new { version = renamed.Json.GetProperty("version").GetString(), isActive = false })).Expect(HttpStatusCode.OK);
 
         var agentFields = (await d.Agent.Client.GetAsync($"/api/tickets/{reference}")).Expect(HttpStatusCode.OK).Json.GetProperty("fields").EnumerateArray().Select(f => $"{f.GetProperty("label").GetString()}={f.GetProperty("value").GetString()}").ToArray();
         Assert.Contains("Colour=Red", agentFields);

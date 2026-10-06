@@ -1,3 +1,4 @@
+using Helpdesk.Modules.Ticketing.Fields;
 using Helpdesk.Modules.Ticketing.Services;
 using Helpdesk.SharedKernel.Authorization;
 using Microsoft.AspNetCore.Builder;
@@ -115,6 +116,17 @@ internal static class TicketEndpoints
         app.MapGet("/api/tickets/{ticket}", async (string ticket, TicketService tickets, CancellationToken ct) =>
                 TypedResults.Ok(await tickets.GetAsync(ticket, ct)))
             .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsRead, Route)
+            .WithTags("Tickets");
+
+        // Type and configured fields: tickets.read to view, tickets.update to change (the service touches nothing else on the ticket).
+        app.MapGet("/api/tickets/{ticket}/properties", async (string ticket, TicketPropertiesService properties, CancellationToken ct) =>
+                TypedResults.Ok(await properties.GetAsync(ticket, ct)))
+            .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsRead, Route)
+            .WithTags("Tickets");
+
+        app.MapPatch("/api/tickets/{ticket}/properties", async (string ticket, UpdatePropertiesRequest body, TicketPropertiesService properties, CancellationToken ct) =>
+                TypedResults.Ok(await properties.UpdateAsync(ticket, body, ct)))
+            .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsUpdate, Route)
             .WithTags("Tickets");
 
         app.MapPatch("/api/tickets/{ticket}", async (string ticket, UpdateTicketRequest body, TicketService tickets, CancellationToken ct) =>

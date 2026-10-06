@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Helpdesk.Modules.Ticketing.Fields;
 using Helpdesk.Modules.Ticketing.Portal;
 using Helpdesk.SharedKernel.Authorization;
 using Helpdesk.SharedKernel.Errors;
@@ -16,6 +18,8 @@ namespace Helpdesk.Modules.Ticketing.Endpoints;
 internal static class PortalEndpoints
 {
     private sealed record ReplyJson(string? Body);
+
+    private sealed record FieldsJson(Dictionary<string, JsonElement>? Fields);
 
     public static void Map(IEndpointRouteBuilder app)
     {
@@ -56,6 +60,13 @@ internal static class PortalEndpoints
             })
             .RequireAuthenticatedOnly();
 
+        portal.MapPut("requests/{reference}/fields", async (string reference, FieldsJson body, PortalRequestService requests, CancellationToken ct) =>
+            {
+                await requests.UpdateFieldsAsync(reference, body.Fields, ct);
+                return TypedResults.Ok(await requests.GetAsync(reference, ct));
+            })
+            .RequireAuthenticatedOnly();
+
         portal.MapGet("requests/{reference}/attachments/{attachmentId:guid}", async (string reference, Guid attachmentId, PortalRequestService requests, CancellationToken ct) =>
             {
                 var result = await requests.OpenAttachmentAsync(reference, attachmentId, ct);
@@ -84,14 +95,44 @@ internal static class PortalEndpoints
         g.MapPut("order", async (Guid departmentId, Sla.ReorderRequest body, FormsAdminService service, CancellationToken ct) =>
                 TypedResults.Ok(await service.ReorderFormsAsync(departmentId, body, ct)))
             .RequirePermission(PermissionCodes.DepartmentFormsManage);
-        g.MapPost("{formId:guid}/fields", async (Guid departmentId, Guid formId, FieldRequest body, FormsAdminService service, CancellationToken ct) =>
-                TypedResults.Ok(await service.CreateFieldAsync(departmentId, formId, body, ct)))
+        g.MapPut("{formId:guid}/fields", async (Guid departmentId, Guid formId, FieldLinksRequest body, FormsAdminService service, CancellationToken ct) =>
+                TypedResults.Ok(await service.SetFieldsAsync(departmentId, formId, body, ct)))
             .RequirePermission(PermissionCodes.DepartmentFormsManage);
-        g.MapPatch("{formId:guid}/fields/{fieldId:guid}", async (Guid departmentId, Guid formId, Guid fieldId, FieldRequest body, FormsAdminService service, CancellationToken ct) =>
-                TypedResults.Ok(await service.UpdateFieldAsync(departmentId, formId, fieldId, body, ct)))
+
+        // Ticket types and ticket fields share the forms permission: they are the same configuration area (Ticketing).
+        var types = app.MapGroup("/api/departments/{departmentId:guid}/ticket-types").WithTags("Ticket types");
+        types.MapGet("", async (Guid departmentId, TicketTypesService service, CancellationToken ct) => TypedResults.Ok(await service.ListAsync(departmentId, ct)))
             .RequirePermission(PermissionCodes.DepartmentFormsManage);
-        g.MapPut("{formId:guid}/fields/order", async (Guid departmentId, Guid formId, Sla.ReorderRequest body, FormsAdminService service, CancellationToken ct) =>
-                TypedResults.Ok(await service.ReorderFieldsAsync(departmentId, formId, body, ct)))
+        types.MapPost("", async (Guid departmentId, TicketTypeRequest body, TicketTypesService service, CancellationToken ct) =>
+            {
+                var created = await service.CreateAsync(departmentId, body, ct);
+                return TypedResults.Created($"/api/departments/{departmentId}/ticket-types/{created.Id}", created);
+            })
+            .RequirePermission(PermissionCodes.DepartmentFormsManage);
+        types.MapPatch("{typeId:guid}", async (Guid departmentId, Guid typeId, TicketTypeRequest body, TicketTypesService service, CancellationToken ct) =>
+                TypedResults.Ok(await service.UpdateAsync(departmentId, typeId, body, ct)))
+            .RequirePermission(PermissionCodes.DepartmentFormsManage);
+        types.MapPut("order", async (Guid departmentId, Sla.ReorderRequest body, TicketTypesService service, CancellationToken ct) =>
+                TypedResults.Ok(await service.ReorderAsync(departmentId, body, ct)))
+            .RequirePermission(PermissionCodes.DepartmentFormsManage);
+        types.MapPut("{typeId:guid}/fields", async (Guid departmentId, Guid typeId, FieldLinksRequest body, TicketTypesService service, CancellationToken ct) =>
+                TypedResults.Ok(await service.SetFieldsAsync(departmentId, typeId, body, ct)))
+            .RequirePermission(PermissionCodes.DepartmentFormsManage);
+
+        var fields = app.MapGroup("/api/departments/{departmentId:guid}/ticket-fields").WithTags("Ticket fields");
+        fields.MapGet("", async (Guid departmentId, TicketFieldsService service, CancellationToken ct) => TypedResults.Ok(await service.ListAsync(departmentId, ct)))
+            .RequirePermission(PermissionCodes.DepartmentFormsManage);
+        fields.MapPost("", async (Guid departmentId, TicketFieldRequest body, TicketFieldsService service, CancellationToken ct) =>
+            {
+                var created = await service.CreateAsync(departmentId, body, ct);
+                return TypedResults.Created($"/api/departments/{departmentId}/ticket-fields/{created.Id}", created);
+            })
+            .RequirePermission(PermissionCodes.DepartmentFormsManage);
+        fields.MapPatch("{fieldId:guid}", async (Guid departmentId, Guid fieldId, TicketFieldRequest body, TicketFieldsService service, CancellationToken ct) =>
+                TypedResults.Ok(await service.UpdateAsync(departmentId, fieldId, body, ct)))
+            .RequirePermission(PermissionCodes.DepartmentFormsManage);
+        fields.MapPut("order", async (Guid departmentId, Sla.ReorderRequest body, TicketFieldsService service, CancellationToken ct) =>
+                TypedResults.Ok(await service.ReorderAsync(departmentId, body, ct)))
             .RequirePermission(PermissionCodes.DepartmentFormsManage);
     }
 }

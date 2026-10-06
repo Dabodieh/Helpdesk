@@ -2408,3 +2408,30 @@ fieldset.choice {
 .requester-page {
   max-width: 52rem;
 }
+
+/* Ticketing configuration and ticket details */
+.link-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.link-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.t-props {
+  margin-top: 0.5rem;
+}
+.t-props > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+@media (max-width: 40rem) {
+  .link-row {
+    grid-template-columns: 1fr;
+  }
+}

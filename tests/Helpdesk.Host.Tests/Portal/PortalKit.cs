@@ -44,16 +44,23 @@ public static class PortalKit
         }
 
         var form = (await d.Admin.Client.PostAsync($"{d.Department.Url}/request-forms", body)).Expect(HttpStatusCode.Created);
+        var linked = new List<object>();
         foreach (var field in fields)
         {
-            (await d.Admin.Client.PostAsync($"{d.Department.Url}/request-forms/{form.Id}/fields", field)).Expect(HttpStatusCode.OK);
+            var created = (await d.Admin.Client.PostAsync($"{d.Department.Url}/ticket-fields", field)).Expect(HttpStatusCode.Created);
+            linked.Add(new { fieldId = created.Id });
+        }
+
+        if (linked.Count > 0)
+        {
+            (await d.Admin.Client.PutAsync($"{d.Department.Url}/request-forms/{form.Id}/fields", new { fields = linked })).Expect(HttpStatusCode.OK);
         }
 
         return (form.Id, form.Version);
     }
 
-    public static object Field(string label, string type, bool required = false, object[]? options = null, bool requesterVisible = true, bool agentVisible = true, string? key = null) =>
-        new { key, label, type, required, options, requesterVisible, agentVisible };
+    public static object Field(string label, string type, bool required = false, object[]? options = null, bool requesterVisible = true, bool agentVisible = true, string? key = null, bool appliesToAllTypes = false, bool requesterEditable = false) =>
+        new { key, label, type, required, options, requesterVisible, agentVisible, appliesToAllTypes, requesterEditable };
 
     /// <summary>A portal SignalR connection for the employee through the real hub (cookie session + CSRF header).</summary>
     public static async Task<(HubConnection Connection, List<JsonElement> Events)> ConnectPortalAsync(this HelpdeskFixture fixture, Employee e, List<HubConnection> sink)

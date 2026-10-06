@@ -70,6 +70,10 @@ internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirec
             .Select(v => new AgentFieldDto(v.Label, v.Display)).ToListAsync(ct);
         var formName = ticket.RequestFormId is { } formId ? await db.RequestForms.AsNoTracking().Where(f => f.Id == formId).Select(f => f.Name).SingleOrDefaultAsync(ct) : null;
 
+        var type = ticket.TicketTypeId is { } typeId
+            ? await db.TicketTypes.AsNoTracking().Where(t => t.Id == typeId && t.DepartmentId == ticket.DepartmentId).Select(t => new RefDto(t.Id, t.Name)).SingleOrDefaultAsync(ct)
+            : null;
+
         return new TicketDetailDto(
             ticket.Id,
             ticket.Reference,
@@ -92,7 +96,8 @@ internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirec
             Helpdesk.Modules.Ticketing.Sla.SlaSummary.Of(sla, clock.GetUtcNow()),
             ticket.Source,
             formName,
-            fields);
+            fields,
+            type);
     }
 
     public async Task<IReadOnlyList<TicketListItemDto>> ListItemsAsync(IReadOnlyList<TicketRow> rows, CancellationToken ct, IReadOnlyDictionary<Guid, MatchDto>? matches = null, IReadOnlyDictionary<Guid, Helpdesk.Modules.Ticketing.Domain.TicketSla>? slas = null)

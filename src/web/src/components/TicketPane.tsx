@@ -17,6 +17,7 @@ import History from './History'
 import { Icon } from './icons'
 import { PriorityMark, StatusPill } from './Pills'
 import { SlaStrip } from './Sla'
+import TicketProperties from './TicketProperties'
 import ProblemBanner from './ProblemBanner'
 import { RequesterName } from './RequesterDrawer'
 
@@ -245,6 +246,7 @@ function TicketHeader({
           </div>
         )}
       </dl>
+      <TicketProperties reference={t.reference} canEdit={canUpdate} />
     </header>
   )
 }

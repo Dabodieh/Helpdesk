@@ -13,6 +13,7 @@ internal static class ConditionFields
     public const string Team = "team";
     public const string Assignee = "assignee";
     public const string Mailbox = "mailbox";
+    public const string TicketType = "ticketType";
     public const string SubjectContains = "subjectContains";
     public const string RequesterEmail = "requesterEmail";
     public const string RequesterDomain = "requesterDomain";
@@ -57,7 +58,8 @@ internal sealed record TicketFacts(
     string Subject,
     string RequesterEmailNormalised,
     string SlaFirstResponse,
-    string SlaResolution)
+    string SlaResolution,
+    Guid? TicketTypeId = null)
 {
     public string RequesterDomain => RequesterEmailNormalised[(RequesterEmailNormalised.LastIndexOf('@') + 1)..];
 }
@@ -77,6 +79,7 @@ internal static class ConditionCatalogue
         [ConditionFields.Team] = [ConditionOperators.In, ConditionOperators.NotIn],
         [ConditionFields.Assignee] = [ConditionOperators.In, ConditionOperators.NotIn],
         [ConditionFields.Mailbox] = [ConditionOperators.In, ConditionOperators.NotIn],
+        [ConditionFields.TicketType] = [ConditionOperators.In, ConditionOperators.NotIn],
         [ConditionFields.SubjectContains] = [ConditionOperators.Contains],
         [ConditionFields.RequesterEmail] = [ConditionOperators.IsEqual],
         [ConditionFields.RequesterDomain] = [ConditionOperators.IsEqual],
@@ -87,13 +90,13 @@ internal static class ConditionCatalogue
     /// <summary>Fields usable for SLA policy matching (a policy is chosen when the ticket is created, so state-like fields do not apply).</summary>
     public static readonly string[] PolicyFields =
     [
-        ConditionFields.Priority, ConditionFields.Team, ConditionFields.Mailbox,
+        ConditionFields.Priority, ConditionFields.Team, ConditionFields.Mailbox, ConditionFields.TicketType,
         ConditionFields.SubjectContains, ConditionFields.RequesterEmail, ConditionFields.RequesterDomain,
     ];
 
     public static readonly string[] RuleFields = [.. Operators.Keys];
 
-    public static bool IsIdField(string field) => field is ConditionFields.Team or ConditionFields.Assignee or ConditionFields.Mailbox;
+    public static bool IsIdField(string field) => field is ConditionFields.Team or ConditionFields.Assignee or ConditionFields.Mailbox or ConditionFields.TicketType;
 
     /// <summary>Shape validation only (no database): known field and operator, value count and form. Returns field-path errors.</summary>
     public static Dictionary<string, string[]> Validate(IReadOnlyList<RuleCondition>? conditions, string[] allowedFields, string path)
@@ -157,7 +160,7 @@ internal static class ConditionCatalogue
                 return Enum.TryParse<TicketStatus>(value, out _) && Enum.IsDefined(Enum.Parse<TicketStatus>(value)) ? null : "Unknown status.";
             case ConditionFields.Priority:
                 return Enum.TryParse<TicketPriority>(value, out _) && Enum.IsDefined(Enum.Parse<TicketPriority>(value)) ? null : "Unknown priority.";
-            case ConditionFields.Team or ConditionFields.Assignee or ConditionFields.Mailbox:
+            case ConditionFields.Team or ConditionFields.Assignee or ConditionFields.Mailbox or ConditionFields.TicketType:
                 return value == NoneValue.Value || Guid.TryParse(value, out _) ? null : "Use an id, or 'none'.";
             case ConditionFields.SlaFirstResponse or ConditionFields.SlaResolution:
                 return SlaStates.All.Contains(value) ? null : "Unknown SLA state.";
@@ -195,6 +198,7 @@ internal static class ConditionEvaluator
             ConditionFields.Team => InSet(f.TeamId?.ToString() ?? NoneValue.Value, c),
             ConditionFields.Assignee => InSet(f.AssigneeUserId?.ToString() ?? NoneValue.Value, c),
             ConditionFields.Mailbox => InSet(f.MailboxId?.ToString() ?? NoneValue.Value, c),
+            ConditionFields.TicketType => InSet(f.TicketTypeId?.ToString() ?? NoneValue.Value, c),
             ConditionFields.SlaFirstResponse => InSet(f.SlaFirstResponse, c),
             ConditionFields.SlaResolution => InSet(f.SlaResolution, c),
 

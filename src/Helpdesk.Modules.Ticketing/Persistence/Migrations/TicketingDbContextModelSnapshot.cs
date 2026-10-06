@@ -367,106 +367,6 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.FormField", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<bool>("AgentVisible")
-                        .HasColumnType("boolean")
-                        .HasColumnName("agent_visible");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<Guid>("DepartmentId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("department_id");
-
-                    b.Property<string>("FieldType")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("character varying(16)")
-                        .HasColumnName("field_type");
-
-                    b.Property<Guid>("FormId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("form_id");
-
-                    b.Property<string>("HelpText")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("help_text");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_active");
-
-                    b.Property<string>("Key")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
-                        .HasColumnName("key");
-
-                    b.Property<string>("Label")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("label");
-
-                    b.Property<string>("Options")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("options");
-
-                    b.Property<bool>("RequesterVisible")
-                        .HasColumnType("boolean")
-                        .HasColumnName("requester_visible");
-
-                    b.Property<bool>("Required")
-                        .HasColumnType("boolean")
-                        .HasColumnName("required");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("integer")
-                        .HasColumnName("sort_order");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.Property<uint>("Version")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
-                        .HasColumnName("xmin");
-
-                    b.HasKey("Id");
-
-                    b.HasAlternateKey("Id", "DepartmentId")
-                        .HasName("ux_form_fields_id_department");
-
-                    b.HasIndex("FormId", "DepartmentId");
-
-                    b.HasIndex("FormId", "Key")
-                        .IsUnique()
-                        .HasDatabaseName("ux_form_fields_form_key");
-
-                    b.HasIndex("FormId", "SortOrder")
-                        .HasDatabaseName("ix_form_fields_form_order");
-
-                    b.ToTable("form_fields", "ticketing", t =>
-                        {
-                            t.HasCheckConstraint("ck_form_fields_key", "key ~ '^[a-z][a-z0-9_]{0,39}$'");
-
-                            t.HasCheckConstraint("ck_form_fields_label", "length(btrim(label)) BETWEEN 1 AND 100");
-
-                            t.HasCheckConstraint("ck_form_fields_type", "field_type IN ('ShortText','LongText','SingleSelect','MultiSelect','Checkbox','Date','Number')");
-                        });
-                });
-
             modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.Message", b =>
                 {
                     b.Property<Guid>("Id")
@@ -610,6 +510,10 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("sort_order");
 
+                    b.Property<Guid?>("TicketTypeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ticket_type_id");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -637,12 +541,48 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         .HasDatabaseName("ix_request_forms_portal")
                         .HasFilter("is_active AND visible_to_requesters");
 
+                    b.HasIndex("TicketTypeId", "DepartmentId");
+
                     b.ToTable("request_forms", "ticketing", t =>
                         {
                             t.HasCheckConstraint("ck_request_forms_name", "length(btrim(name)) BETWEEN 1 AND 100");
 
                             t.HasCheckConstraint("ck_request_forms_priority", "default_priority IS NULL OR default_priority BETWEEN 1 AND 4");
                         });
+                });
+
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.RequestFormField", b =>
+                {
+                    b.Property<Guid>("FormId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("form_id");
+
+                    b.Property<Guid>("FieldId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("field_id");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("department_id");
+
+                    b.Property<bool?>("Required")
+                        .HasColumnType("boolean")
+                        .HasColumnName("required");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.HasKey("FormId", "FieldId");
+
+                    b.HasIndex("FieldId")
+                        .HasDatabaseName("ix_request_form_fields_field");
+
+                    b.HasIndex("FieldId", "DepartmentId");
+
+                    b.HasIndex("FormId", "DepartmentId");
+
+                    b.ToTable("request_form_fields", "ticketing");
                 });
 
             modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.Requester", b =>
@@ -996,6 +936,10 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("team_id");
 
+                    b.Property<Guid?>("TicketTypeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ticket_type_id");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -1019,11 +963,17 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("ux_tickets_department_number");
 
+                    b.HasIndex("DepartmentId", "TicketTypeId")
+                        .HasDatabaseName("ix_tickets_department_type")
+                        .HasFilter("ticket_type_id IS NOT NULL");
+
                     b.HasIndex("RequesterId", "CreatedAt")
                         .IsDescending(false, true)
                         .HasDatabaseName("ix_tickets_requester_created");
 
                     b.HasIndex("RequesterId", "DepartmentId");
+
+                    b.HasIndex("TicketTypeId", "DepartmentId");
 
                     b.HasIndex("AssigneeUserId", "UpdatedAt", "Id")
                         .IsDescending(false, true, true)
@@ -1063,6 +1013,110 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                             t.HasCheckConstraint("ck_tickets_status_timestamps", "(status = 'Closed') = (closed_at IS NOT NULL) AND (status IN ('Resolved','Closed')) = (resolved_at IS NOT NULL)");
 
                             t.HasCheckConstraint("ck_tickets_subject", "length(btrim(subject)) BETWEEN 1 AND 200");
+                        });
+                });
+
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.TicketField", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("AgentVisible")
+                        .HasColumnType("boolean")
+                        .HasColumnName("agent_visible");
+
+                    b.Property<bool>("AppliesToAllTypes")
+                        .HasColumnType("boolean")
+                        .HasColumnName("applies_to_all_types");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("department_id");
+
+                    b.Property<string>("FieldType")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("field_type");
+
+                    b.Property<string>("HelpText")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("help_text");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("key");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("label");
+
+                    b.Property<string>("Options")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("options");
+
+                    b.Property<bool>("RequesterEditable")
+                        .HasColumnType("boolean")
+                        .HasColumnName("requester_editable");
+
+                    b.Property<bool>("RequesterVisible")
+                        .HasColumnType("boolean")
+                        .HasColumnName("requester_visible");
+
+                    b.Property<bool>("Required")
+                        .HasColumnType("boolean")
+                        .HasColumnName("required");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("Id", "DepartmentId")
+                        .HasName("ux_ticket_fields_id_department");
+
+                    b.HasIndex("DepartmentId", "Key")
+                        .IsUnique()
+                        .HasDatabaseName("ux_ticket_fields_department_key");
+
+                    b.HasIndex("DepartmentId", "SortOrder")
+                        .HasDatabaseName("ix_ticket_fields_department_order");
+
+                    b.ToTable("ticket_fields", "ticketing", t =>
+                        {
+                            t.HasCheckConstraint("ck_ticket_fields_editable_visible", "NOT requester_editable OR requester_visible");
+
+                            t.HasCheckConstraint("ck_ticket_fields_key", "key ~ '^[a-z][a-z0-9_]{0,39}$'");
+
+                            t.HasCheckConstraint("ck_ticket_fields_label", "length(btrim(label)) BETWEEN 1 AND 100");
+
+                            t.HasCheckConstraint("ck_ticket_fields_type", "field_type IN ('ShortText','LongText','SingleSelect','MultiSelect','Checkbox','Date','Number')");
                         });
                 });
 
@@ -1128,6 +1182,10 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("ticket_id");
 
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
                     b.Property<string>("ValueJson")
                         .IsRequired()
                         .HasColumnType("jsonb")
@@ -1139,6 +1197,10 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         .HasDatabaseName("ix_ticket_field_values_key");
 
                     b.HasIndex("TicketId", "DepartmentId");
+
+                    b.HasIndex("TicketId", "Key")
+                        .IsUnique()
+                        .HasDatabaseName("ux_ticket_field_values_ticket_key");
 
                     b.HasIndex("TicketId", "SortOrder")
                         .HasDatabaseName("ix_ticket_field_values_ticket");
@@ -1296,6 +1358,107 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                     b.ToTable("ticket_sla", "ticketing");
                 });
 
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.TicketType", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("department_id");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("description");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_default");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("Id", "DepartmentId")
+                        .HasName("ux_ticket_types_id_department");
+
+                    b.HasIndex("DepartmentId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_ticket_types_department_default")
+                        .HasFilter("is_default");
+
+                    b.HasIndex("DepartmentId", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("ux_ticket_types_department_name");
+
+                    b.ToTable("ticket_types", "ticketing", t =>
+                        {
+                            t.HasCheckConstraint("ck_ticket_types_name", "length(btrim(name)) BETWEEN 1 AND 100");
+                        });
+                });
+
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.TicketTypeField", b =>
+                {
+                    b.Property<Guid>("TypeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("type_id");
+
+                    b.Property<Guid>("FieldId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("field_id");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("department_id");
+
+                    b.Property<bool?>("Required")
+                        .HasColumnType("boolean")
+                        .HasColumnName("required");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.HasKey("TypeId", "FieldId");
+
+                    b.HasIndex("FieldId")
+                        .HasDatabaseName("ix_ticket_type_fields_field");
+
+                    b.HasIndex("FieldId", "DepartmentId");
+
+                    b.HasIndex("TypeId", "DepartmentId");
+
+                    b.ToTable("ticket_type_fields", "ticketing");
+                });
+
             modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.AutomationExecution", b =>
                 {
                     b.HasOne("Helpdesk.Modules.Ticketing.Domain.AutomationRule", null)
@@ -1315,17 +1478,6 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         .HasConstraintName("fk_automation_executions_ticket_department");
                 });
 
-            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.FormField", b =>
-                {
-                    b.HasOne("Helpdesk.Modules.Ticketing.Domain.RequestForm", null)
-                        .WithMany()
-                        .HasForeignKey("FormId", "DepartmentId")
-                        .HasPrincipalKey("Id", "DepartmentId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_form_fields_form_department");
-                });
-
             modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.Message", b =>
                 {
                     b.HasOne("Helpdesk.Modules.Ticketing.Domain.Ticket", null)
@@ -1335,6 +1487,35 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_messages_ticket_department");
+                });
+
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.RequestForm", b =>
+                {
+                    b.HasOne("Helpdesk.Modules.Ticketing.Domain.TicketType", null)
+                        .WithMany()
+                        .HasForeignKey("TicketTypeId", "DepartmentId")
+                        .HasPrincipalKey("Id", "DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_request_forms_type_department");
+                });
+
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.RequestFormField", b =>
+                {
+                    b.HasOne("Helpdesk.Modules.Ticketing.Domain.TicketField", null)
+                        .WithMany()
+                        .HasForeignKey("FieldId", "DepartmentId")
+                        .HasPrincipalKey("Id", "DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_request_form_fields_field_department");
+
+                    b.HasOne("Helpdesk.Modules.Ticketing.Domain.RequestForm", null)
+                        .WithMany()
+                        .HasForeignKey("FormId", "DepartmentId")
+                        .HasPrincipalKey("Id", "DepartmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_request_form_fields_form_department");
                 });
 
             modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.RequesterLink", b =>
@@ -1379,6 +1560,13 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_tickets_requester_department");
 
+                    b.HasOne("Helpdesk.Modules.Ticketing.Domain.TicketType", null)
+                        .WithMany()
+                        .HasForeignKey("TicketTypeId", "DepartmentId")
+                        .HasPrincipalKey("Id", "DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_tickets_type_department");
+
                     b.Navigation("Requester");
                 });
 
@@ -1413,6 +1601,25 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_ticket_sla_ticket_department");
+                });
+
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.TicketTypeField", b =>
+                {
+                    b.HasOne("Helpdesk.Modules.Ticketing.Domain.TicketField", null)
+                        .WithMany()
+                        .HasForeignKey("FieldId", "DepartmentId")
+                        .HasPrincipalKey("Id", "DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_ticket_type_fields_field_department");
+
+                    b.HasOne("Helpdesk.Modules.Ticketing.Domain.TicketType", null)
+                        .WithMany()
+                        .HasForeignKey("TypeId", "DepartmentId")
+                        .HasPrincipalKey("Id", "DepartmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_ticket_type_fields_type_department");
                 });
 #pragma warning restore 612, 618
         }

@@ -21,7 +21,7 @@ internal sealed record OpOutcome(string Outcome, string? Detail, IReadOnlyList<T
 /// Checks that every team, user and mailbox a rule names belongs to the rule's own department. Used when a rule is saved AND again
 /// when it runs, so a crafted payload or a later change can never make automation reach into another department.
 /// </summary>
-internal sealed class RuleReferenceChecker(IOrganisationDirectory organisation, IMailboxDirectory mailboxes)
+internal sealed class RuleReferenceChecker(IOrganisationDirectory organisation, IMailboxDirectory mailboxes, TicketingDbContext db)
 {
     public async Task<string?> CheckTeamAsync(Guid departmentId, string value, bool requireActive, CancellationToken ct)
     {
@@ -45,6 +45,12 @@ internal sealed class RuleReferenceChecker(IOrganisationDirectory organisation, 
             ? null
             : "The person is not an active member of this department who can work tickets.";
     }
+
+    /// <summary>A type named by a condition only compares, so it may be inactive; it must be a type of THIS department.</summary>
+    public async Task<string?> CheckTicketTypeAsync(Guid departmentId, string value, CancellationToken ct) =>
+        value == NoneValue.Value || (Guid.TryParse(value, out var id) && await db.TicketTypes.AsNoTracking().AnyAsync(t => t.Id == id && t.DepartmentId == departmentId, ct))
+            ? null
+            : "The ticket type does not belong to this department.";
 
     public async Task<string?> CheckMailboxAsync(Guid departmentId, string value, CancellationToken ct)
     {
@@ -71,6 +77,7 @@ internal sealed class RuleReferenceChecker(IOrganisationDirectory organisation, 
                 {
                     ConditionFields.Team => await CheckTeamAsync(departmentId, value, requireActive: false, ct),
                     ConditionFields.Assignee => await CheckKnownUserAsync(departmentId, value, ct),
+                    ConditionFields.TicketType => await CheckTicketTypeAsync(departmentId, value, ct),
                     _ => await CheckMailboxAsync(departmentId, value, ct),
                 };
                 if (problem is not null)

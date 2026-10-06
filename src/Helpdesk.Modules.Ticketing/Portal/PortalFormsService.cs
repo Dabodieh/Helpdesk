@@ -1,4 +1,5 @@
 using Helpdesk.Modules.Organisation.Contracts;
+using Helpdesk.Modules.Ticketing.Fields;
 using Helpdesk.Modules.Ticketing.Persistence;
 using Helpdesk.SharedKernel.Errors;
 using Microsoft.EntityFrameworkCore;
@@ -17,7 +18,7 @@ internal sealed record PortalFormDto(Guid Id, string Name, string? Description, 
 /// The forms a signed-in employee may fill in. Request forms are published to every signed-in employee (an internal deployment); a form that is
 /// inactive or not visible to requesters, and any field that is inactive or not requester visible, simply does not exist here.
 /// </summary>
-internal sealed class PortalFormsService(TicketingDbContext db, IOrganisationDirectory organisation)
+internal sealed class PortalFormsService(TicketingDbContext db, IOrganisationDirectory organisation, FieldCatalog catalog)
 {
     public async Task<IReadOnlyList<PortalFormListItemDto>> ListAsync(CancellationToken ct)
     {
@@ -36,11 +37,10 @@ internal sealed class PortalFormsService(TicketingDbContext db, IOrganisationDir
             throw new NotFoundException();
         }
 
-        var fields = await db.FormFields.AsNoTracking().Where(f => f.FormId == id && f.DepartmentId == form.DepartmentId && f.IsActive && f.RequesterVisible)
-            .OrderBy(f => f.SortOrder).ThenBy(f => f.Key).ToListAsync(ct);
+        var fields = (await catalog.ForFormAsync(form.Id, form.DepartmentId, ct)).Where(b => b.Field.RequesterVisible).ToList();
         return new PortalFormDto(
             form.Id, form.Name, form.Description, department.Name,
-            [.. fields.Select(f => new PortalFieldDto(f.Key, f.Label, f.HelpText, f.FieldType, f.Required,
-                [.. FormSubmissionValidator.Options(f).Where(o => o.IsActive).Select(o => new PortalOptionDto(o.Value, o.Label))]))]);
+            [.. fields.Select(b => new PortalFieldDto(b.Field.Key, b.Field.Label, b.Field.HelpText, b.Field.FieldType, b.Required,
+                [.. FieldValueValidator.Options(b.Field).Where(o => o.IsActive).Select(o => new PortalOptionDto(o.Value, o.Label))]))]);
     }
 }

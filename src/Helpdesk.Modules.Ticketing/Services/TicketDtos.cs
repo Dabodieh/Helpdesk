@@ -56,7 +56,8 @@ internal sealed record TicketDetailDto(
     Helpdesk.Modules.Ticketing.Sla.SlaSummaryDto? Sla = null,
     string? Source = null,
     string? RequestForm = null,
-    IReadOnlyList<AgentFieldDto>? Fields = null);
+    IReadOnlyList<AgentFieldDto>? Fields = null,
+    RefDto? Type = null);
 
 /// <summary>A submitted custom-field value as agents see it (label and text as rendered at submission).</summary>
 internal sealed record AgentFieldDto(string Label, string Value);
@@ -100,7 +101,9 @@ internal sealed record CreateTicketRequest(
     Guid? RequesterId,
     string? Priority,
     Guid? TeamId,
-    Guid? AssigneeUserId);
+    Guid? AssigneeUserId,
+    Guid? TicketTypeId = null,
+    Dictionary<string, System.Text.Json.JsonElement>? Fields = null);
 
 internal sealed record UpdateTicketRequest(string? Version, string? Subject, string? Status, string? Priority);
 
@@ -131,4 +134,5 @@ internal sealed record TicketListQuery(
     string? Cursor,
     int? Limit,
     Guid? View = null,
-    string? Sla = null);
+    string? Sla = null,
+    Guid? TypeId = null);

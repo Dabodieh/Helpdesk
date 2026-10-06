@@ -8,7 +8,7 @@ import BusinessHoursSection from '../components/BusinessHoursSection'
 import CannedManager from '../components/CannedManager'
 import { ActiveBadge, ErrorNotice, Loading, PageHeader, Tabs } from '../components/common'
 import EditForm from '../components/EditForm'
-import FormsSection from '../components/FormsSection'
+import TicketingSection from '../components/TicketingSection'
 import KnowledgeSection from '../components/KnowledgeSection'
 import MailboxesSection from '../components/MailboxesSection'
 import MembersSection from '../components/MembersSection'
@@ -100,10 +100,10 @@ export default function DepartmentPage() {
             content: <AutomationsSection department={d} />,
           },
           {
-            id: 'forms',
-            label: 'Request forms',
+            id: 'ticketing',
+            label: 'Ticketing',
             hidden: !canInDepartment(me, 'department.forms.manage', d.id),
-            content: <FormsSection department={d} />,
+            content: <TicketingSection department={d} />,
           },
           {
             id: 'knowledge',

@@ -88,6 +88,8 @@ internal sealed class InboundTicketSink(TicketingDbContext db, TicketingAudit au
         await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
         var (requester, requesterCreated) = await PeopleUpsert.RequesterAsync(db, request.DepartmentId, request.From.Address, request.From.Name, now, cancellationToken);
         var number = await TicketNumbering.AllocateAsync(db, request.DepartmentId, cancellationToken);
+        // Email cannot choose a type: the department default applies when one is configured, otherwise the ticket is untyped. Never a reason to refuse mail.
+        var defaultType = await db.TicketTypes.AsNoTracking().Where(t => t.DepartmentId == request.DepartmentId && t.IsDefault && t.IsActive).Select(t => (Guid?)t.Id).SingleOrDefaultAsync(cancellationToken);
         var ticket = new Ticket
         {
             Id = Guid.CreateVersion7(),
@@ -104,6 +106,7 @@ internal sealed class InboundTicketSink(TicketingDbContext db, TicketingAudit au
             UpdatedAt = now,
             LastPublicActivityAt = now,
             Source = TicketSources.Email,
+            TicketTypeId = defaultType,
         };
         var first = new Message
         {

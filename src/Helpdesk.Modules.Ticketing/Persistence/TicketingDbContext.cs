@@ -90,6 +90,7 @@ internal sealed partial class TicketingDbContext(DbContextOptions<TicketingDbCon
             e.Property(x => x.LastPublicActivityAt).HasColumnName("last_public_activity_at");
             e.Property(x => x.Source).HasColumnName("source").HasMaxLength(16);
             e.Property(x => x.RequestFormId).HasColumnName("request_form_id");
+            e.Property(x => x.TicketTypeId).HasColumnName("ticket_type_id");
             e.Property(x => x.ResolvedAt).HasColumnName("resolved_at");
             e.Property(x => x.ClosedAt).HasColumnName("closed_at");
             e.Property(x => x.Version).HasColumnName("xmin").HasColumnType("xid").IsRowVersion();
@@ -98,6 +99,9 @@ internal sealed partial class TicketingDbContext(DbContextOptions<TicketingDbCon
             e.HasAlternateKey(x => new { x.Id, x.DepartmentId }).HasName("ux_tickets_id_department");
             e.HasOne(x => x.Requester).WithMany().HasForeignKey(x => new { x.RequesterId, x.DepartmentId })
                 .HasPrincipalKey(r => new { r.Id, r.DepartmentId }).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_tickets_requester_department");
+
+            e.HasOne<TicketType>().WithMany().HasForeignKey(x => new { x.TicketTypeId, x.DepartmentId })
+                .HasPrincipalKey(t => new { t.Id, t.DepartmentId }).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_tickets_type_department");
 
             // Indexing choices (TICKETING.md "Indexing"): see the Initial migration for the rationale of each.
             e.HasIndex(x => x.Reference).IsUnique().HasDatabaseName("ux_tickets_reference");
@@ -111,6 +115,7 @@ internal sealed partial class TicketingDbContext(DbContextOptions<TicketingDbCon
                 .HasFilter("assignee_user_id IS NULL").HasDatabaseName("ix_tickets_unassigned_updated");
             e.HasIndex(x => new { x.RequesterId, x.CreatedAt }).IsDescending(false, true).HasDatabaseName("ix_tickets_requester_created");
             e.HasIndex(x => new { x.RequesterId, x.LastPublicActivityAt, x.Id }).IsDescending(false, true, true).HasDatabaseName("ix_tickets_requester_public_activity");
+            e.HasIndex(x => new { x.DepartmentId, x.TicketTypeId }).HasFilter("ticket_type_id IS NOT NULL").HasDatabaseName("ix_tickets_department_type");
             e.HasQueryFilter(x => ScopedDepartmentIds.Contains(x.DepartmentId));
         });
 

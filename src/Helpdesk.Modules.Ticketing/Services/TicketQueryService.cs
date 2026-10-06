@@ -151,6 +151,11 @@ internal sealed class TicketQueryService(
             tickets = tickets.Where(t => t.AssigneeUserId == null);
         }
 
+        if (query.TypeId is { } filterType)
+        {
+            tickets = tickets.Where(t => t.TicketTypeId == filterType);
+        }
+
         // SLA filters read the indexed summary columns of ticket_sla (itself department scoped), never the ticket history.
         switch (slaFilter)
         {

@@ -1,4 +1,5 @@
 using System.Globalization;
+using Helpdesk.Modules.Ticketing.Fields;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Helpdesk.Modules.Attachments.Contracts;
@@ -42,6 +43,8 @@ internal sealed class TicketService(
     IAttachmentStore attachments,
     ITicketEvents events,
     TicketLifecycle lifecycle,
+    TicketTypesService types,
+    FieldCatalog catalog,
     TimeProvider clock)
 {
     public const int DefaultMessageLimit = 100;
@@ -79,6 +82,18 @@ internal sealed class TicketService(
 
         await ValidateTeamAsync(departmentId, request.TeamId, ct);
         await ValidateAssigneeAsync(departmentId, request.AssigneeUserId, ct);
+
+        // Explicit type must be an active type of this department; otherwise the department default (if any). Fields are collected and validated (required enforced)
+        // only when the caller submits them; a create that submits none leaves details to be completed on the ticket.
+        var typeId = await types.ResolveForCreateAsync(departmentId, request.TicketTypeId, null, ct);
+        ValidationResult? fieldValues = null;
+        if (request.Fields is not null)
+        {
+            var fieldErrors = new Dictionary<string, string[]>();
+            var allowed = (await catalog.ForTypeAsync(departmentId, typeId, ct)).Where(b => b.Field.AgentVisible).ToList();
+            fieldValues = FieldValueValidator.Validate(allowed, request.Fields, ValidationMode.Create, fieldErrors);
+            TicketValidation.ThrowIfAny(fieldErrors);
+        }
 
         var now = clock.GetUtcNowMicroseconds();
         Ticket ticket;
@@ -121,6 +136,7 @@ internal sealed class TicketService(
                 UpdatedAt = now,
                 LastPublicActivityAt = now,
                 Source = TicketSources.Agent,
+                TicketTypeId = typeId,
             };
             var first = new Message
             {
@@ -137,6 +153,11 @@ internal sealed class TicketService(
             };
             db.Tickets.Add(ticket);
             db.Messages.Add(first);
+            if (fieldValues is not null)
+            {
+                await FieldValueStore.ApplyAsync(db, ticket, fieldValues, null, now, ct);
+            }
+
             await SaveAsync(ct);
 
             await audit.WriteAsync(TicketAuditActions.Created, TicketingAudit.TicketObject, ticket.Id, departmentId, null,
@@ -147,6 +168,7 @@ internal sealed class TicketService(
                     priority = ticket.Priority.ToString(),
                     teamId = ticket.TeamId,
                     assigneeUserId = ticket.AssigneeUserId,
+                    ticketTypeId = ticket.TicketTypeId,
                 }, ct);
             await audit.WriteAsync(TicketAuditActions.MessageAdded, TicketingAudit.TicketObject, ticket.Id, departmentId, null,
                 new { messageId = first.Id, kind = first.Kind.ToString(), authorType = first.AuthorType.ToString() }, ct);

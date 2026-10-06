@@ -68,7 +68,7 @@ internal sealed class SlaEngine(TicketingDbContext db)
             .Where(p => p.DepartmentId == ticket.DepartmentId && p.IsActive)
             .OrderBy(p => p.SortOrder).ThenBy(p => p.CreatedAt).ThenBy(p => p.Id)
             .ToListAsync(ct);
-        var facts = new TicketFacts(ticket.Status, ticket.Priority, ticket.TeamId, ticket.AssigneeUserId, ticket.MailboxId, ticket.Subject, requesterEmailNormalised, SlaStates.None, SlaStates.None);
+        var facts = new TicketFacts(ticket.Status, ticket.Priority, ticket.TeamId, ticket.AssigneeUserId, ticket.MailboxId, ticket.Subject, requesterEmailNormalised, SlaStates.None, SlaStates.None, ticket.TicketTypeId);
         var policy = policies.FirstOrDefault(p => ConditionEvaluator.AllMatch(ConditionEvaluator.Evaluate(StoredJson.Conditions(p.Conditions), facts)));
         if (policy is null)
         {

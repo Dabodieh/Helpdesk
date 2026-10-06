@@ -33,6 +33,10 @@ public static class TicketingModule
         services.AddScoped<TicketQueryService>();
         services.AddScoped<RequesterService>();
         services.AddScoped<RequesterHistoryService>();
+        services.AddScoped<Fields.FieldCatalog>();
+        services.AddScoped<Fields.TicketTypesService>();
+        services.AddScoped<Fields.TicketFieldsService>();
+        services.AddScoped<Fields.TicketPropertiesService>();
         services.AddScoped<SavedViewService>();
         services.AddScoped<CannedResponseService>();
         services.AddSignalR();

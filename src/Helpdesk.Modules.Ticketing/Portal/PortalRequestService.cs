@@ -5,6 +5,7 @@ using Helpdesk.Modules.Organisation.Contracts;
 using Helpdesk.Modules.Ticketing.Automation;
 using Helpdesk.Modules.Ticketing.Contracts;
 using Helpdesk.Modules.Ticketing.Domain;
+using Helpdesk.Modules.Ticketing.Fields;
 using Helpdesk.Modules.Ticketing.Persistence;
 using Helpdesk.Modules.Ticketing.Services;
 using Helpdesk.Modules.Ticketing.Sla;
@@ -45,9 +46,11 @@ internal sealed record PortalMessageDto(Guid Id, string Author, bool FromYou, st
 
 internal sealed record PortalFieldValueDto(string Label, string Value);
 
+internal sealed record PortalEditableFieldDto(string Key, string Label, string? HelpText, string Type, bool Required, IReadOnlyList<PortalOptionDto> Options, JsonElement? Value);
+
 internal sealed record PortalRequestDto(
     string Reference, string Subject, string Status, string StatusLabel, string Department, string? Form, DateTimeOffset CreatedAt, DateTimeOffset LastActivityAt,
-    IReadOnlyList<PortalFieldValueDto> Fields, IReadOnlyList<PortalMessageDto> Messages);
+    IReadOnlyList<PortalFieldValueDto> Fields, IReadOnlyList<PortalMessageDto> Messages, IReadOnlyList<PortalEditableFieldDto> EditableFields);
 
 internal sealed record PortalReplyResultDto(PortalMessageDto Message, string Status, string StatusLabel);
 
@@ -69,6 +72,8 @@ internal sealed class PortalRequestService(
     TicketLifecycle lifecycle,
     TicketingAudit audit,
     ICurrentUser current,
+    FieldCatalog catalog,
+    TicketTypesService types,
     TimeProvider clock)
 {
     public const int DefaultLimit = 20;
@@ -165,9 +170,17 @@ internal sealed class PortalRequestService(
             ? await db.RequestForms.AsNoTracking().Where(f => f.Id == formId && f.DepartmentId == ticket.DepartmentId).Select(f => f.Name).SingleOrDefaultAsync(ct)
             : null;
 
-        var fields = await db.TicketFieldValues.AsNoTracking().IgnoreDepartmentScope()
+        // A value is shown only while BOTH its snapshot and the field definition are requester visible, so hiding a field later hides its old values too.
+        var held = await db.TicketFieldValues.AsNoTracking().IgnoreDepartmentScope()
             .Where(v => v.TicketId == ticket.Id && v.DepartmentId == ticket.DepartmentId && v.RequesterVisible)
-            .OrderBy(v => v.SortOrder).Select(v => new PortalFieldValueDto(v.Label, v.Display)).ToListAsync(ct);
+            .OrderBy(v => v.SortOrder).ToListAsync(ct);
+        var definitions = await db.TicketFields.AsNoTracking().Where(f => f.DepartmentId == ticket.DepartmentId && f.RequesterVisible).ToDictionaryAsync(f => f.Id, ct);
+        held = [.. held.Where(v => v.FieldId is null || definitions.ContainsKey(v.FieldId.Value))];
+        var fields = held.Select(v => new PortalFieldValueDto(v.Label, v.Display)).ToList();
+        var editable = (await EditableBindingsAsync(ticket, ct)).Select(b => new PortalEditableFieldDto(
+            b.Field.Key, b.Field.Label, b.Field.HelpText, b.Field.FieldType, b.Required,
+            [.. FieldValueValidator.Options(b.Field).Where(o => o.IsActive).Select(o => new PortalOptionDto(o.Value, o.Label))],
+            held.SingleOrDefault(v => v.Key == b.Field.Key) is { } hv ? JsonDocument.Parse(hv.ValueJson).RootElement.Clone() : null)).ToList();
 
         // Public messages only. Internal notes are not filtered after the fact: they are never selected, so nothing about them (not even a count) exists here.
         var messages = await db.Messages.AsNoTracking().IgnoreDepartmentScope()
@@ -180,7 +193,7 @@ internal sealed class PortalRequestService(
         return new PortalRequestDto(
             ticket.Reference, ticket.Subject, PortalStatus.Code(ticket.Status), PortalStatus.Label(ticket.Status), department?.Name ?? "", formName,
             ticket.CreatedAt, ticket.LastPublicActivityAt, fields,
-            [.. messages.Select(m => ToMessage(m, ticket, files))]);
+            [.. messages.Select(m => ToMessage(m, ticket, files))], editable);
     }
 
     private static PortalMessageDto ToMessage(Message m, Ticket ticket, IReadOnlyDictionary<Guid, IReadOnlyList<AttachmentSummary>> files)
@@ -287,9 +300,10 @@ internal sealed class PortalRequestService(
             throw new NotFoundException();
         }
 
-        var definitions = await db.FormFields.AsNoTracking().Where(f => f.FormId == form.Id && f.DepartmentId == form.DepartmentId).OrderBy(f => f.SortOrder).ThenBy(f => f.Key).ToListAsync(ct);
-        var values = FormSubmissionValidator.Validate(definitions, request.Fields ?? [], errors);
+        var asked = (await catalog.ForFormAsync(form.Id, form.DepartmentId, ct)).Where(b => b.Field.RequesterVisible).ToList();
+        var values = FieldValueValidator.Validate(asked, request.Fields ?? [], ValidationMode.Create, errors);
         TicketValidation.ThrowIfAny(errors);
+        var typeId = await types.ResolveForCreateAsync(form.DepartmentId, null, form.TicketTypeId, ct);
 
         Guid? teamId = null;
         if (form.DefaultTeamId is { } defaultTeam && await organisation.FindTeamAsync(form.DepartmentId, defaultTeam, ct) is { IsActive: true })
@@ -325,6 +339,7 @@ internal sealed class PortalRequestService(
                 LastPublicActivityAt = now,
                 Source = TicketSources.Portal,
                 RequestFormId = form.Id,
+                TicketTypeId = typeId,
             };
             var first = new Message
             {
@@ -342,26 +357,7 @@ internal sealed class PortalRequestService(
             };
             db.Tickets.Add(ticket);
             db.Messages.Add(first);
-            foreach (var value in values)
-            {
-                db.TicketFieldValues.Add(new TicketFieldValue
-                {
-                    Id = Guid.CreateVersion7(),
-                    TicketId = ticket.Id,
-                    DepartmentId = form.DepartmentId,
-                    FormId = form.Id,
-                    FieldId = value.FieldId,
-                    Key = value.Key,
-                    Label = value.Label,
-                    FieldType = value.FieldType,
-                    ValueJson = value.ValueJson,
-                    Display = value.Display,
-                    RequesterVisible = value.RequesterVisible,
-                    AgentVisible = value.AgentVisible,
-                    SortOrder = value.SortOrder,
-                    CreatedAt = now,
-                });
-            }
+            await FieldValueStore.ApplyAsync(db, ticket, values, form.Id, now, ct);
 
             try
             {
@@ -378,7 +374,7 @@ internal sealed class PortalRequestService(
             }
 
             await audit.WriteAsync(TicketAuditActions.Created, TicketingAudit.TicketObject, ticket.Id, form.DepartmentId, null,
-                new { reference = ticket.Reference, status = ticket.Status.ToString(), priority = ticket.Priority.ToString(), teamId = ticket.TeamId, source = TicketSources.Portal, formId = form.Id }, ct);
+                new { reference = ticket.Reference, status = ticket.Status.ToString(), priority = ticket.Priority.ToString(), teamId = ticket.TeamId, source = TicketSources.Portal, formId = form.Id, ticketTypeId = typeId }, ct);
             await audit.WriteAsync(TicketAuditActions.MessageAdded, TicketingAudit.TicketObject, ticket.Id, form.DepartmentId, null,
                 new { messageId = first.Id, kind = first.Kind.ToString(), authorType = first.AuthorType.ToString() }, ct);
             await lifecycle.BeforeCommitAsync(ticket, requester.EmailNormalised, createdChange, ct);
@@ -389,5 +385,61 @@ internal sealed class PortalRequestService(
         await lifecycle.AfterCommitAsync(ticket, createdChange, Provenances.Portal, ct);
         var status = await db.Tickets.AsNoTracking().IgnoreDepartmentScope().Where(t => t.Id == ticket.Id && t.DepartmentId == ticket.DepartmentId).Select(t => t.Status).SingleAsync(ct);
         return new PortalCreatedDto(ticket.Reference, PortalStatus.Code(status), PortalStatus.Label(status));
+    }
+
+    // ----- requester-editable details -----
+
+    /// <summary>Fields the requester may change after submitting: active, requester visible AND requester editable, and part of this ticket (its type, or the form it came from).</summary>
+    private async Task<List<FieldBinding>> EditableBindingsAsync(Ticket ticket, CancellationToken ct)
+    {
+        if (ticket.Status == TicketStatus.Closed)
+        {
+            return [];
+        }
+
+        var bindings = await catalog.ForTypeAsync(ticket.DepartmentId, ticket.TicketTypeId, ct);
+        if (ticket.RequestFormId is { } formId)
+        {
+            foreach (var b in await catalog.ForFormAsync(formId, ticket.DepartmentId, ct))
+            {
+                if (bindings.All(x => x.Field.Id != b.Field.Id))
+                {
+                    bindings.Add(b);
+                }
+            }
+        }
+
+        return [.. bindings.Where(b => b.Field.RequesterVisible && b.Field.RequesterEditable)];
+    }
+
+    public async Task UpdateFieldsAsync(string reference, Dictionary<string, JsonElement>? submitted, CancellationToken ct)
+    {
+        if (submitted is null || submitted.Count == 0)
+        {
+            throw new RequestValidationException("fields", "Provide at least one field.");
+        }
+
+        var ticket = await OwnTicketAsync(reference, track: true, ct);
+        var allowed = await EditableBindingsAsync(ticket, ct);
+        var errors = new Dictionary<string, string[]>();
+        var result = FieldValueValidator.Validate(allowed, submitted, ValidationMode.Patch, errors);
+        TicketValidation.ThrowIfAny(errors);
+
+        var now = clock.GetUtcNowMicroseconds();
+        await using (var tx = await db.Database.BeginTransactionAsync(ct))
+        {
+            var changes = await FieldValueStore.ApplyAsync(db, ticket, result, ticket.RequestFormId, now, ct);
+            if (changes.Count == 0)
+            {
+                return;
+            }
+
+            ticket.UpdatedAt = now;
+            await db.SaveChangesAsync(ct);
+            await FieldValueStore.AuditAsync(audit, ticket, changes, ct);
+            await tx.CommitAsync(ct);
+        }
+
+        await events.PublishAsync(ticket.DepartmentId, ticket.Id, ticket.Reference, TicketEventKinds.Updated, current.UserId, ct);
     }
 }

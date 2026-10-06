@@ -3,37 +3,58 @@ using System.Text.Json;
 using Helpdesk.Modules.Ticketing.Domain;
 using Helpdesk.Modules.Ticketing.Sla;
 
-namespace Helpdesk.Modules.Ticketing.Portal;
+namespace Helpdesk.Modules.Ticketing.Fields;
 
 internal sealed record FieldOption(string Value, string Label, bool IsActive = true);
 
-internal sealed record ValidatedValue(
-    Guid FieldId, string Key, string Label, string FieldType, string ValueJson, string Display, bool RequesterVisible, bool AgentVisible, int SortOrder);
+/// <summary>A field as asked in one place (a form, a ticket type or a ticket): the definition, whether it is required HERE, and its order HERE.</summary>
+internal sealed record FieldBinding(TicketField Field, bool Required, int Order);
+
+internal sealed record ValidatedValue(TicketField Field, string ValueJson, string Display, int Order);
+
+internal sealed record ValidationResult(IReadOnlyList<ValidatedValue> Values, IReadOnlyList<TicketField> Cleared);
+
+internal enum ValidationMode
+{
+    /// <summary>A new ticket: every bound field is evaluated and required fields must be present.</summary>
+    Create,
+
+    /// <summary>An edit: only the submitted keys are touched; <c>null</c> clears (refused for a required field). Untouched fields are never revalidated.</summary>
+    Patch,
+}
 
 /// <summary>
-/// Server-side validation of submitted custom-field values against the form's current definitions. Only active, requester-visible fields of THIS form
-/// are accepted; anything else (unknown, inactive, hidden, admin-only) is rejected with the same message, so the form's hidden structure is not revealed.
-/// Values are typed and bounded; there is no scripting, HTML or formula support.
+/// Server-side validation of submitted field values against definitions. The caller decides which bindings the actor may supply (requesters: active and
+/// requester visible; agents: active and agent visible); anything else is rejected with one message, so hidden structure is not revealed. Values are typed and
+/// bounded; there is no scripting, HTML or formula support.
 /// </summary>
-internal static class FormSubmissionValidator
+internal static class FieldValueValidator
 {
     public const int MaxShortText = 500;
     public const int MaxLongText = 4000;
     public const int MaxOptions = 50;
 
-    public static IReadOnlyList<ValidatedValue> Validate(IReadOnlyList<FormField> definitions, IReadOnlyDictionary<string, JsonElement> submitted, Dictionary<string, string[]> errors)
+    public static ValidationResult Validate(IReadOnlyList<FieldBinding> allowed, IReadOnlyDictionary<string, JsonElement> submitted, ValidationMode mode, Dictionary<string, string[]> errors)
     {
-        var asked = definitions.Where(d => d.IsActive && d.RequesterVisible).ToDictionary(d => d.Key, StringComparer.Ordinal);
-        foreach (var key in submitted.Keys.Where(k => !asked.ContainsKey(k)))
+        var byKey = allowed.ToDictionary(b => b.Field.Key, StringComparer.Ordinal);
+        foreach (var key in submitted.Keys.Where(k => !byKey.ContainsKey(k)))
         {
-            errors[$"fields.{Safe(key)}"] = ["This field is not part of the form."];
+            errors[$"fields.{Safe(key)}"] = ["This field is not available."];
         }
 
-        var result = new List<ValidatedValue>();
-        foreach (var field in asked.Values.OrderBy(f => f.SortOrder).ThenBy(f => f.Key, StringComparer.Ordinal))
+        var values = new List<ValidatedValue>();
+        var cleared = new List<TicketField>();
+        foreach (var binding in allowed.OrderBy(b => b.Order).ThenBy(b => b.Field.Key, StringComparer.Ordinal))
         {
+            var field = binding.Field;
             var path = $"fields.{field.Key}";
-            var present = submitted.TryGetValue(field.Key, out var raw) && raw.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined);
+            var provided = submitted.TryGetValue(field.Key, out var raw);
+            if (mode == ValidationMode.Patch && !provided)
+            {
+                continue;
+            }
+
+            var present = provided && raw.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined);
             string? problem = null;
             var parsed = present ? Parse(field, raw, out problem) : null;
             if (present && parsed is null)
@@ -42,43 +63,39 @@ internal static class FormSubmissionValidator
                 continue;
             }
 
-            if (parsed is null)
+            if (parsed is null || (IsEmpty(field, parsed) && field.FieldType != FieldTypes.Checkbox))
             {
-                if (field.Required)
+                if (binding.Required)
                 {
                     errors[path] = [$"{field.Label} is required."];
                 }
+                else if (mode == ValidationMode.Patch)
+                {
+                    cleared.Add(field);
+                }
                 else if (field.FieldType == FieldTypes.Checkbox)
                 {
-                    result.Add(Make(field, "false", "No"));
+                    values.Add(new ValidatedValue(field, "false", "No", binding.Order));
                 }
 
                 continue;
             }
 
-            if (field.Required && IsEmpty(field, parsed))
+            if (binding.Required && IsEmpty(field, parsed))
             {
                 errors[path] = [field.FieldType == FieldTypes.Checkbox ? $"Confirm {field.Label}." : $"{field.Label} is required."];
                 continue;
             }
 
-            if (IsEmpty(field, parsed) && field.FieldType != FieldTypes.Checkbox)
-            {
-                continue; // optional and blank: nothing to store
-            }
-
-            result.Add(Make(field, parsed.Value.Json, parsed.Value.Display));
+            values.Add(new ValidatedValue(field, parsed.Value.Json, parsed.Value.Display, binding.Order));
         }
 
-        return result;
+        return new ValidationResult(values, cleared);
     }
-
-    private static ValidatedValue Make(FormField f, string json, string display) =>
-        new(f.Id, f.Key, f.Label, f.FieldType, json, display, f.RequesterVisible, f.AgentVisible, f.SortOrder);
 
     private static string Safe(string key) => key.Length > 40 ? key[..40] : key;
 
-    private static bool IsEmpty(FormField f, (string Json, string Display)? v) =>
+    private static bool IsEmpty(TicketField f, (string Json, string Display)? v) =>
         f.FieldType switch
         {
             FieldTypes.Checkbox => v!.Value.Json != "true",
@@ -86,7 +103,7 @@ internal static class FormSubmissionValidator
             _ => string.IsNullOrWhiteSpace(v!.Value.Display),
         };
 
-    private static (string Json, string Display)? Parse(FormField f, JsonElement raw, out string? problem)
+    private static (string Json, string Display)? Parse(TicketField f, JsonElement raw, out string? problem)
     {
         problem = null;
         switch (f.FieldType)
@@ -179,5 +196,5 @@ internal static class FormSubmissionValidator
         }
     }
 
-    public static IReadOnlyList<FieldOption> Options(FormField f) => StoredJson.Read<List<FieldOption>>(f.Options);
+    public static IReadOnlyList<FieldOption> Options(TicketField f) => StoredJson.Read<List<FieldOption>>(f.Options);
 }

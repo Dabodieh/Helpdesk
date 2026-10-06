@@ -138,6 +138,9 @@ internal sealed class Ticket
     /// <summary>The request form the requester used (portal tickets only).</summary>
     public Guid? RequestFormId { get; set; }
 
+    /// <summary>The ticket type (same department). Historical tickets keep a type that was later deactivated.</summary>
+    public Guid? TicketTypeId { get; set; }
+
     public DateTimeOffset? ResolvedAt { get; set; }
 
     public DateTimeOffset? ClosedAt { get; set; }

@@ -68,3 +68,6 @@
 - (Phase 6) Scale check of My requests at 50k+ tickets per requester (index `ix_tickets_requester_public_activity` exists; only knowledge search was measured).
 
 - (Refinement 1) Requester merge/deduplication (person identity is the normalised email across department requester rows today, so a merge would unify rows or add an explicit person link); requester/people directory and search; phone and site fields (not held today); requester history link from the portal-linked identity.
+- (Refinement 2) Queue filter UI for ticket type (the API accepts `typeId`; agents need a read-only type list per department first); type and field columns or filters in saved views.
+- (Refinement 2) Agent create-ticket dialog: choose a type and fill its fields (the API supports both); portal UI for requester-editable fields (API and `editableFields` exist).
+- (Refinement 2) Searchable or filterable custom fields; automation conditions on field values; conditional fields; a required-details report for tickets missing newly required values.

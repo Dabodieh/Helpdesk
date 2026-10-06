@@ -20,7 +20,8 @@ public sealed class DepartmentScopeBypassTests
             typeof(Helpdesk.Modules.Ticketing.Automation.SystemTicketOps), typeof(Helpdesk.Modules.Ticketing.Automation.TicketLifecycle),
             typeof(Helpdesk.Modules.Ticketing.Automation.SlaMonitor),
             // Phase 6: requester portal (every query constrained to the caller's linked requesters), form administration and the requester-safe realtime fan-out.
-            typeof(Helpdesk.Modules.Ticketing.Portal.PortalRequestService), typeof(Helpdesk.Modules.Ticketing.Portal.FormsAdminService),
+            typeof(Helpdesk.Modules.Ticketing.Portal.PortalRequestService), typeof(Helpdesk.Modules.Ticketing.Fields.TicketFieldsService), typeof(Helpdesk.Modules.Ticketing.Fields.FieldValueStore),
+            typeof(Helpdesk.Modules.Ticketing.Fields.TicketPropertiesService),
             typeof(TicketEventPublisher),
         ];
 

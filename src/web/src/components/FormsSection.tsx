@@ -1,22 +1,26 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { fieldErrors } from '../api/errors'
-import { createField, createForm, FIELD_TYPE_LABEL, FIELD_TYPES, listForms, reorderFields, reorderForms, updateField, updateForm, type FormField, type RequestForm } from '../api/formsAdmin'
-import { PRIORITIES } from '../api/ticketSchemas'
 import type { Department } from '../api/schemas'
+import { createForm, listForms, listTicketFields, listTicketTypes, reorderForms, setFormFields, updateForm, type FieldLinkInput, type RequestForm } from '../api/ticketing'
+import { PRIORITIES } from '../api/ticketSchemas'
 import { useDirectory } from '../hooks/useDirectory'
 import { ActiveBadge, ErrorNotice, Field, Loading } from './common'
 import Dialog from './Dialog'
 
+const formsKey = (d: string) => ['request-forms', d]
+
 function FormDialog({ department, existing, onClose }: { department: Department; existing?: RequestForm; onClose: () => void }) {
   const qc = useQueryClient()
   const dir = useDirectory(department.id)
+  const types = useQuery({ queryKey: ['ticket-types', department.id], queryFn: () => listTicketTypes(department.id) })
   const [name, setName] = useState(existing?.name ?? '')
   const [description, setDescription] = useState(existing?.description ?? '')
   const [active, setActive] = useState(existing?.isActive ?? true)
   const [visible, setVisible] = useState(existing?.visibleToRequesters ?? true)
   const [team, setTeam] = useState(existing?.defaultTeamId ?? '')
   const [priority, setPriority] = useState(existing?.defaultPriority ?? '')
+  const [typeId, setTypeId] = useState(existing?.ticketTypeId ?? '')
   const save = useMutation({
     mutationFn: () => {
       const body = {
@@ -28,11 +32,13 @@ function FormDialog({ department, existing, onClose }: { department: Department;
         clearDefaultTeam: !team,
         defaultPriority: priority || null,
         clearDefaultPriority: !priority,
+        ticketTypeId: typeId || null,
+        clearTicketType: !typeId,
       }
       return existing ? updateForm(department.id, existing.id, { ...body, version: existing.version }) : createForm(department.id, body)
     },
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ['request-forms', department.id] })
+      await qc.invalidateQueries({ queryKey: formsKey(department.id) })
       onClose()
     },
   })
@@ -49,6 +55,20 @@ function FormDialog({ department, existing, onClose }: { department: Department;
         </Field>
         <Field label="Description shown to requesters" error={server.description}>
           {(p) => <textarea {...p} rows={2} maxLength={1000} value={description} onChange={(e) => setDescription(e.target.value)} />}
+        </Field>
+        <Field label="Ticket type" hint="The kind of ticket this form creates. Without one, the department default type applies." error={server.tickettypeid}>
+          {(p) => (
+            <select {...p} value={typeId} onChange={(e) => setTypeId(e.target.value)}>
+              <option value="">Department default</option>
+              {(types.data ?? [])
+                .filter((t) => t.isActive || t.id === existing?.ticketTypeId)
+                .map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+            </select>
+          )}
         </Field>
         <Field label="Default team" hint="Tickets from this form start with this team (routing rules can change it)." error={server.defaultteamid}>
           {(p) => (
@@ -93,108 +113,92 @@ function FormDialog({ department, existing, onClose }: { department: Department;
   )
 }
 
-function FieldDialog({ department, form, existing, onClose }: { department: Department; form: RequestForm; existing?: FormField; onClose: () => void }) {
+type Row = { fieldId: string; required: boolean | null }
+
+/** Which ticket fields a form asks, in which order, with an optional requirement override. */
+function FormFieldsDialog({ department, form, onClose }: { department: Department; form: RequestForm; onClose: () => void }) {
   const qc = useQueryClient()
-  const [label, setLabel] = useState(existing?.label ?? '')
-  const [help, setHelp] = useState(existing?.helpText ?? '')
-  const [type, setType] = useState(existing?.type ?? 'ShortText')
-  const [required, setRequired] = useState(existing?.required ?? false)
-  const [active, setActive] = useState(existing?.isActive ?? true)
-  const [requesterVisible, setRequesterVisible] = useState(existing?.requesterVisible ?? true)
-  const [agentVisible, setAgentVisible] = useState(existing?.agentVisible ?? true)
-  const [options, setOptions] = useState<{ value?: string; label: string; isActive?: boolean }[]>(existing?.options ?? [{ label: '' }])
-  const hasOptions = type === 'SingleSelect' || type === 'MultiSelect'
+  const fields = useQuery({ queryKey: ['ticket-fields', department.id], queryFn: () => listTicketFields(department.id) })
+  const [rows, setRows] = useState<Row[]>(() => form.fields.map((f) => ({ fieldId: f.fieldId, required: f.requiredOverride })))
   const save = useMutation({
-    mutationFn: () => {
-      const body = {
-        label: label.trim(),
-        helpText: help.trim(),
-        required,
-        isActive: active,
-        requesterVisible,
-        agentVisible,
-        options: hasOptions ? options.filter((o) => o.label.trim()).map((o) => ({ value: o.value, label: o.label.trim(), isActive: o.isActive ?? true })) : undefined,
-      }
-      return existing ? updateField(department.id, form.id, existing.id, { ...body, version: existing.version }) : createField(department.id, form.id, { ...body, type })
-    },
+    mutationFn: () => setFormFields(department.id, form.id, rows.map<FieldLinkInput>((r) => ({ fieldId: r.fieldId, required: r.required }))),
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ['request-forms', department.id] })
+      await qc.invalidateQueries({ queryKey: formsKey(department.id) })
+      await qc.invalidateQueries({ queryKey: ['ticket-fields', department.id] })
       onClose()
     },
   })
-  const server = fieldErrors(save.error)
-  function submit(e: FormEvent) {
-    e.preventDefault()
-    if (label.trim()) save.mutate()
+  const all = fields.data ?? []
+  const byId = new Map(all.map((f) => [f.id, f]))
+  const available = all.filter((f) => f.isActive && !rows.some((r) => r.fieldId === f.id))
+  const move = (i: number, d: -1 | 1) => {
+    const j = i + d
+    if (j < 0 || j >= rows.length) return
+    const next = [...rows]
+    ;[next[i], next[j]] = [next[j]!, next[i]!]
+    setRows(next)
   }
   return (
-    <Dialog title={existing ? `Edit field “${existing.label}”` : `New field for ${form.name}`} onClose={onClose}>
-      <form className="dialog-form" onSubmit={submit} aria-label="Form field">
-        <Field label="Label shown to requesters" error={server.label}>
-          {(p) => <input {...p} data-autofocus value={label} maxLength={100} required onChange={(e) => setLabel(e.target.value)} />}
-        </Field>
-        <Field label="Help text (optional)" error={server.helptext}>
-          {(p) => <input {...p} value={help} maxLength={500} onChange={(e) => setHelp(e.target.value)} />}
-        </Field>
-        <Field label="Type" hint={existing ? `The type cannot be changed. Technical key: ${existing.key}` : undefined} error={server.type}>
-          {(p) => (
-            <select {...p} value={type} disabled={!!existing} onChange={(e) => setType(e.target.value)}>
-              {FIELD_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {FIELD_TYPE_LABEL[t]}
-                </option>
-              ))}
-            </select>
-          )}
-        </Field>
-        {hasOptions && (
-          <fieldset className="editor">
-            <legend>Choices</legend>
-            {options.map((o, i) => (
-              <div key={i} className="editor-row">
-                <input
-                  aria-label={`Choice ${i + 1}`}
-                  value={o.label}
-                  maxLength={100}
-                  onChange={(e) => setOptions(options.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))}
-                />
-                {o.value ? (
-                  <label className="check">
-                    <input type="checkbox" checked={o.isActive ?? true} onChange={(e) => setOptions(options.map((x, j) => (j === i ? { ...x, isActive: e.target.checked } : x)))} /> Available
-                  </label>
-                ) : (
-                  <button type="button" className="ghost" onClick={() => setOptions(options.filter((_, j) => j !== i))} aria-label={`Remove choice ${i + 1}`}>
-                    Remove
+    <Dialog title={`Fields of ${form.name}`} onClose={onClose}>
+      <form className="dialog-form" aria-label="Form fields" onSubmit={(e) => { e.preventDefault(); save.mutate() }}>
+        {fields.isPending && <Loading label="Loading fields" />}
+        <ErrorNotice error={fields.error} />
+        {rows.length === 0 && <p className="empty small">No fields. Requesters only give a subject and a description.</p>}
+        <ul className="link-list">
+          {rows.map((r, i) => {
+            const f = byId.get(r.fieldId)
+            const label = f?.label ?? r.fieldId
+            return (
+              <li key={r.fieldId} className="link-row">
+                <span className="row-actions">
+                  <button type="button" className="ghost" aria-label={`Move ${label} up`} disabled={i === 0} onClick={() => move(i, -1)}>
+                    ↑
                   </button>
-                )}
-              </div>
-            ))}
-            {(server.options || Object.keys(server).some((k) => k.startsWith('options'))) && <span className="field-error">{server.options ?? 'Check the choices.'}</span>}
-            <button type="button" onClick={() => setOptions([...options, { label: '' }])}>
-              Add choice
-            </button>
-            <span className="muted small">Choices that are already used by tickets can be renamed or made unavailable, not removed.</span>
-          </fieldset>
+                  <button type="button" className="ghost" aria-label={`Move ${label} down`} disabled={i === rows.length - 1} onClick={() => move(i, 1)}>
+                    ↓
+                  </button>
+                </span>
+                <span>
+                  <strong>{label}</strong> {f && !f.isActive && <span className="badge">Inactive</span>}
+                  {f && !f.requesterVisible && <span className="badge">Agent only: not asked</span>}
+                </span>
+                <select
+                  aria-label={`Requirement for ${label}`}
+                  value={r.required === null ? '' : r.required ? 'yes' : 'no'}
+                  onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, required: e.target.value === '' ? null : e.target.value === 'yes' } : x)))}
+                >
+                  <option value="">{f?.required ? 'Required (field default)' : 'Optional (field default)'}</option>
+                  <option value="yes">Required on this form</option>
+                  <option value="no">Optional on this form</option>
+                </select>
+                <button type="button" className="ghost" aria-label={`Remove ${label}`} onClick={() => setRows(rows.filter((_, j) => j !== i))}>
+                  Remove
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+        {available.length > 0 && (
+          <Field label="Add a field">
+            {(p) => (
+              <select {...p} value="" onChange={(e) => e.target.value && setRows([...rows, { fieldId: e.target.value, required: null }])}>
+                <option value="">Choose a field…</option>
+                {available.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Field>
         )}
-        <label className="check">
-          <input type="checkbox" checked={required} onChange={(e) => setRequired(e.target.checked)} /> Required
-        </label>
-        <label className="check">
-          <input type="checkbox" checked={requesterVisible} onChange={(e) => setRequesterVisible(e.target.checked)} /> Asked in the requester portal
-        </label>
-        <label className="check">
-          <input type="checkbox" checked={agentVisible} onChange={(e) => setAgentVisible(e.target.checked)} /> Shown to agents on the ticket
-        </label>
-        <label className="check">
-          <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Active (inactive fields keep their values on existing tickets)
-        </label>
         <ErrorNotice error={save.error} />
         <div className="dialog-actions">
           <button type="button" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" className="primary" disabled={save.isPending || !label.trim()}>
-            Save field
+          <button type="submit" className="primary" disabled={save.isPending}>
+            Save fields
           </button>
         </div>
       </form>
@@ -202,32 +206,22 @@ function FieldDialog({ department, form, existing, onClose }: { department: Depa
   )
 }
 
-/** Department request forms and their custom fields (permission department.forms.manage). */
+/** Request forms: how a requester submits a kind of ticket (permission department.forms.manage). */
 export default function FormsSection({ department }: { department: Department }) {
   const qc = useQueryClient()
-  const q = useQuery({ queryKey: ['request-forms', department.id], queryFn: () => listForms(department.id) })
+  const q = useQuery({ queryKey: formsKey(department.id), queryFn: () => listForms(department.id) })
+  const types = useQuery({ queryKey: ['ticket-types', department.id], queryFn: () => listTicketTypes(department.id) })
   const [editing, setEditing] = useState<RequestForm | 'new' | null>(null)
-  const [fieldDialog, setFieldDialog] = useState<{ form: RequestForm; field?: FormField } | null>(null)
-  const [open, setOpen] = useState<string | null>(null)
-  const reorderF = useMutation({ mutationFn: (ids: string[]) => reorderForms(department.id, ids), onSuccess: (d) => qc.setQueryData(['request-forms', department.id], d) })
-  const reorderFields_ = useMutation({
-    mutationFn: ({ formId, ids }: { formId: string; ids: string[] }) => reorderFields(department.id, formId, ids),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['request-forms', department.id] }),
-  })
+  const [fieldsFor, setFieldsFor] = useState<RequestForm | null>(null)
+  const reorder = useMutation({ mutationFn: (ids: string[]) => reorderForms(department.id, ids), onSuccess: (d) => qc.setQueryData(formsKey(department.id), d) })
   const forms = q.data ?? []
-  const moveForm = (i: number, d: -1 | 1) => {
+  const typeName = (id?: string | null) => (types.data ?? []).find((t) => t.id === id)?.name
+  const move = (i: number, d: -1 | 1) => {
     const ids = forms.map((f) => f.id)
     const j = i + d
     if (j < 0 || j >= ids.length) return
     ;[ids[i], ids[j]] = [ids[j]!, ids[i]!]
-    reorderF.mutate(ids)
-  }
-  const moveField = (form: RequestForm, i: number, d: -1 | 1) => {
-    const ids = form.fields.map((f) => f.id)
-    const j = i + d
-    if (j < 0 || j >= ids.length) return
-    ;[ids[i], ids[j]] = [ids[j]!, ids[i]!]
-    reorderFields_.mutate({ formId: form.id, ids })
+    reorder.mutate(ids)
   }
   return (
     <section aria-labelledby="forms-h">
@@ -237,7 +231,9 @@ export default function FormsSection({ department }: { department: Department })
           New request form
         </button>
       </div>
-      <p className="muted">Structured ways for requesters to open a normal ticket. Forms can add fields; tickets keep the answers they were given even if a form changes later.</p>
+      <p className="muted">
+        A form is how requesters submit a kind of ticket: it picks the ticket type and which of the department&rsquo;s fields to ask. Tickets keep the answers they were given even if a form changes later.
+      </p>
       {q.isPending && <Loading label="Loading request forms" />}
       {q.isError && <ErrorNotice error={q.error} onRetry={() => void q.refetch()} />}
       {q.isSuccess && forms.length === 0 && <p className="empty">No request forms yet. Requesters cannot submit requests to this department until you add one.</p>}
@@ -245,16 +241,17 @@ export default function FormsSection({ department }: { department: Department })
         <div key={f.id} className="form-card">
           <div className="form-card-head">
             <span className="row-actions">
-              <button type="button" className="ghost" aria-label={`Move ${f.name} up`} disabled={i === 0 || reorderF.isPending} onClick={() => moveForm(i, -1)}>
+              <button type="button" className="ghost" aria-label={`Move ${f.name} up`} disabled={i === 0 || reorder.isPending} onClick={() => move(i, -1)}>
                 ↑
               </button>
-              <button type="button" className="ghost" aria-label={`Move ${f.name} down`} disabled={i === forms.length - 1 || reorderF.isPending} onClick={() => moveForm(i, 1)}>
+              <button type="button" className="ghost" aria-label={`Move ${f.name} down`} disabled={i === forms.length - 1 || reorder.isPending} onClick={() => move(i, 1)}>
                 ↓
               </button>
             </span>
             <div>
               <strong>{f.name}</strong> <ActiveBadge active={f.isActive} /> {!f.visibleToRequesters && <span className="badge">Hidden from portal</span>}
               <p className="muted small">
+                {typeName(f.ticketTypeId) ? `Type ${typeName(f.ticketTypeId)} · ` : ''}
                 {f.fields.length} {f.fields.length === 1 ? 'field' : 'fields'}
                 {f.defaultPriority ? ` · default priority ${f.defaultPriority}` : ''}
               </p>
@@ -263,69 +260,16 @@ export default function FormsSection({ department }: { department: Department })
               <button type="button" onClick={() => setEditing(f)}>
                 Edit
               </button>
-              <button type="button" aria-expanded={open === f.id} onClick={() => setOpen(open === f.id ? null : f.id)}>
+              <button type="button" onClick={() => setFieldsFor(f)}>
                 Fields
               </button>
             </span>
           </div>
-          {open === f.id && (
-            <div className="form-card-body">
-              {f.fields.length === 0 && <p className="empty small">No custom fields. Requesters only give a subject and a description.</p>}
-              {f.fields.length > 0 && (
-                <table className="grid">
-                  <caption className="sr-only">Fields of {f.name}</caption>
-                  <thead>
-                    <tr>
-                      <th scope="col">Order</th>
-                      <th scope="col">Field</th>
-                      <th scope="col">Type</th>
-                      <th scope="col">Shown to</th>
-                      <th scope="col">Status</th>
-                      <th scope="col" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {f.fields.map((x, n) => (
-                      <tr key={x.id}>
-                        <td className="row-actions">
-                          <button type="button" className="ghost" aria-label={`Move ${x.label} up`} disabled={n === 0 || reorderFields_.isPending} onClick={() => moveField(f, n, -1)}>
-                            ↑
-                          </button>
-                          <button type="button" className="ghost" aria-label={`Move ${x.label} down`} disabled={n === f.fields.length - 1 || reorderFields_.isPending} onClick={() => moveField(f, n, 1)}>
-                            ↓
-                          </button>
-                        </td>
-                        <td>
-                          <strong>{x.label}</strong> {x.required && <span className="badge">Required</span>}
-                          <div className="muted small">{x.key}</div>
-                        </td>
-                        <td>{FIELD_TYPE_LABEL[x.type] ?? x.type}</td>
-                        <td className="small">{[x.requesterVisible ? 'Requesters' : null, x.agentVisible ? 'Agents' : null].filter(Boolean).join(', ') || 'Nobody'}</td>
-                        <td>
-                          <ActiveBadge active={x.isActive} />
-                        </td>
-                        <td className="row-actions">
-                          <button type="button" onClick={() => setFieldDialog({ form: f, field: x })}>
-                            Edit
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-              <p>
-                <button type="button" onClick={() => setFieldDialog({ form: f })}>
-                  Add field
-                </button>
-              </p>
-            </div>
-          )}
         </div>
       ))}
-      <ErrorNotice error={reorderF.error ?? reorderFields_.error} />
+      <ErrorNotice error={reorder.error} />
       {editing && <FormDialog department={department} existing={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} />}
-      {fieldDialog && <FieldDialog department={department} form={fieldDialog.form} existing={fieldDialog.field} onClose={() => setFieldDialog(null)} />}
+      {fieldsFor && <FormFieldsDialog department={department} form={fieldsFor} onClose={() => setFieldsFor(null)} />}
     </section>
   )
 }

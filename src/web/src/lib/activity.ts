@@ -54,6 +54,18 @@ export function describeActivity(a: Activity, names: NameLookup): string {
       if (!to) return from ? `unassigned the ticket from ${who(from)}` : 'left the ticket unassigned'
       return from ? `reassigned the ticket from ${who(from)} to ${who(to)}` : `assigned the ticket to ${who(to)}`
     }
+    case 'ticket.type_changed': {
+      const from = pick(a.previous, 'name')
+      const to = pick(a.next, 'name')
+      return to ? (from ? `changed the type from ${quote(from)} to ${quote(to)}` : `set the type to ${quote(to)}`) : 'cleared the type'
+    }
+    case 'ticket.field_changed': {
+      const label = pick(a.next, 'label') ?? 'a field'
+      const from = pick(a.previous, 'display')
+      const to = pick(a.next, 'display')
+      if (from === null && to === null) return `changed ${label}`
+      return to ? (from ? `changed ${label} from ${quote(from)} to ${quote(to)}` : `set ${label} to ${quote(to)}`) : `cleared ${label}`
+    }
     case 'ticket.message_delivery_changed': {
       const state = pick(a.next, 'delivery')
       if (state === 'Sent') return 'sent a reply by email'

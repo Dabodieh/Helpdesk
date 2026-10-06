@@ -165,7 +165,7 @@ export default function Conversation({ ticketId }: { ticketId: string }) {
   }, [newest, ticketId])
 
   return (
-    <div className="conv-scroll" ref={scroller} tabIndex={-1}>
+    <div className="conv-scroll" ref={scroller} tabIndex={0}>
       {q.isPending && <Loading label="Loading conversation" />}
       {q.isError && <ErrorNotice error={q.error} onRetry={() => void q.refetch()} />}
       {q.hasNextPage && (

@@ -33,7 +33,7 @@ export default function History({ ticket }: { ticket: TicketDetail }) {
   }, [q.data])
 
   return (
-    <div className="conv-scroll history" tabIndex={-1}>
+    <div className="conv-scroll history" tabIndex={0}>
       {q.isPending && <Loading label="Loading history" />}
       {q.isError && <ErrorNotice error={q.error} onRetry={() => void q.refetch()} />}
       {q.isSuccess && events.length === 0 && <p className="empty">No history to show.</p>}

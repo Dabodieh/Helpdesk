@@ -7,7 +7,7 @@ import { Api, devLoginPath, seed, type Seed, type TestUser } from './support'
 async function noSeriousViolations(page: Page, label: string) {
   const { violations } = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
   const serious = violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')
-  expect(serious.map((v) => `${label}: ${v.id} (${v.nodes.length}) ${v.help}`)).toEqual([])
+  expect(serious.map((v) => `${label}: ${v.id} (${v.nodes.length}) ${v.help} ${JSON.stringify(v.nodes[0]?.target)}`)).toEqual([])
 }
 
 const employee = (): TestUser => {
@@ -31,10 +31,14 @@ test('a requester submits a request through a form, sees it in My requests, and 
   const admin = await configure(data)
   const base = `/api/departments/${data.departmentId}`
   const formToken = Date.now().toString(36)
-  const form = await admin.send<{ id: string }>('POST', `${base}/request-forms`, { name: `Hardware issue ${formToken}`, description: 'Something is broken', defaultPriority: 'High' })
-  await admin.send('POST', `${base}/request-forms/${form.id}/fields`, { label: 'Asset tag', type: 'ShortText', required: true })
-  await admin.send('POST', `${base}/request-forms/${form.id}/fields`, { label: 'Colour', type: 'SingleSelect', options: [{ label: 'Black' }, { label: 'Silver' }] })
-  await admin.send('POST', `${base}/request-forms/${form.id}/fields`, { label: 'Internal cost centre', type: 'ShortText', requesterVisible: false })
+  // Ticket type + reusable fields, then a form that creates that type and asks some of the fields (the cost centre is agent-only and belongs to the type).
+  const type = await admin.send<{ id: string }>('POST', `${base}/ticket-types`, { name: `Hardware request ${formToken}` })
+  const asset = await admin.send<{ id: string }>('POST', `${base}/ticket-fields`, { label: 'Asset tag', type: 'ShortText', required: true })
+  const colour = await admin.send<{ id: string }>('POST', `${base}/ticket-fields`, { label: 'Colour', type: 'SingleSelect', options: [{ label: 'Black' }, { label: 'Silver' }] })
+  const cost = await admin.send<{ id: string }>('POST', `${base}/ticket-fields`, { label: 'Internal cost centre', type: 'ShortText', requesterVisible: false })
+  await admin.send('PUT', `${base}/ticket-types/${type.id}/fields`, { fields: [{ fieldId: cost.id }] })
+  const form = await admin.send<{ id: string }>('POST', `${base}/request-forms`, { name: `Hardware issue ${formToken}`, description: 'Something is broken', defaultPriority: 'High', ticketTypeId: type.id })
+  await admin.send('PUT', `${base}/request-forms/${form.id}/fields`, { fields: [{ fieldId: asset.id }, { fieldId: colour.id }, { fieldId: cost.id }] })
   const calendar = await admin.send<{ id: string }>('POST', `${base}/business-hours`, {
     name: 'Always',
     timeZone: 'UTC',
@@ -82,12 +86,23 @@ test('a requester submits a request through a form, sees it in My requests, and 
   await noSeriousViolations(page, 'my requests')
 
   // Agent side: a normal ticket with SLA, routing and the form values.
-  const ticket = await admin.get<{ team: { id: string } | null; priority: string; source: string; fields: { label: string; value: string }[] }>(`/api/tickets/${reference}`)
+  const ticket = await admin.get<{ team: { id: string } | null; priority: string; source: string; type: { displayName: string } | null; fields: { label: string; value: string }[] }>(`/api/tickets/${reference}`)
   expect(ticket.source).toBe('portal')
+  expect(ticket.type?.displayName).toBe(`Hardware request ${formToken}`)
   expect(ticket.team).not.toBeNull()
   expect(ticket.priority).toBe('High')
   expect(ticket.fields.map((f) => `${f.label}=${f.value}`)).toEqual(expect.arrayContaining(['Asset tag=A-1042', 'Colour=Silver']))
   expect((await admin.get<{ policyName: string }>(`/api/tickets/${reference}/sla`)).policyName).toBe('Portal SLA')
+
+  // An agent sees the type and the configured fields in the ticket details and records the agent-only value.
+  await page.goto(devLoginPath(data.actor, `/tickets/${reference}`))
+  await page.locator('summary', { hasText: 'Details' }).click()
+  await expect(page.getByText('Asset tag').first()).toBeVisible()
+  await page.getByRole('button', { name: 'Edit details' }).click()
+  await page.getByLabel(/Internal cost centre/).fill('CC-77')
+  await noSeriousViolations(page, 'edit ticket details')
+  await page.getByRole('button', { name: 'Save details' }).click()
+  await expect(page.getByText('CC-77')).toBeVisible()
   await admin.dispose()
 })
 
@@ -166,23 +181,35 @@ test('knowledge: search finds published articles, drafts do not exist, and admin
   await expect(page.getByText(/not found/i)).toBeVisible()
   await expect(page.getByRole('heading', { name: /Secret draft/ })).toHaveCount(0)
 
-  // Administration: forms and knowledge tabs with dialogs.
+  // Administration: ticketing (types, fields, forms) and knowledge with dialogs.
   await page.goto(devLoginPath(data.actor, `/admin/departments/${data.departmentId}`))
-  await page.getByRole('tab', { name: 'Request forms' }).click()
-  await page.getByRole('button', { name: 'New request form' }).click()
-  await expect(page.getByRole('dialog')).toBeVisible()
-  await noSeriousViolations(page, 'request form dialog')
-  await page.getByLabel('Name').fill('Access request')
-  await page.getByRole('button', { name: 'Save form' }).click()
-  await expect(page.getByText('Access request')).toBeVisible()
-  await page.getByRole('button', { name: 'Fields' }).click()
-  await page.getByRole('button', { name: 'Add field' }).click()
-  await page.getByLabel('Label shown to requesters').fill('Which system?')
-  await page.getByLabel('Type').selectOption('SingleSelect')
+  await page.getByRole('tab', { name: 'Ticketing' }).click()
+  await page.getByRole('tab', { name: 'Ticket fields' }).click()
+  await page.getByRole('button', { name: 'New ticket field' }).click()
+  await page.getByRole('dialog').getByLabel('Label', { exact: true }).fill('Which system?')
+  await page.getByRole('dialog').getByLabel('Type', { exact: true }).selectOption('SingleSelect')
   await page.getByRole('textbox', { name: 'Choice 1' }).fill('Email')
-  await noSeriousViolations(page, 'form field dialog')
+  await noSeriousViolations(page, 'ticket field dialog')
   await page.getByRole('button', { name: 'Save field' }).click()
   await expect(page.getByText('Which system?')).toBeVisible()
+  await page.getByRole('tab', { name: 'Ticket types' }).click()
+  await page.getByRole('button', { name: 'New ticket type' }).click()
+  await page.getByRole('dialog').getByLabel('Name').fill('Access request')
+  await noSeriousViolations(page, 'ticket type dialog')
+  await page.getByRole('button', { name: 'Save type' }).click()
+  await expect(page.getByText('Access request')).toBeVisible()
+  await page.getByRole('button', { name: 'Fields' }).click()
+  await page.getByRole('dialog').getByLabel('Add a field').selectOption({ label: 'Which system?' })
+  await noSeriousViolations(page, 'type fields dialog')
+  await page.getByRole('button', { name: 'Save fields' }).click()
+  await expect(page.getByText(/1 field: Which system\?/)).toBeVisible()
+  await page.getByRole('tab', { name: 'Request forms' }).click()
+  await page.getByRole('button', { name: 'New request form' }).click()
+  await page.getByRole('dialog').getByLabel('Name').fill('New access')
+  await page.getByRole('dialog').getByLabel('Ticket type').selectOption({ label: 'Access request' })
+  await noSeriousViolations(page, 'request form dialog')
+  await page.getByRole('button', { name: 'Save form' }).click()
+  await expect(page.getByText(/Type Access request/)).toBeVisible()
 
   await page.getByRole('tab', { name: 'Knowledge' }).click()
   await expect(page.getByRole('cell', { name: new RegExp(`Reset your password ${token}`) })).toBeVisible()

@@ -47,6 +47,7 @@ public sealed class EndpointAuthorizationTests(AppFixture app) : IClassFixture<A
         "POST /api/portal/requests",
         "POST /api/portal/requests/{reference}/replies",
         "PUT /api/portal/knowledge/articles/{slug}/feedback",
+        "PUT /api/portal/requests/{reference}/fields",
     ];
 
     private static readonly string[] AllowedAnonymous =
