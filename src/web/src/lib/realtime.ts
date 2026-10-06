@@ -101,6 +101,8 @@ export function useRealtime(enabled: boolean, myUserId: string) {
       try {
         connection = await make()
         connection.on('ticketChanged', (change: TicketChange) => applyTicketChange(qc, change, myUserId))
+        // Requester portal: a reference and a coarse kind only; the portal re-reads through its own authorised API.
+        connection.on('requestChanged', () => void qc.invalidateQueries({ queryKey: ['portal'] }))
         connection.onreconnecting(() => setStatus('reconnecting'))
         connection.onreconnected(() => {
           setStatus('live')

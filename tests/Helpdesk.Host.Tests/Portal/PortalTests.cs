@@ -294,4 +294,27 @@ public sealed class PortalTests(HelpdeskFixture fixture) : IClassFixture<Helpdes
         (await bob.User.Client.GetAsync($"/api/portal/requests/{ticketRef}/attachments/{id}")).Expect(HttpStatusCode.NotFound);
         (await alice.User.Client.GetAsync($"/api/portal/requests/{refs[1]}/attachments/{id}")).Expect(HttpStatusCode.NotFound);
     }
+
+    [Fact]
+    public async Task An_attachment_of_an_internal_message_does_not_exist_for_the_requester()
+    {
+        var d = await fixture.NewDeptAsync();
+        var alice = await fixture.EmployeeAsync("alice");
+        var ticket = await d.TicketForAsync(alice.Email, "With hidden file");
+        var note = (await d.Agent.PostMessageAsync(ticket.Id, "Internal", "see the attached log")).Expect(HttpStatusCode.Created).Json.GetProperty("message").GetProperty("id").GetGuid();
+        Guid attachmentId = default;
+        await fixture.WithScopeAsync(async sp =>
+        {
+            var store = (Helpdesk.Modules.Attachments.Contracts.IAttachmentStore)sp.GetService(typeof(Helpdesk.Modules.Attachments.Contracts.IAttachmentStore))!;
+            var stored = await store.StoreAsync(new Helpdesk.Modules.Attachments.Contracts.StoreAttachmentRequest(d.Id, ticket.Id, note, "internal.txt", "text/plain", Encoding.UTF8.GetBytes("internal bytes"), false, null, "test-internal"));
+            attachmentId = stored.Id;
+        });
+
+        // The agent can open it; the requester gets the same "not found" as for any other id and the conversation lists no file.
+        (await d.Agent.Client.GetAsync($"/api/tickets/{ticket.Id}/attachments/{attachmentId}")).Expect(HttpStatusCode.OK);
+        (await alice.User.Client.GetAsync($"/api/portal/requests/{ticket.Reference()}/attachments/{attachmentId}")).Expect(HttpStatusCode.NotFound);
+        var detail = (await alice.User.Client.GetAsync($"/api/portal/requests/{ticket.Reference()}")).Expect(HttpStatusCode.OK).Body;
+        Assert.DoesNotContain("internal.txt", detail, StringComparison.Ordinal);
+        Assert.DoesNotContain(attachmentId.ToString(), detail, StringComparison.Ordinal);
+    }
 }

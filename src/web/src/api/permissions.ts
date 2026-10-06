@@ -11,6 +11,8 @@ const ADMINISTRATIVE = new Set([
   'department.canned.manage',
   'department.sla.manage',
   'department.automation.manage',
+  'department.forms.manage',
+  'department.knowledge.manage',
 ])
 
 export function canPlatform(me: Me, code: string) {

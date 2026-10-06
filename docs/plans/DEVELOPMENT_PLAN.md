@@ -26,7 +26,10 @@ Mail and Attachments modules, mailbox admin, Graph provider + simulator, webhook
 Agent productivity: UX polish and resizable split, saved views, bulk actions, canned responses, trigram search with snippets, SignalR realtime with scoped groups and polling fallback, keyboard/density/sortable columns, axe checks, Playwright flows. Report: `docs/reports/PHASE-4-AGENT-PRODUCTIVITY.md`, API: `docs/api/PHASE4_API.md`. Phase 5 is not started.
 
 ## Phase 5 scope (built)
-Business hours, SLA policies and clocks, SLA visibility and filters, declarative automation with routing, execution history, dry run, loop protection. Report: `docs/reports/PHASE-5-SLA-AUTOMATION.md`, ADR-014, `docs/api/PHASE5_API.md`. Phase 6 is not started.
+Business hours, SLA policies and clocks, SLA visibility and filters, declarative automation with routing, execution history, dry run, loop protection. Report: `docs/reports/PHASE-5-SLA-AUTOMATION.md`, ADR-014, `docs/api/PHASE5_API.md`. Phase 6 is built; Phase 7 is not started.
+
+## Phase 6 scope (built)
+Requester portal (Home, Submit a request, My requests, Knowledge), explicit requester identity links, request forms with typed custom fields, requester-safe DTOs and realtime, email/portal shared conversation, Knowledge module with full-text search and feedback, form and knowledge administration. Report: `docs/reports/PHASE-6-REQUESTER-SELF-SERVICE.md`, ADR-015, `docs/api/PHASE6_API.md`, `docs/security/PHASE6_THREAT_MODEL.md`. Phase 7 is not started.
 
 ## Phase 0 work packages
 1. Repo scaffolding, conventions, CLAUDE.md, agent definitions (done in bootstrap).

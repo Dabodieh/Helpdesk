@@ -8,6 +8,8 @@ import BusinessHoursSection from '../components/BusinessHoursSection'
 import CannedManager from '../components/CannedManager'
 import { ActiveBadge, ErrorNotice, Loading, PageHeader, Tabs } from '../components/common'
 import EditForm from '../components/EditForm'
+import FormsSection from '../components/FormsSection'
+import KnowledgeSection from '../components/KnowledgeSection'
 import MailboxesSection from '../components/MailboxesSection'
 import MembersSection from '../components/MembersSection'
 import SlaPoliciesSection from '../components/SlaPoliciesSection'
@@ -96,6 +98,18 @@ export default function DepartmentPage() {
             label: 'Automations',
             hidden: !canInDepartment(me, 'department.automation.manage', d.id),
             content: <AutomationsSection department={d} />,
+          },
+          {
+            id: 'forms',
+            label: 'Request forms',
+            hidden: !canInDepartment(me, 'department.forms.manage', d.id),
+            content: <FormsSection department={d} />,
+          },
+          {
+            id: 'knowledge',
+            label: 'Knowledge',
+            hidden: !canInDepartment(me, 'department.knowledge.manage', d.id),
+            content: <KnowledgeSection department={d} />,
           },
           {
             id: 'responses',

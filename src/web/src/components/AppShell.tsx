@@ -115,6 +115,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
                     </li>
                   )}
                   <li>
+                    <NavLink to="/portal/knowledge">
+                      <Icon name="snippet" />
+                      <span className="nav-label">Knowledge</span>
+                    </NavLink>
+                  </li>
+                  <li>
                     <NavLink to="/search">
                       <Icon name="search" />
                       <span className="nav-label">Search</span>

@@ -9,6 +9,7 @@ COPY src/Helpdesk.Modules.Organisation/Helpdesk.Modules.Organisation.csproj src/
 COPY src/Helpdesk.Modules.Ticketing/Helpdesk.Modules.Ticketing.csproj src/Helpdesk.Modules.Ticketing/
 COPY src/Helpdesk.Modules.Attachments/Helpdesk.Modules.Attachments.csproj src/Helpdesk.Modules.Attachments/
 COPY src/Helpdesk.Modules.Mail/Helpdesk.Modules.Mail.csproj src/Helpdesk.Modules.Mail/
+COPY src/Helpdesk.Modules.Knowledge/Helpdesk.Modules.Knowledge.csproj src/Helpdesk.Modules.Knowledge/
 COPY src/Helpdesk.Host/Helpdesk.Host.csproj src/Helpdesk.Host/
 RUN dotnet restore src/Helpdesk.Host
 COPY src/Helpdesk.SharedKernel src/Helpdesk.SharedKernel
@@ -18,6 +19,7 @@ COPY src/Helpdesk.Modules.Organisation src/Helpdesk.Modules.Organisation
 COPY src/Helpdesk.Modules.Ticketing src/Helpdesk.Modules.Ticketing
 COPY src/Helpdesk.Modules.Attachments src/Helpdesk.Modules.Attachments
 COPY src/Helpdesk.Modules.Mail src/Helpdesk.Modules.Mail
+COPY src/Helpdesk.Modules.Knowledge src/Helpdesk.Modules.Knowledge
 COPY src/Helpdesk.Host src/Helpdesk.Host
 RUN dotnet publish src/Helpdesk.Host -c Release -o /app --no-restore
 

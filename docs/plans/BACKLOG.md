@@ -58,3 +58,11 @@
 - (Phase 5) Rate limits for configuration endpoints; per-department business-hours templates and public-holiday imports.
 
 - (Phase 5 closeout) Optional: a separate "last note activity" timestamp visible only to note readers if agents want notes to reorder their queue.
+
+- (Phase 6) Conditional form fields and form-level routing rules; per-form default team is the only routing hook today.
+- (Phase 6) Participant/CC portal access (primary requester only in v1); admin unlink or relink of a requester identity.
+- (Phase 6) Attachments in the submit request itself (today a follow-up reply right after creation); refactor the four ticket-creation call sites onto one path.
+- (Phase 6) Knowledge approval workflow, article versions/history, per-department audiences beyond Everyone/Requesters, category nesting.
+- (Phase 6) Retention of requester links and portal feedback; per-department portal branding; requester notifications by email on agent replies are the existing email path only.
+- (Phase 6) Light/dark screenshot review of the portal; vitest component tests for portal pages beyond markdown safety (covered by Playwright flows today).
+- (Phase 6) Scale check of My requests at 50k+ tickets per requester (index `ix_tickets_requester_public_activity` exists; only knowledge search was measured).

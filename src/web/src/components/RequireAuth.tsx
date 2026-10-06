@@ -5,9 +5,10 @@ import { MeContext } from '../auth'
 import { ErrorNotice, Loading } from './common'
 import SignIn from '../pages/SignIn'
 import AppShell from './AppShell'
+import PortalShell from './PortalShell'
 
 /** Layout route: renders the shell and children only for a signed-in user, otherwise the sign-in screen. */
-export default function RequireAuth() {
+export default function RequireAuth({ layout = 'agent' }: { layout?: 'agent' | 'portal' }) {
   const location = useLocation()
   const me = useQuery({ queryKey: ['me'], queryFn: fetchMe, staleTime: 60_000 })
 
@@ -23,9 +24,15 @@ export default function RequireAuth() {
 
   return (
     <MeContext.Provider value={me.data}>
-      <AppShell>
-        <Outlet />
-      </AppShell>
+      {layout === 'portal' ? (
+        <PortalShell>
+          <Outlet />
+        </PortalShell>
+      ) : (
+        <AppShell>
+          <Outlet />
+        </AppShell>
+      )}
     </MeContext.Provider>
   )
 }

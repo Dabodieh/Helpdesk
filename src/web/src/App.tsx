@@ -8,6 +8,11 @@ import DepartmentPage from './pages/DepartmentPage'
 import DepartmentsPage from './pages/DepartmentsPage'
 import Landing from './pages/Landing'
 import ResponsesPage from './pages/ResponsesPage'
+import PortalHome from './pages/portal/PortalHome'
+import { KnowledgeArticle, KnowledgeHome } from './pages/portal/PortalKnowledge'
+import PortalRequest from './pages/portal/PortalRequest'
+import PortalRequests from './pages/portal/PortalRequests'
+import PortalSubmit from './pages/portal/PortalSubmit'
 import StatusPage from './pages/StatusPage'
 import TeamPage from './pages/TeamPage'
 import WorkspacePage from './pages/WorkspacePage'
@@ -36,6 +41,14 @@ export function AppRoutes() {
 
   return (
     <Routes>
+      <Route path="portal" element={<RequireAuth layout="portal" />}>
+        <Route index element={<PortalHome />} />
+        <Route path="submit/:formId?" element={<PortalSubmit />} />
+        <Route path="requests" element={<PortalRequests />} />
+        <Route path="requests/:reference" element={<PortalRequest />} />
+        <Route path="knowledge" element={<KnowledgeHome />} />
+        <Route path="knowledge/:slug" element={<KnowledgeArticle />} />
+      </Route>
       <Route element={<RequireAuth />}>
         <Route index element={<Landing />} />
         <Route path="queue/:queue/:ticket?" element={<WorkspacePage mode="queue" />} />

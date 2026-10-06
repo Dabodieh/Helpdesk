@@ -55,6 +55,9 @@ export default function UserMenu({ onSignOut, onHelp }: { onSignOut: () => void;
         <div id={panelId} className="popover" role="group" aria-label="Account">
           <p className="muted small">{me.email ?? me.displayName}</p>
           {me.isPlatformAdmin && <p className="small">Platform administrator</p>}
+          <Link to="/portal" onClick={() => setOpen(false)}>
+            Requester portal
+          </Link>
           <Link to="/responses" onClick={() => setOpen(false)}>
             My canned responses
           </Link>

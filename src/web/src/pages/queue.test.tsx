@@ -155,10 +155,10 @@ test('landing: a platform admin without ticket access goes to Administration wit
   expect(screen.queryByRole('link', { name: /Search/ })).not.toBeInTheDocument()
 })
 
-test('landing: a user with neither tickets nor administration sees a no-access message', async () => {
-  mockFetch({ 'GET /api/me': () => makeMe() })
+test('landing: a user with neither tickets nor administration lands in the requester portal', async () => {
+  mockFetch({ 'GET /api/me': () => makeMe(), 'GET /api/portal/requests': () => ({ items: [], nextCursor: null }), 'GET /api/portal/forms': () => [] })
   renderApp('/')
-  expect(await screen.findByRole('heading', { name: 'No access yet' })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: 'How can we help?' })).toBeInTheDocument()
 })
 
 test('Administration is offered for department.manage and hidden otherwise', async () => {
