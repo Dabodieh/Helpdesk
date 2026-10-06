@@ -77,6 +77,14 @@ export function describeActivity(a: Activity, names: NameLookup): string {
       if (from === null && to === null) return `changed ${label}`
       return to ? (from ? `changed ${label} from ${quote(from)} to ${quote(to)}` : `set ${label} to ${quote(to)}`) : `cleared ${label}`
     }
+    case 'ticket.follower_added': {
+      const id = pick(a.next, 'userId')
+      return a.next?.self === true ? 'followed this ticket' : `added ${who(id)} as a follower`
+    }
+    case 'ticket.follower_removed': {
+      const id = pick(a.previous, 'userId')
+      return a.previous?.self === true ? 'unfollowed this ticket' : `removed ${who(id)} as a follower`
+    }
     case 'ticket.merged_in': {
       const refs = refsOf(a.next, 'merged')
       return refs.length > 0 ? `merged ${refs.join(', ')} into this ticket` : 'merged tickets into this ticket'

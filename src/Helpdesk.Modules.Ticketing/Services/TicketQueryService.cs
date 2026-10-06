@@ -57,9 +57,9 @@ internal sealed class TicketQueryService(
 
         var errors = new Dictionary<string, string[]>();
         var queue = (query.Queue ?? "all").Trim().ToLowerInvariant();
-        if (queue is not ("my" or "team" or "unassigned" or "all"))
+        if (queue is not ("my" or "team" or "unassigned" or "all" or "following"))
         {
-            errors["queue"] = ["queue must be one of my, team, unassigned, all."];
+            errors["queue"] = ["queue must be one of my, team, unassigned, all, following."];
         }
 
         var statuses = new List<TicketStatus>();
@@ -122,6 +122,11 @@ internal sealed class TicketQueryService(
                 break;
             case "unassigned":
                 tickets = tickets.Where(t => t.AssigneeUserId == null);
+                break;
+            case "following":
+                // Plain indexed join on ticket_followers (user_id, ticket_id) within the caller's department scope; following never widens what is visible.
+                var follower = current.UserId;
+                tickets = tickets.Where(t => db.TicketFollowers.Any(f => f.TicketId == t.Id && f.UserId == follower));
                 break;
         }
 
@@ -293,7 +298,9 @@ internal sealed class TicketQueryService(
                 Team = g.Count(t => t.TeamId != null && teamIds.Contains(t.TeamId.Value)),
             })
             .SingleOrDefaultAsync(ct);
-        return counts is null ? new QueueCountsDto(0, 0, 0, 0, slaBreached, slaApproaching) : new QueueCountsDto(counts.My, counts.Team, counts.Unassigned, counts.All, slaBreached, slaApproaching);
+        var following = await db.Tickets.AsNoTracking()
+            .CountAsync(t => t.Status == TicketStatus.Open && t.MergedIntoTicketId == null && db.TicketFollowers.Any(f => f.TicketId == t.Id && f.UserId == me), ct);
+        return counts is null ? new QueueCountsDto(0, 0, 0, 0, slaBreached, slaApproaching, following) : new QueueCountsDto(counts.My, counts.Team, counts.Unassigned, counts.All, slaBreached, slaApproaching, following);
     }
 
     // ----- sorting and keyset pagination -----

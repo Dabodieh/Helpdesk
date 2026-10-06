@@ -5,7 +5,7 @@ export const STATUSES = ['Open', 'Pending', 'Resolved', 'Closed'] as const
 export const PRIORITIES = ['Low', 'Normal', 'High', 'Urgent'] as const
 export type Status = (typeof STATUSES)[number]
 export type Priority = (typeof PRIORITIES)[number]
-export const QUEUES = ['my', 'team', 'unassigned', 'all'] as const
+export const QUEUES = ['my', 'team', 'unassigned', 'all', 'following'] as const
 export type Queue = (typeof QUEUES)[number]
 export const SORTS = ['updated_desc', 'updated_asc', 'created_desc', 'created_asc', 'priority_desc', 'sla_due_asc'] as const
 export const SLA_FILTERS = ['breached', 'approaching', 'duesoon', 'paused'] as const
@@ -132,6 +132,7 @@ export const queueCountsSchema = z.object({
   all: z.number(),
   slaBreached: z.number().default(0),
   slaApproaching: z.number().default(0),
+  following: z.number().default(0),
 })
 export type QueueCounts = z.infer<typeof queueCountsSchema>
 

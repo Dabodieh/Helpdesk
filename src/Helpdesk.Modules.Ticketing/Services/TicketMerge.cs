@@ -46,6 +46,7 @@ internal sealed class TicketMergeService(
     IAuthorizer authorizer,
     ICurrentUser current,
     SlaEngine sla,
+    TicketFollowerService followers,
     ITicketEvents events,
     TimeProvider clock)
 {
@@ -164,6 +165,7 @@ internal sealed class TicketMergeService(
         canonical.UpdatedAt = now; // visible activity for agents only: requesters see nothing of a merge (LastPublicActivityAt is untouched)
         await SaveAsync(ct);
 
+        var transferred = await followers.TransferAsync(pending.Select(s => s.Id).ToArray(), canonical, ct);
         foreach (var source in pending)
         {
             await sla.StopOnMergeAsync(source, now, ct);
@@ -172,7 +174,7 @@ internal sealed class TicketMergeService(
         }
 
         await audit.WriteAsync(TicketAuditActions.MergedIn, TicketingAudit.TicketObject, canonical.Id, canonical.DepartmentId, null,
-            new { merged = pending.Select(s => new { id = s.Id, reference = s.Reference }).ToArray() }, ct);
+            new { merged = pending.Select(s => new { id = s.Id, reference = s.Reference }).ToArray(), followersTransferred = transferred }, ct);
         await tx.CommitAsync(ct);
 
         await events.PublishAsync(canonical.DepartmentId, canonical.Id, canonical.Reference, TicketEventKinds.Updated, current.UserId, ct);

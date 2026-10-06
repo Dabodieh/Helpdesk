@@ -64,6 +64,7 @@ export const QUEUE_TITLES: Record<Queue, string> = {
   team: 'Team Queue',
   unassigned: 'Unassigned',
   all: 'All Tickets',
+  following: 'Following',
 }
 
 /** The structured filter a saved view stores, from the filters the queue is showing. */
@@ -104,7 +105,7 @@ export function viewLocation(v: { id: string; filter: ViewFilter }): string {
 export function describeFilter(v: { filter: ViewFilter }): string {
   const f = v.filter
   const bits: string[] = []
-  if (f.queue && f.queue !== 'all') bits.push(f.queue === 'my' ? 'Assigned to me' : f.queue === 'team' ? 'My teams' : 'Unassigned')
+  if (f.queue && f.queue !== 'all') bits.push(f.queue === 'my' ? 'Assigned to me' : f.queue === 'team' ? 'My teams' : f.queue === 'following' ? 'Following' : 'Unassigned')
   if (f.status?.length) bits.push(f.status.join(' + '))
   if (f.priority?.length) bits.push(`${f.priority.join(' / ')} priority`)
   if (f.unassigned) bits.push('Unassigned')

@@ -1228,6 +1228,38 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                     b.ToTable("ticket_field_values", "ticketing");
                 });
 
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.TicketFollower", b =>
+                {
+                    b.Property<Guid>("TicketId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ticket_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<DateTimeOffset>("AddedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("added_at");
+
+                    b.Property<Guid?>("AddedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("added_by_user_id");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("department_id");
+
+                    b.HasKey("TicketId", "UserId");
+
+                    b.HasIndex("TicketId", "DepartmentId");
+
+                    b.HasIndex("UserId", "TicketId")
+                        .HasDatabaseName("ix_ticket_followers_user");
+
+                    b.ToTable("ticket_followers", "ticketing");
+                });
+
             modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.TicketLink", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1659,6 +1691,17 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_ticket_field_values_ticket_department");
+                });
+
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.TicketFollower", b =>
+                {
+                    b.HasOne("Helpdesk.Modules.Ticketing.Domain.Ticket", null)
+                        .WithMany()
+                        .HasForeignKey("TicketId", "DepartmentId")
+                        .HasPrincipalKey("Id", "DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_ticket_followers_ticket_department");
                 });
 
             modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.TicketLink", b =>

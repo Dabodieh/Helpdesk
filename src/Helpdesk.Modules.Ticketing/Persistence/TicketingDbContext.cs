@@ -21,6 +21,8 @@ internal sealed partial class TicketingDbContext(DbContextOptions<TicketingDbCon
 
     public DbSet<TicketLink> TicketLinks => Set<TicketLink>();
 
+    public DbSet<TicketFollower> TicketFollowers => Set<TicketFollower>();
+
     public DbSet<SavedView> SavedViews => Set<SavedView>();
 
     public DbSet<CannedResponse> CannedResponses => Set<CannedResponse>();
@@ -219,6 +221,22 @@ internal sealed partial class TicketingDbContext(DbContextOptions<TicketingDbCon
 
             // Department rows are visible only inside the caller's department scope; personal rows are filtered by owner in the service.
             e.HasQueryFilter(x => x.DepartmentId == null || ScopedDepartmentIds.Contains(x.DepartmentId.Value));
+        });
+
+        modelBuilder.Entity<TicketFollower>(e =>
+        {
+            // The membership foreign key (user_id, department_id) to organisation.department_memberships is added in the migration (cascade delete).
+            e.ToTable("ticket_followers");
+            e.HasKey(x => new { x.TicketId, x.UserId });
+            e.Property(x => x.TicketId).HasColumnName("ticket_id");
+            e.Property(x => x.DepartmentId).HasColumnName("department_id");
+            e.Property(x => x.UserId).HasColumnName("user_id");
+            e.Property(x => x.AddedByUserId).HasColumnName("added_by_user_id");
+            e.Property(x => x.AddedAt).HasColumnName("added_at");
+            e.HasOne<Ticket>().WithMany().HasForeignKey(x => new { x.TicketId, x.DepartmentId })
+                .HasPrincipalKey(t => new { t.Id, t.DepartmentId }).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_ticket_followers_ticket_department");
+            e.HasIndex(x => new { x.UserId, x.TicketId }).HasDatabaseName("ix_ticket_followers_user");
+            e.HasQueryFilter(x => ScopedDepartmentIds.Contains(x.DepartmentId));
         });
 
         modelBuilder.Entity<TicketLink>(e =>

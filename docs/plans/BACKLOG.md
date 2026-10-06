@@ -75,3 +75,6 @@
 - (Refinement 3) Un-merge (split) of a merged ticket; merging across departments; copying merged participants/CC to the canonical ticket (deliberately not done: replies would reach other requesters); retrying delivery of an imported public reply from the canonical ticket.
 - (Refinement 3) Searching the messages of merged tickets from the canonical ticket; showing links of a merged source on its canonical ticket; link types beyond Related/Duplicate/Parent/Child (Problem/Incident management); a requester-facing view of related tickets.
 - (Refinement 3) Browser flow (open duplicate, merge, check merged state) and a portal Vitest for the merged-request notice (covered by API tests today); a realtime event kind for merge so open workspaces refresh without polling.
+
+- (Refinement 4) Follower notifications (in-app and email) using the follower table; "follow automatically" rules (assignee, requester reply, mentions); follower counts in queue rows; a realtime event kind for followers instead of the plain `updated` event.
+- (Refinement 4) Clean up follower rows when a user is deactivated (only membership removal cascades today; the list already ignores inactive users); team-level followers; follow from the bulk bar.

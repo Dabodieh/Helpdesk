@@ -44,3 +44,11 @@ All routes are ticket-id routes (`{ticket}` = id or reference); the department c
 - Requester history (refinement 1) semantics: total includes merged tickets, open count and the active list exclude them, the previous/resolved list includes them.
 - Portal: `GET /api/portal/requests/{ref}` of a merged request returns `{status: "merged", mergedInto: "<ref>"}` (no messages) only when the requester owns the canonical ticket, else 404; replies and edits are `409 ticket_merged`; merged requests are not listed.
 - Activity: `ticket.merged_in`, `ticket.merged_into`, `ticket.link_added`, `ticket.link_removed`.
+
+## Ticket followers (refinement 4)
+- `GET /api/tickets/{ticket}/followers` (`tickets.read`): `{items:[{userId, displayName, addedAt}], following}`.
+- `POST|DELETE /api/tickets/{ticket}/followers/me` (`tickets.read`): follow or unfollow as the caller; both return the follower state and are idempotent.
+- `POST|DELETE /api/tickets/{ticket}/followers/{userId}` (`tickets.update`, except for your own id which is the self path): add or remove another user. Adding needs an active user who can read the ticket's department, else 400. A merged ticket answers `409 ticket_merged`.
+- `GET /api/tickets/{ticket}/follower-candidates?q=` (`tickets.update`): up to 10 active department readers not following yet, matched by name or email.
+- `GET /api/tickets?queue=following`, saved views with `queue: "following"`, and `following` in `GET /api/tickets/queue-counts`.
+- Activity: `ticket.follower_added`, `ticket.follower_removed`.

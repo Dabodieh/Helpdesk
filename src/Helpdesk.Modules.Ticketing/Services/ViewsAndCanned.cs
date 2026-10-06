@@ -159,9 +159,9 @@ internal sealed class SavedViewService(TicketingDbContext db, ICurrentUser curre
         }
 
         var queue = (filter.Queue ?? "all").Trim().ToLowerInvariant();
-        if (queue is not ("my" or "team" or "unassigned" or "all"))
+        if (queue is not ("my" or "team" or "unassigned" or "all" or "following"))
         {
-            errors["filter.queue"] = ["queue must be one of my, team, unassigned, all."];
+            errors["filter.queue"] = ["queue must be one of my, team, unassigned, all, following."];
         }
 
         string[]? Canon<T>(string[]? raw, string field)

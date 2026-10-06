@@ -40,6 +40,9 @@ public interface IOrganisationDirectory
     /// </summary>
     Task<IReadOnlyCollection<Guid>> GetDepartmentsWithPermissionAsync(Guid userId, string permission, CancellationToken cancellationToken = default);
 
+    /// <summary>Ids of the users holding a membership in the department whose role grants <paramref name="permission"/> (activity of the user is not checked here).</summary>
+    Task<IReadOnlyCollection<Guid>> GetUserIdsWithPermissionAsync(Guid departmentId, string permission, CancellationToken cancellationToken = default);
+
     /// <summary>Ids of the teams the user belongs to, restricted to the given departments (team membership, never inferred from role).</summary>
     Task<IReadOnlyCollection<Guid>> GetTeamIdsOfUserAsync(Guid userId, IReadOnlyCollection<Guid> departmentIds, CancellationToken cancellationToken = default);
 }

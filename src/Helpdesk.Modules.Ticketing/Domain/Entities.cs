@@ -330,6 +330,23 @@ internal sealed class RequesterLink
 }
 
 
+/// <summary>
+/// Internal interest of an agent in a ticket (NOT an assignee, NOT a requester CC participant). Grants nothing: access always comes from the
+/// user's own department membership. The row is tied to that membership by a foreign key that cascades, so it disappears with the membership.
+/// </summary>
+internal sealed class TicketFollower
+{
+    public Guid TicketId { get; set; }
+
+    public Guid DepartmentId { get; set; }
+
+    public Guid UserId { get; set; }
+
+    public Guid? AddedByUserId { get; set; }
+
+    public DateTimeOffset AddedAt { get; set; }
+}
+
 internal static class TicketLinkTypes
 {
     /// <summary>Symmetric; stored once with the smaller id first.</summary>

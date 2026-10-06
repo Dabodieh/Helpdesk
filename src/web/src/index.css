@@ -2504,3 +2504,33 @@ fieldset.choice {
   padding: 0.5rem 0.75rem;
   margin: 0.5rem 0;
 }
+
+/* Followers */
+.followers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.followers h3 {
+  margin: 0;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.follower-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.follower-list li {
+  display: inline-flex;
+  align-items: center;
+}
+.follow-toggle.on {
+  font-weight: 600;
+}

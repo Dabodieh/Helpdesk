@@ -96,7 +96,7 @@ internal sealed record ActivityDto(Guid Id, DateTimeOffset OccurredAt, ActorDto?
 
 internal sealed record PageDto<T>(IReadOnlyList<T> Items, string? NextCursor);
 
-internal sealed record QueueCountsDto(int My, int Team, int Unassigned, int All, int SlaBreached = 0, int SlaApproaching = 0);
+internal sealed record QueueCountsDto(int My, int Team, int Unassigned, int All, int SlaBreached = 0, int SlaApproaching = 0, int Following = 0);
 
 internal sealed record RequesterLookupDto(Guid Id, string DisplayName, string Email);
 

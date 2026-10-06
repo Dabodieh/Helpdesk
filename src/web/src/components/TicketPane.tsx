@@ -15,6 +15,7 @@ import Composer from './Composer'
 import Conversation from './Conversation'
 import History from './History'
 import { Icon } from './icons'
+import Followers from './Followers'
 import { MoreMenu, RelatedTickets } from './TicketLinks'
 import { PriorityMark, StatusPill } from './Pills'
 import { SlaStrip } from './Sla'
@@ -285,6 +286,7 @@ function TicketHeader({
           </div>
         )}
       </dl>
+      {!merged && <Followers ticket={t} canManage={canUpdate} />}
       <TicketProperties reference={t.reference} canEdit={canUpdate} />
     </header>
   )

@@ -207,6 +207,37 @@ internal static class TicketEndpoints
             .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsUpdate, Route)
             .WithTags("Tickets");
 
+        // Followers (internal interest, grants no access). Baseline tickets.read; adding or removing ANOTHER user needs tickets.update (checked in the service).
+        app.MapGet("/api/tickets/{ticket}/followers", async (string ticket, TicketFollowerService followers, CancellationToken ct) =>
+                TypedResults.Ok(await followers.ListAsync(ticket, ct)))
+            .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsRead, Route)
+            .WithTags("Tickets");
+
+        app.MapPost("/api/tickets/{ticket}/followers/me", async (string ticket, TicketFollowerService followers, CancellationToken ct) =>
+                TypedResults.Ok(await followers.AddAsync(ticket, null, ct)))
+            .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsRead, Route)
+            .WithTags("Tickets");
+
+        app.MapDelete("/api/tickets/{ticket}/followers/me", async (string ticket, TicketFollowerService followers, CancellationToken ct) =>
+                TypedResults.Ok(await followers.RemoveAsync(ticket, null, ct)))
+            .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsRead, Route)
+            .WithTags("Tickets");
+
+        app.MapPost("/api/tickets/{ticket}/followers/{userId:guid}", async (string ticket, Guid userId, TicketFollowerService followers, CancellationToken ct) =>
+                TypedResults.Ok(await followers.AddAsync(ticket, userId, ct)))
+            .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsRead, Route)
+            .WithTags("Tickets");
+
+        app.MapDelete("/api/tickets/{ticket}/followers/{userId:guid}", async (string ticket, Guid userId, TicketFollowerService followers, CancellationToken ct) =>
+                TypedResults.Ok(await followers.RemoveAsync(ticket, userId, ct)))
+            .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsRead, Route)
+            .WithTags("Tickets");
+
+        app.MapGet("/api/tickets/{ticket}/follower-candidates", async (string ticket, string? q, TicketFollowerService followers, CancellationToken ct) =>
+                TypedResults.Ok(await followers.CandidatesAsync(ticket, q, ct)))
+            .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsUpdate, Route)
+            .WithTags("Tickets");
+
         app.MapGet("/api/tickets/{ticket}/activity",
                 async (string ticket, string? cursor, int? limit, TicketService tickets, CancellationToken ct) =>
                     TypedResults.Ok(await tickets.ActivityAsync(ticket, cursor, limit, ct)))
