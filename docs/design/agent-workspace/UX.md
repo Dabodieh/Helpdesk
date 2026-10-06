@@ -39,3 +39,7 @@ Delivery state under agent replies (Queued / Sent by email from the department m
 - Composer: mode-specific style and banner, Insert response picker (insert only), Ctrl+Enter sends, Enter alone never sends.
 - Administration: department tabs (Overview, Teams, Members, Mailboxes, Responses); creation through dialogs opened by New/Add buttons.
 - Screenshots (light and dark): docs/design/agent-workspace/screenshots/. Accessibility: axe checks in e2e/productivity.spec.ts.
+
+## Phase 5 additions
+- Queue: SLA column (inline badge when narrow), Service level filter, Sort select including "SLA due soonest", "SLA breached" navigation entry with count. Ticket header: Service level strip (first response, resolution) and a details dialog with the frozen policy and history. States are always a word plus a mark.
+- Administration: department tabs Business hours, SLA policies, Automations; structured editors in dialogs; rule list grouped by trigger with ordering buttons; Test against ticket; execution history. Screenshots: docs/design/agent-workspace/screenshots (sla-*, automation*).

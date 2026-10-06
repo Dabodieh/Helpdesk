@@ -13,6 +13,7 @@ import {
   type Priority,
   type Queue,
   type Sort,
+  type SlaFilter,
   type Status,
 } from './ticketSchemas'
 
@@ -25,6 +26,7 @@ export type TicketFilters = {
   assigneeUserId?: string
   unassigned?: boolean
   q?: string
+  sla?: SlaFilter
   sort: Sort
 }
 
@@ -38,6 +40,7 @@ export function ticketListPath(f: TicketFilters, cursor: string | null, limit = 
   if (f.assigneeUserId) p.set('assigneeUserId', f.assigneeUserId)
   if (f.unassigned) p.set('unassigned', 'true')
   if (f.q) p.set('q', f.q)
+  if (f.sla) p.set('sla', f.sla)
   p.set('sort', f.sort)
   if (cursor) p.set('cursor', cursor)
   p.set('limit', String(limit))

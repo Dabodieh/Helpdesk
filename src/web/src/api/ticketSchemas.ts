@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { slaSummarySchema } from './sla'
 
 export const STATUSES = ['Open', 'Pending', 'Resolved', 'Closed'] as const
 export const PRIORITIES = ['Low', 'Normal', 'High', 'Urgent'] as const
@@ -6,7 +7,9 @@ export type Status = (typeof STATUSES)[number]
 export type Priority = (typeof PRIORITIES)[number]
 export const QUEUES = ['my', 'team', 'unassigned', 'all'] as const
 export type Queue = (typeof QUEUES)[number]
-export const SORTS = ['updated_desc', 'updated_asc', 'created_desc', 'created_asc', 'priority_desc'] as const
+export const SORTS = ['updated_desc', 'updated_asc', 'created_desc', 'created_asc', 'priority_desc', 'sla_due_asc'] as const
+export const SLA_FILTERS = ['breached', 'approaching', 'duesoon', 'paused'] as const
+export type SlaFilter = (typeof SLA_FILTERS)[number]
 export type Sort = (typeof SORTS)[number]
 
 const statusSchema = z.enum(STATUSES)
@@ -31,6 +34,8 @@ export const ticketListItemSchema = z.object({
   updatedAt: z.string(),
   /** Present for searches: why the ticket matched (never HTML). */
   match: matchSchema.nullish(),
+  /** Service-level state; absent when no SLA policy applies. */
+  sla: slaSummarySchema.nullish(),
 })
 export type TicketListItem = z.infer<typeof ticketListItemSchema>
 
@@ -100,7 +105,14 @@ export type Activity = z.infer<typeof activitySchema>
 export const pageSchema = <T extends z.ZodType>(item: T) =>
   z.object({ items: z.array(item), nextCursor: z.string().nullable() })
 
-export const queueCountsSchema = z.object({ my: z.number(), team: z.number(), unassigned: z.number(), all: z.number() })
+export const queueCountsSchema = z.object({
+  my: z.number(),
+  team: z.number(),
+  unassigned: z.number(),
+  all: z.number(),
+  slaBreached: z.number().default(0),
+  slaApproaching: z.number().default(0),
+})
 export type QueueCounts = z.infer<typeof queueCountsSchema>
 
 export const requesterLookupSchema = z.object({ id: z.string(), displayName: z.string(), email: z.string() })

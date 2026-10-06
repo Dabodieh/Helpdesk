@@ -101,6 +101,19 @@ export default function AppShell({ children }: { children: ReactNode }) {
                       </NavLink>
                     </li>
                   ))}
+                  {counts.data && counts.data.slaBreached > 0 && (
+                    <li>
+                      <NavLink to="/queue/all?sla=breached" className={() => (location.search.includes('sla=breached') ? 'active' : undefined)}>
+                        <span aria-hidden="true" className="nav-mark">
+                          ▲
+                        </span>
+                        <span className="nav-label">SLA breached</span>
+                        <span className="count" aria-label={`${counts.data.slaBreached} breached`}>
+                          {counts.data.slaBreached}
+                        </span>
+                      </NavLink>
+                    </li>
+                  )}
                   <li>
                     <NavLink to="/search">
                       <Icon name="search" />

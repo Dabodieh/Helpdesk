@@ -91,3 +91,10 @@ Phase 4 added a SignalR hub (`/hubs/tickets`) that announces *that* a ticket cha
 
 ## Out of scope
 SLA, automation, tags/categories, merge/link, rich text, requester portal, cross-department move, bulk reply, canned-response variables.
+
+## Phase 5 additions
+- **Tables:** `business_hours`, `sla_policies`, `ticket_sla` (frozen snapshot, both clocks, `next_due_at`, `next_warn_at`, `next_event_at`), `sla_events`, `automation_rules`, `automation_executions` (unique rule + ticket + trigger key). Messages gain source `automation`.
+- **Clock rules:** first response = first public agent reply; resolution = Resolved or Closed; Pending pauses resolution only when the policy says so; reopening starts a new resolution cycle. Implemented only in `SlaEngine`.
+- **Indexing:** partial indexes on the three summary columns; see ADR-014 and the Phase 5 report for the scale check.
+- **Queue:** `sla` filter, `sla_due_asc` sort and SLA counts read `ticket_sla` (department scoped like tickets).
+- **Activity:** audit entries of internal notes are hidden from callers without `tickets.notes.read`.

@@ -8,6 +8,9 @@ const ADMINISTRATIVE = new Set([
   'teams.manage',
   'department.mailboxes.manage',
   'department.audit.read',
+  'department.canned.manage',
+  'department.sla.manage',
+  'department.automation.manage',
 ])
 
 export function canPlatform(me: Me, code: string) {

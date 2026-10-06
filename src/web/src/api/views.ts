@@ -11,6 +11,7 @@ export const viewFilterSchema = z.object({
   priority: z.array(z.string()).nullish(),
   q: z.string().nullish(),
   sort: z.string().nullish(),
+  sla: z.string().nullish(),
 })
 export type ViewFilter = z.infer<typeof viewFilterSchema>
 

@@ -3,11 +3,14 @@ import { Link, useParams } from 'react-router-dom'
 import { getDepartment, updateDepartment } from '../api/organisation'
 import { canInDepartment, canPlatform } from '../api/permissions'
 import { useMe } from '../auth'
+import AutomationsSection from '../components/AutomationsSection'
+import BusinessHoursSection from '../components/BusinessHoursSection'
 import CannedManager from '../components/CannedManager'
 import { ActiveBadge, ErrorNotice, Loading, PageHeader, Tabs } from '../components/common'
 import EditForm from '../components/EditForm'
 import MailboxesSection from '../components/MailboxesSection'
 import MembersSection from '../components/MembersSection'
+import SlaPoliciesSection from '../components/SlaPoliciesSection'
 import TeamsSection from '../components/TeamsSection'
 
 export default function DepartmentPage() {
@@ -75,6 +78,24 @@ export default function DepartmentPage() {
             label: 'Mailboxes',
             hidden: !canInDepartment(me, 'department.mailboxes.manage', d.id),
             content: <MailboxesSection department={d} />,
+          },
+          {
+            id: 'hours',
+            label: 'Business hours',
+            hidden: !canInDepartment(me, 'department.sla.manage', d.id),
+            content: <BusinessHoursSection department={d} />,
+          },
+          {
+            id: 'sla',
+            label: 'SLA policies',
+            hidden: !canInDepartment(me, 'department.sla.manage', d.id),
+            content: <SlaPoliciesSection department={d} />,
+          },
+          {
+            id: 'automations',
+            label: 'Automations',
+            hidden: !canInDepartment(me, 'department.automation.manage', d.id),
+            content: <AutomationsSection department={d} />,
           },
           {
             id: 'responses',

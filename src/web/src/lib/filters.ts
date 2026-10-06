@@ -1,5 +1,5 @@
 import type { TicketFilters } from '../api/tickets'
-import { PRIORITIES, QUEUES, SORTS, STATUSES, type Priority, type Queue, type Sort, type Status } from '../api/ticketSchemas'
+import { PRIORITIES, QUEUES, SLA_FILTERS, SORTS, STATUSES, type Priority, type Queue, type Sort, type Status } from '../api/ticketSchemas'
 import type { ViewFilter } from '../api/views'
 
 export type Mode = 'queue' | 'search' | 'ticket'
@@ -41,13 +41,14 @@ export function parseFilters(queue: Queue, params: URLSearchParams, mode: Mode, 
     assigneeUserId: assignee && assignee !== 'none' ? (assignee === 'me' ? meId : assignee) : undefined,
     unassigned: assignee === 'none' ? true : undefined,
     q: q.length >= 2 ? q : undefined,
+    sla: SLA_FILTERS.find((v) => v === params.get('sla')),
     sort,
   }
 }
 
 /** Is any filter different from the defaults for this mode? (drives "Reset filters") */
 export function hasCustomFilters(params: URLSearchParams) {
-  return ['status', 'priority', 'dept', 'team', 'assignee', 'q', 'sort', 'view'].some((k) => params.has(k))
+  return ['status', 'priority', 'dept', 'team', 'assignee', 'q', 'sla', 'sort', 'view'].some((k) => params.has(k))
 }
 
 /** Set or clear one URL parameter. */
@@ -76,6 +77,7 @@ export function toViewFilter(f: TicketFilters): ViewFilter {
     status: f.statuses,
     priority: f.priorities.length > 0 ? f.priorities : null,
     q: f.q ?? null,
+    sla: f.sla ?? null,
     sort: f.sort,
   }
 }
@@ -92,6 +94,7 @@ export function viewLocation(v: { id: string; filter: ViewFilter }): string {
   if (f.unassigned) p.set('assignee', 'none')
   else if (f.assigneeUserId) p.set('assignee', f.assigneeUserId)
   if (f.q) p.set('q', f.q)
+  if (f.sla) p.set('sla', f.sla)
   if (f.sort && f.sort !== DEFAULT_SORT) p.set('sort', f.sort)
   p.set('view', v.id)
   return `/queue/${queue}?${p.toString()}`

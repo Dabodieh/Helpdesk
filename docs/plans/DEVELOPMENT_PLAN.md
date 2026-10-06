@@ -25,6 +25,9 @@ Mail and Attachments modules, mailbox admin, Graph provider + simulator, webhook
 ## Phase 4 scope (built)
 Agent productivity: UX polish and resizable split, saved views, bulk actions, canned responses, trigram search with snippets, SignalR realtime with scoped groups and polling fallback, keyboard/density/sortable columns, axe checks, Playwright flows. Report: `docs/reports/PHASE-4-AGENT-PRODUCTIVITY.md`, API: `docs/api/PHASE4_API.md`. Phase 5 is not started.
 
+## Phase 5 scope (built)
+Business hours, SLA policies and clocks, SLA visibility and filters, declarative automation with routing, execution history, dry run, loop protection. Report: `docs/reports/PHASE-5-SLA-AUTOMATION.md`, ADR-014, `docs/api/PHASE5_API.md`. Phase 6 is not started.
+
 ## Phase 0 work packages
 1. Repo scaffolding, conventions, CLAUDE.md, agent definitions (done in bootstrap).
 2. `src/Helpdesk.Host` skeleton: options pattern, Serilog, OTel, health, OpenAPI, problem details, forwarded headers.

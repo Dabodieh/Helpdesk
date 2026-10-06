@@ -94,6 +94,25 @@ export default function QueueFilters({
             ))}
           </select>
         </label>
+        <label className="fsel">
+          <span>Sort</span>
+          <select value={params.get('sort') ?? 'updated_desc'} onChange={(e) => set('sort', e.target.value === 'updated_desc' ? '' : e.target.value)}>
+            <option value="updated_desc">Newest update</option>
+            <option value="updated_asc">Oldest update</option>
+            <option value="priority_desc">Priority</option>
+            <option value="sla_due_asc">SLA due soonest</option>
+          </select>
+        </label>
+        <label className="fsel">
+          <span>Service level</span>
+          <select value={params.get('sla') ?? ''} onChange={(e) => set('sla', e.target.value)}>
+            <option value="">Any</option>
+            <option value="breached">Breached</option>
+            <option value="approaching">Approaching</option>
+            <option value="duesoon">Due within 4 hours</option>
+            <option value="paused">Paused</option>
+          </select>
+        </label>
         {departments.length > 1 && (
           <label className="fsel">
             <span>Department</span>

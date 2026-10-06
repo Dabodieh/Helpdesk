@@ -16,6 +16,7 @@ import Conversation from './Conversation'
 import History from './History'
 import { Icon } from './icons'
 import { PriorityMark, StatusPill } from './Pills'
+import { SlaStrip } from './Sla'
 import ProblemBanner from './ProblemBanner'
 
 type Props = { ticketRef: string; backTo: string; composerRef: RefObject<ComposerHandle | null> }
@@ -197,6 +198,7 @@ function TicketHeader({
           </div>
         )}
       </div>
+      <SlaStrip ticketRef={t.reference} sla={t.sla} />
       <dl className="t-meta">
         <div>
           <dt>Requester</dt>

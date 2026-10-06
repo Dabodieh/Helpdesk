@@ -49,3 +49,10 @@
 - Reply quoting strategy, per-reply mailbox choice, "send test email" and connection check for a mailbox
 - Hangfire ROLE=web|worker split and metrics; retention/purge of raw bodies and webhook receipts (D-09)
 - Re-run the Graph runbook findings into the provider (message-id rewriting, reply headers, SendAs needs) once a tenant exists
+
+- (Phase 5) Re-evaluate or re-apply an SLA policy when priority, team or mailbox changes; manual policy override on a ticket.
+- (Phase 5) Retention and pruning of automation execution history; store only matched and failed evaluations if volume demands it.
+- (Phase 5) Notification channel (email or chat) for SLA warnings and escalation; automation actions for tags and categories once they exist.
+- (Phase 5) Dry run that follows chained triggers; a rule "impact preview" over recent tickets.
+- (Phase 5) Dedicated test for resuming failed automation executions and for the `sla` realtime event; inbound-mail-with-rules end-to-end test.
+- (Phase 5) Rate limits for configuration endpoints; per-department business-hours templates and public-holiday imports.

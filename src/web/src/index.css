@@ -1764,3 +1764,183 @@ table.grid tbody tr:hover {
     display: none;
   }
 }
+
+/* Phase 5: service levels and administration editors */
+.sla {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+.sla-breached {
+  color: var(--danger);
+  font-weight: 700;
+}
+.sla-approaching {
+  color: var(--warn);
+  font-weight: 600;
+}
+.sla-running {
+  color: var(--st-open);
+}
+.sla-paused {
+  color: var(--muted);
+}
+.sla-met,
+.sla-metlate {
+  color: var(--ok);
+}
+.sla-metlate {
+  text-decoration: underline dotted;
+}
+.qtable .col-sla {
+  width: 150px;
+}
+@container queue (max-width: 780px) {
+  .qtable .col-sla {
+    display: none;
+  }
+}
+.sla-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1rem;
+  margin: 0.5rem 0 0.1rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: 0.9rem;
+}
+.sla-label {
+  font-weight: 600;
+  color: var(--muted);
+  min-width: 6.5rem;
+}
+.sla-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: baseline;
+  padding: 0.25rem 0;
+}
+.sla-events {
+  padding-left: 1.1rem;
+  max-height: 14rem;
+  overflow: auto;
+}
+.nav-mark {
+  display: inline-block;
+  width: 14px;
+  text-align: center;
+  color: var(--danger);
+}
+.editor {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.8rem 0.8rem;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.editor legend {
+  font-weight: 600;
+  padding: 0 0.3rem;
+}
+.editor-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.6rem;
+  align-items: center;
+  padding: 0.4rem 0;
+  border-bottom: 1px dashed var(--border);
+}
+.editor-row .field-error {
+  flex-basis: 100%;
+}
+.check-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.9rem;
+}
+.day-row .day-name {
+  min-width: 7.5rem;
+}
+.intervals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.8rem;
+  align-items: center;
+}
+.interval {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.duration {
+  display: flex;
+  gap: 0.4rem;
+}
+.due-check {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.9rem;
+  align-items: center;
+  margin-top: 0.4rem;
+  flex-basis: 100%;
+}
+.rule-group h3 {
+  margin: 1.25rem 0 0.4rem;
+}
+.test-rule {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.4rem 0.8rem;
+  margin: 0.6rem 0;
+}
+.trace {
+  list-style: none;
+  padding-left: 0;
+  margin: 0.3rem 0;
+}
+.trace li {
+  padding: 0.1rem 0;
+}
+
+/* Checkbox rows inside dialogs and editors stay compact (the dialog rule makes inputs full width) */
+.dialog-form input[type='checkbox'],
+.dialog-form input[type='radio'],
+.editor input[type='checkbox'],
+.editor input[type='radio'] {
+  width: auto;
+  flex: none;
+}
+.dialog-form .check,
+.editor .check {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+}
+.dialog-form .editor input:not([type='checkbox']):not([type='radio']) {
+  width: auto;
+  min-width: 8rem;
+}
+.dialog-form .editor textarea {
+  flex: 1 1 18rem;
+}
+.sla-inline {
+  display: none;
+}
+@container queue (max-width: 780px) {
+  .sla-inline {
+    display: block;
+  }
+  .qtable .col-status {
+    width: 128px;
+  }
+}
+.filters-row.selects .fsel { flex-basis: 8.5rem; }

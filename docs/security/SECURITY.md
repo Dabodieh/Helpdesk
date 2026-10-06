@@ -63,3 +63,11 @@ Open: no malware engine (D-08), no webhook rate limiting, raw bodies stored in `
 - Bulk change authorises and audits every ticket individually; inaccessible and missing tickets are indistinguishable (not_found).
 - Audit records the canned-response title (never its text) and view names; logs and audit never contain message bodies or search snippets.
 - Limits: single host instance (no backplane), no rate limiting on search or the hub yet (see BACKLOG).
+
+## Phase 5 (SLA and automation) controls
+- Configuration, execution history and dry run are department-scoped and need an administrative permission; other departments' ids are 404.
+- Automation is declarative: closed sets of triggers, fields, operators and actions; no scripts or regular expressions; every referenced team, person and mailbox is checked against the rule's department when saved and again when it runs.
+- Loop protection (chain, once per rule and ticket, depth and size caps) and idempotent execution keys; failures are recorded, never thrown into the user's request.
+- Automation writes through the same domain methods, audit and SLA hooks as people; its internal notes are Internal, system-authored, never queued for email and never satisfy first response.
+- The execution trace stores no subject text or full addresses. Activity hides internal-note entries from callers without notes access.
+- Limits: unbounded execution-history retention (D-09), no rate limits on configuration endpoints (BACKLOG).

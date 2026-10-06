@@ -12,6 +12,7 @@ import { livePolling } from '../queries'
 import BulkBar from './BulkBar'
 import { ErrorNotice } from './common'
 import { Icon } from './icons'
+import { SlaBadge } from './Sla'
 import { PriorityMark, StatusPill } from './Pills'
 import QueueFilters from './QueueFilters'
 
@@ -240,6 +241,11 @@ export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
                     Priority {sort === 'priority_desc' && <span aria-hidden="true">↓</span>}
                   </button>
                 </th>
+                <th scope="col" className="col-sla" aria-sort={sort === 'sla_due_asc' ? 'ascending' : 'none'}>
+                  <button type="button" className="th-sort" onClick={() => setSort(sort === 'sla_due_asc' ? DEFAULT_SORT : 'sla_due_asc')}>
+                    SLA {sort === 'sla_due_asc' && <span aria-hidden="true">↑</span>}
+                  </button>
+                </th>
                 <th scope="col" className="col-team">
                   Team
                 </th>
@@ -299,9 +305,15 @@ export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
                     <td className="col-requester">{t.requester.displayName}</td>
                     <td className="col-status">
                       <StatusPill status={t.status} />
+                      <span className="sla-inline">
+                        <SlaBadge sla={t.sla} />
+                      </span>
                     </td>
                     <td className="col-prio">
                       <PriorityMark priority={t.priority} />
+                    </td>
+                    <td className="col-sla">
+                      <SlaBadge sla={t.sla} />
                     </td>
                     <td className="col-team">{t.team?.name ?? <span className="muted">None</span>}</td>
                     <td className="col-assignee">{t.assignee?.displayName ?? <span className="muted">Unassigned</span>}</td>
