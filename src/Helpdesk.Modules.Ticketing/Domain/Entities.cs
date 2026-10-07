@@ -34,6 +34,13 @@ internal enum AuthorType
 /// Delivery of an agent's PUBLIC reply. None: not applicable (notes, requester mail). NotDelivered: recorded but no mailbox could send it.
 /// Pending/Sent/Failed: tracked through the mail outbox. Never "Sent" unless the provider accepted the message.
 /// </summary>
+/// <summary>Reasons stored in <c>delivery_error</c> of a NotDelivered public reply (nothing was queued): the ticket has no usable stored mailbox.</summary>
+internal static class DeliveryErrors
+{
+    public const string NoTicketMailbox = "no_ticket_mailbox";
+    public const string MailboxUnavailable = "mailbox_unavailable";
+}
+
 internal enum DeliveryState
 {
     None,

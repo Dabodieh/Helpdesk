@@ -385,8 +385,23 @@ internal sealed class TicketService(
             throw new ConflictException("The ticket is closed. Reopen it before replying to the requester.", ProblemCodes.InvalidState);
         }
 
-        // A public reply leaves from the ticket's mailbox (or the department default); with no active mailbox it is only recorded.
-        var replyMailbox = kind == MessageKind.Public ? await mailboxes.FindReplyMailboxAsync(ticket.DepartmentId, ticket.MailboxId, ct) : null;
+        // A public reply leaves ONLY from the mailbox stored on the ticket. No stored mailbox, or one that is inactive/unavailable, blocks the send: the reply is
+        // recorded as NotDelivered with a reason an agent can act on. Never the department default, never another identity (the default is only chosen at ticket creation).
+        ReplyMailbox? replyMailbox = null;
+        string? blockedReason = null;
+        if (kind == MessageKind.Public)
+        {
+            if (ticket.MailboxId is not { } storedMailbox)
+            {
+                blockedReason = DeliveryErrors.NoTicketMailbox;
+            }
+            else
+            {
+                replyMailbox = await mailboxes.FindReplyMailboxAsync(ticket.DepartmentId, storedMailbox, ct);
+                blockedReason = replyMailbox is null ? DeliveryErrors.MailboxUnavailable : null;
+            }
+        }
+
         // The sending agent's signature for THIS department, resolved now (null = none configured: the reply goes out without one). Never for notes.
         var signatureHtml = replyMailbox is null
             ? null
@@ -405,6 +420,7 @@ internal sealed class TicketService(
 
             // Truthful states only: Pending once queued in the outbox; NotDelivered when no mailbox exists to send it from.
             DeliveryState = kind != MessageKind.Public ? DeliveryState.None : replyMailbox is null ? DeliveryState.NotDelivered : DeliveryState.Pending,
+            DeliveryError = blockedReason,
             CreatedAt = now,
         };
         db.Messages.Add(message);

@@ -127,9 +127,33 @@ public sealed class MailOutboundTests(HelpdeskFixture fixture) : IClassFixture<H
         // The ticket belongs to the first mailbox, which is now inactive: the reply is recorded but NOT sent from the other mailbox.
         var unsent = (await s.D.Agent.PostMessageAsync(s.TicketId, "Public", "Not via the other desk")).Expect(HttpStatusCode.Created);
         Assert.Equal("NotDelivered", unsent.Json.GetProperty("message").Str("deliveryState"));
+        Assert.Equal("mailbox_unavailable", unsent.Json.GetProperty("message").Str("deliveryError"));
         await fixture.DispatchAsync();
         Assert.Empty(fixture.Fake().SentMail(s.Box.Address));
         Assert.Empty(fixture.Fake().SentMail(second.Address));
+    }
+
+    [Fact]
+    public async Task A_ticket_with_no_stored_mailbox_blocks_the_send_and_never_uses_the_department_default()
+    {
+        var s = await StartAsync();
+        var defaultBox = await fixture.CreateMailboxAsync(s.D, isDefault: true); // an active department default exists
+        await fixture.ExecuteAsync("UPDATE ticketing.tickets SET mailbox_id = NULL WHERE id = @t", TicketKit.P("t", s.TicketId)); // legacy / mailbox-less ticket
+
+        var blocked = (await s.D.Agent.PostMessageAsync(s.TicketId, "Public", "No sender on this ticket")).Expect(HttpStatusCode.Created);
+        Assert.Equal("NotDelivered", blocked.Json.GetProperty("message").Str("deliveryState"));
+        Assert.Equal("no_ticket_mailbox", blocked.Json.GetProperty("message").Str("deliveryError"));
+        await fixture.DispatchAsync();
+        Assert.Empty(fixture.Fake().SentMail(defaultBox.Address));
+        Assert.Empty(fixture.Fake().SentMail(s.Box.Address));
+        Assert.Equal(0, await fixture.CountAsync("SELECT count(*) FROM mail.messages WHERE ticket_id = @t AND direction = 'Outbound'", TicketKit.P("t", s.TicketId)));
+
+        // With a valid active stored mailbox the same ticket sends normally, from that mailbox only.
+        await fixture.ExecuteAsync("UPDATE ticketing.tickets SET mailbox_id = @m WHERE id = @t", TicketKit.P("t", s.TicketId), TicketKit.P("m", s.Box.Id));
+        (await s.D.Agent.PostMessageAsync(s.TicketId, "Public", "Now it has one")).Expect(HttpStatusCode.Created);
+        await fixture.DispatchAsync();
+        Assert.Single(fixture.Fake().SentMail(s.Box.Address));
+        Assert.Empty(fixture.Fake().SentMail(defaultBox.Address));
     }
 
     [Fact]

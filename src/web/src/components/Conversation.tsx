@@ -85,6 +85,8 @@ function Delivery({ message: m }: { message: Message }) {
       return (
         <p className="delivery small">
           <Icon name="nomail" /> {NOT_EMAILED}
+          {m.deliveryError === 'no_ticket_mailbox' && ' This ticket has no mailbox of its own, so it cannot be answered by email. A mailbox must be assigned to the ticket first.'}
+          {m.deliveryError === 'mailbox_unavailable' && ' The ticket’s mailbox is inactive or unavailable. A mailbox administrator needs to reactivate it; the sender is never switched.'}
         </p>
       )
     case 'Pending':
