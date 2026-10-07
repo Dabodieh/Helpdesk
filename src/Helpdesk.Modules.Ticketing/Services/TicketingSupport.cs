@@ -66,6 +66,8 @@ internal static class TicketAuditActions
     public const string AutomationRuleUpdated = "automation_rule.updated";
     public const string RequestFormCreated = "request_form.created";
     public const string RequestFormUpdated = "request_form.updated";
+    public const string HelpTopicCreated = "help_topic.created";
+    public const string HelpTopicUpdated = "help_topic.updated";
     public const string FormFieldCreated = "form_field.created";
     public const string FormFieldUpdated = "form_field.updated";
     public const string TicketTypeCreated = "ticket_type.created";

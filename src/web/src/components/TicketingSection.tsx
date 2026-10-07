@@ -1,6 +1,7 @@
 import type { Department } from '../api/schemas'
 import { Tabs } from './common'
 import FormsSection from './FormsSection'
+import HelpTopicsSection from './HelpTopicsSection'
 import TicketFieldsSection from './TicketFieldsSection'
 import TicketTypesSection from './TicketTypesSection'
 
@@ -13,6 +14,7 @@ export default function TicketingSection({ department }: { department: Departmen
         { id: 'types', label: 'Ticket types', content: <TicketTypesSection department={department} /> },
         { id: 'fields', label: 'Ticket fields', content: <TicketFieldsSection department={department} /> },
         { id: 'forms', label: 'Request forms', content: <FormsSection department={department} /> },
+        { id: 'topics', label: 'Help topics', content: <HelpTopicsSection department={department} /> },
       ]}
     />
   )

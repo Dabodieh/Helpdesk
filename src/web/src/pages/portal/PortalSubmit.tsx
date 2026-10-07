@@ -2,7 +2,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { useMemo, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { fieldErrors } from '../../api/errors'
-import { createPortalRequest, getPortalForm, listPortalForms, replyToRequest, searchKnowledge, type PortalFormListItem } from '../../api/portal'
+import { createPortalRequest, getPortalForm, listPortalForms, listPortalHelpTopics, replyToRequest, searchKnowledge, type PortalFormListItem } from '../../api/portal'
 import { FieldControl as CustomField } from '../../components/FieldControl'
 import { ErrorNotice, Field, Loading } from '../../components/common'
 import { useDebounced } from '../../lib/useDebounced'
@@ -15,10 +15,27 @@ function ChooseForm() {
     for (const f of forms.data ?? []) map.set(f.department, [...(map.get(f.department) ?? []), f])
     return [...map.entries()]
   }, [forms.data])
+  const topics = useQuery({ queryKey: ['portal', 'topics'], queryFn: listPortalHelpTopics, staleTime: 5_000 })
   return (
     <>
       <h1>Submit a request</h1>
       <p className="muted">Choose the option that best describes what you need.</p>
+      {topics.isSuccess && topics.data.length > 0 && (
+        <section className="portal-section" aria-labelledby="topics-h">
+          <h2 id="topics-h">Common requests</h2>
+          <ul className="tiles">
+            {topics.data.map((t) => (
+              <li key={t.id}>
+                <Link to={`/portal/topics/${t.id}`} className="tile">
+                  <strong>{t.name}</strong>
+                  {t.description && <span className="small">{t.description}</span>}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {topics.isSuccess && topics.data.length > 0 && <h2 className="portal-all">All request types</h2>}
       {forms.isPending && <Loading label="Loading request types" />}
       {forms.isError && <ErrorNotice error={forms.error} onRetry={() => void forms.refetch()} />}
       {forms.isSuccess && groups.length === 0 && <p className="empty">No request types are available to you yet.</p>}

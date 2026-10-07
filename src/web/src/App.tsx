@@ -16,6 +16,7 @@ import { KnowledgeArticle, KnowledgeHome } from './pages/portal/PortalKnowledge'
 import PortalRequest from './pages/portal/PortalRequest'
 import PortalRequests from './pages/portal/PortalRequests'
 import PortalSubmit from './pages/portal/PortalSubmit'
+import PortalTopic from './pages/portal/PortalTopic'
 import StatusPage from './pages/StatusPage'
 import TeamPage from './pages/TeamPage'
 import WorkspacePage from './pages/WorkspacePage'
@@ -51,6 +52,7 @@ export function AppRoutes() {
       <Route path="portal" element={<RequireAuth layout="portal" />}>
         <Route index element={<PortalHome />} />
         <Route path="submit/:formId?" element={<PortalSubmit />} />
+        <Route path="topics/:topicId" element={<PortalTopic />} />
         <Route path="requests" element={<PortalRequests />} />
         <Route path="requests/:reference" element={<PortalRequest />} />
         <Route path="knowledge" element={<KnowledgeHome />} />

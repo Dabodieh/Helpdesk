@@ -28,6 +28,10 @@ internal static class PortalEndpoints
         portal.MapGet("forms", async (PortalFormsService forms, CancellationToken ct) => TypedResults.Ok(await forms.ListAsync(ct))).RequireAuthenticatedOnly();
         portal.MapGet("forms/{formId:guid}", async (Guid formId, PortalFormsService forms, CancellationToken ct) => TypedResults.Ok(await forms.GetAsync(formId, ct))).RequireAuthenticatedOnly();
 
+        // Help topics: navigation to a request form. Present only while the form itself is usable by the caller; otherwise exactly like a missing object.
+        portal.MapGet("help-topics", async (PortalHelpTopicsService topics, CancellationToken ct) => TypedResults.Ok(await topics.ListAsync(ct))).RequireAuthenticatedOnly();
+        portal.MapGet("help-topics/{topicId:guid}", async (Guid topicId, PortalHelpTopicsService topics, CancellationToken ct) => TypedResults.Ok(await topics.GetAsync(topicId, ct))).RequireAuthenticatedOnly();
+
         portal.MapGet("requests", async (string? filter, string? cursor, int? limit, PortalRequestService requests, CancellationToken ct) =>
                 TypedResults.Ok(await requests.ListAsync(filter, cursor, limit, ct)))
             .RequireAuthenticatedOnly();
@@ -110,6 +114,22 @@ internal static class PortalEndpoints
         identities.MapPost("{requesterId:guid}/link", async (Guid departmentId, Guid requesterId, LinkRequesterRequest body, RequesterIdentityAdminService service, CancellationToken ct) =>
                 TypedResults.Ok(await service.LinkAsync(departmentId, requesterId, body, ct)))
             .RequirePermission(PermissionCodes.DepartmentMembersManage);
+
+        var topics = app.MapGroup("/api/departments/{departmentId:guid}/help-topics").WithTags("Help topics");
+        topics.MapGet("", async (Guid departmentId, HelpTopicsAdminService service, CancellationToken ct) => TypedResults.Ok(await service.ListAsync(departmentId, ct)))
+            .RequirePermission(PermissionCodes.DepartmentFormsManage);
+        topics.MapPost("", async (Guid departmentId, HelpTopicRequest body, HelpTopicsAdminService service, CancellationToken ct) =>
+            {
+                var created = await service.CreateAsync(departmentId, body, ct);
+                return TypedResults.Created($"/api/departments/{departmentId}/help-topics/{created.Id}", created);
+            })
+            .RequirePermission(PermissionCodes.DepartmentFormsManage);
+        topics.MapPatch("{topicId:guid}", async (Guid departmentId, Guid topicId, HelpTopicRequest body, HelpTopicsAdminService service, CancellationToken ct) =>
+                TypedResults.Ok(await service.UpdateAsync(departmentId, topicId, body, ct)))
+            .RequirePermission(PermissionCodes.DepartmentFormsManage);
+        topics.MapPut("order", async (Guid departmentId, Sla.ReorderRequest body, HelpTopicsAdminService service, CancellationToken ct) =>
+                TypedResults.Ok(await service.ReorderAsync(departmentId, body, ct)))
+            .RequirePermission(PermissionCodes.DepartmentFormsManage);
 
         // Ticket types and ticket fields share the forms permission: they are the same configuration area (Ticketing).
         var types = app.MapGroup("/api/departments/{departmentId:guid}/ticket-types").WithTags("Ticket types");

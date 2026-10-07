@@ -68,6 +68,13 @@ export const portalFormSchema = z.object({
 })
 export type PortalForm = z.infer<typeof portalFormSchema>
 
+export const portalHelpTopicSchema = z.object({ id: z.string(), name: z.string(), description: z.string().nullish(), department: z.string(), formId: z.string() })
+export type PortalHelpTopic = z.infer<typeof portalHelpTopicSchema>
+
+/** Topics are offered only while their request form is usable by the caller; the server decides, the form still validates every submission. */
+export const listPortalHelpTopics = () => api('GET', '/api/portal/help-topics', { schema: z.array(portalHelpTopicSchema) })
+export const getPortalHelpTopic = (id: string) => api('GET', `/api/portal/help-topics/${encodeURIComponent(id)}`, { schema: portalHelpTopicSchema })
+
 export const listPortalForms = () => api('GET', '/api/portal/forms', { schema: z.array(portalFormListItemSchema) })
 export const getPortalForm = (id: string) => api('GET', `/api/portal/forms/${encodeURIComponent(id)}`, { schema: portalFormSchema })
 

@@ -6,6 +6,8 @@ namespace Helpdesk.Modules.Ticketing.Persistence;
 /// <summary>Phase 6 model: requester identity links, request forms, custom fields and their ticket values.</summary>
 internal sealed partial class TicketingDbContext
 {
+    public DbSet<Portal.HelpTopic> HelpTopics => Set<Portal.HelpTopic>();
+
     public DbSet<Notification> Notifications => Set<Notification>();
 
     public DbSet<TicketNotifyState> TicketNotifyStates => Set<TicketNotifyState>();
@@ -32,6 +34,27 @@ internal sealed partial class TicketingDbContext
 
     private void ConfigurePortal(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<Portal.HelpTopic>(e =>
+        {
+            e.ToTable("help_topics", t => t.HasCheckConstraint("ck_help_topics_name", "length(btrim(name)) BETWEEN 1 AND 100"));
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            e.Property(x => x.DepartmentId).HasColumnName("department_id");
+            e.Property(x => x.RequestFormId).HasColumnName("request_form_id");
+            e.Property(x => x.Name).HasColumnName("name").HasMaxLength(100);
+            e.Property(x => x.Description).HasColumnName("description").HasMaxLength(300);
+            e.Property(x => x.IsActive).HasColumnName("is_active");
+            e.Property(x => x.SortOrder).HasColumnName("sort_order");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            e.Property(x => x.Version).HasColumnName("xmin").HasColumnType("xid").IsRowVersion();
+            // The topic and its form are always of the SAME department (composite key), and a form with topics cannot be deleted (forms are only deactivated anyway).
+            e.HasOne<RequestForm>().WithMany().HasForeignKey(x => new { x.RequestFormId, x.DepartmentId })
+                .HasPrincipalKey(f => new { f.Id, f.DepartmentId }).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_help_topics_form_department");
+            e.HasIndex(x => new { x.DepartmentId, x.Name }).IsUnique().HasDatabaseName("ux_help_topics_department_name");
+            e.HasIndex(x => x.RequestFormId).HasDatabaseName("ix_help_topics_form");
+        });
+
         modelBuilder.Entity<Notification>(e =>
         {
             e.ToTable("notifications", t => t.HasCheckConstraint("ck_notifications_type", "type IN ('assigned','requester_reply','followed_update','mentioned')"));
