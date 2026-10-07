@@ -1,331 +1,456 @@
-# Post-Refinement-10 team review (PARTIAL)
+# Post-Refinement-10 team review (consolidated)
 
-Baseline: commit `081f660`. Mode: read-only, static reading (no suites, no browser automation, no Docker rebuild, no Graph/tenant calls). Nothing in the application was changed.
+Baseline: commit `081f660` (Refinement 10). Mode: read-only specialist review, static reading of the repository and documents. Nothing in the application was changed.
 
-## 0. Review coverage (read this first)
-
-The session limit interrupted the review. Only four of the ten specialist reviews returned usable results. This report consolidates exactly those handbacks and invents nothing for the others.
-
-| Specialist | Status | Prefix |
-|---|---|---|
-| Documentation / Content Designer | Completed | DOC |
-| Frontend / UX Engineer | Completed | UX |
-| SRE / Production Operations Engineer | Completed | SRE |
-| QA / Reliability Engineer | Completed | QA |
-| Lead Architect / Technical Lead | **Completed later (section 18)** | ARC |
-| ITSM Product & Service Desk Lead | **Completed later (section 19)** | ITSM |
-| Backend / Domain Engineer | **Completed later (section 17)** | BE |
-| Microsoft 365 / Messaging Engineer | **Completed later (section 16)** | MSG |
-| Security / Privacy Engineer | **Completed later (section 15)** | SEC |
-| Data / Reporting Engineer | **Completed later (section 20)** | DATA |
-
-Completed specialists also returned their findings as text (the findings files in the scratchpad were not written, because subagents were refused file writes). All of their detail below is taken from those handbacks. Confidence is quoted where the specialist stated it; "not stated" means the handback did not give one. Every completed review was static and sampled, not exhaustive; their stated limits are in section 14.
-
-**Areas that remain UNREVIEWED.** The absence of findings in these areas is not evidence that they are sound.
-
-- **Security / Privacy (highest priority gap; now reviewed, see section 15, which supersedes this bullet):** Department isolation on read and write paths, IDOR/BOLA, non-disclosure, Internal Note leakage paths, requester identity and audience enforcement, attachment security, XSS/sanitisation, audit completeness, logging privacy, and the new `article-links` and `queue-types` endpoints. Several UX/QA findings below ask for server-side confirmation (UX-009, UX-012, QA-004) that nobody has yet done.
-- **Messaging (Graph/Exchange; now reviewed, see section 16, which supersedes this bullet):** inbound sync, subscriptions, delta, threading, outbound state machine, uncertain-send reconciliation, NDR/loop suppression, mailbox health. D-16 evidence status was not re-assessed (it stays OPEN: simulator evidence only).
-- **Backend / Domain (now reviewed, see section 17, which supersedes this bullet):** concurrency, data integrity, constraints, indexes, Hangfire job idempotency, SLA job correctness, migrations.
-- **Architecture (now reviewed, see section 18, which supersedes this bullet):** module boundaries, outbox/transaction design, SignalR boundary, ADR gaps.
-- **ITSM product (now reviewed, see section 19, which supersedes this bullet):** ticket lifecycle semantics, queue/assignment clarity, SLA semantics as users see them, requester language, admin discoverability.
-- **Data / Reporting (now reviewed, see section 20, which supersedes this bullet):** dashboard and SLA metric semantics, history capture for future reports.
-
-Recommendation: re-run these six after the session limit resets (not done here, per instruction).
+How to read this report: sections 1 to 14 are the consolidated view (counts, blockers, decisions, remediation plan). Sections 15 to 21 are the specialist evidence behind them, with every finding, its evidence and its recommended fix. Finding IDs are stable and used everywhere (prefixes: SRE, UX, DOC, QA from the first four reviews; SEC, MSG, BE, ARC, ITSM, DATA from the later six). Nothing was removed from the evidence sections.
 
 ## 1. Executive summary
 
-Of the four completed reviews, none found a Critical issue. The most important results come from operations: the product has no production deployment artefact, no persistent Data Protection keys, no backup/restore procedure and no metrics, so it is not ready to deploy yet. These are gaps in production-readiness work, not defects in the features built so far.
+**Verdict.** The product is not ready for production, and the reasons are specific and fixable. No Critical finding was raised. Seven High findings were raised, and eleven distinct issues are production blockers (section 2). Most of the application is built carefully: the module structure, the concurrency and idempotency tools, the Department isolation on tickets, the Internal Note handling, the SLA arithmetic and the delivery-state honesty are strengths and should not be disturbed (section 13). The problems cluster in a few places.
 
-The frontend review found one real defect cluster in the agent workspace: global keyboard shortcuts stay live behind open dialogs (can tick a row checkbox behind a modal and feed an unintended bulk action), unreliable deep links from mention notifications, and a stale-version trap in the Knowledge editor after a failed publish. The QA review found that the realtime reconnect path does not reconcile after a long outage, and that several important recovery and concurrency paths are not covered by tests. The documentation review found two docs that contradict the locked "no fallback sender" rule and doc claims for features that do not exist.
+**What stands in the way (plain terms).**
+1. **Production hosting does not exist yet** (SRE-001, SRE-002, SRE-003, SRE-005, SRE-006): no deployment artefact, no persistent Data Protection keys, no backup or restore procedure, no metrics, and an unverified proxy-trust default.
+2. **A Platform Admin can read mail subjects and sender addresses of any department** through the mail attention queue (SEC-001), which breaks a locked rule. Automation history has the same pattern (SEC-005).
+3. **Anyone who holds a thread identifier can add themselves, or others, to a ticket's reply Cc list** (MSG-002, with SEC-006, BE-001 and MSG-003): a stranger's email can reopen a ticket, appear to the requester, and receive every later agent reply.
+4. **Retrying a bounced reply sends nothing but marks it Sent** (MSG-001).
+5. **Any Department Admin can register any mailbox**, so only unverified Exchange-side scoping stands between them and another person's mailbox (MSG-004), and the live Graph tenant evidence (D-16) is still missing.
+6. **No abuse controls and a thin attachment policy with no scanner** (SEC-003, SEC-002).
 
-Because Security, Messaging, Backend, Architecture, ITSM and Data did not complete, this report must not be read as a clean bill of health for those areas.
+**Where the effort should go.** The Architect's analysis shows most findings share a small number of causes (section 8). Four small, targeted fixes would close about fifteen findings: a ticket-party rule, one more use of the existing outbox pattern, a classification rule for administrative endpoints with one probe test, and a draft-id fix on retry with a guard on the delivery report.
 
-| Severity | Count |
+**What this report is not.** It is a static review. No full test suite, no broad browser run, no load or query testing, no restore drill, no live Graph tenant call and no mutation of the DEMO data were performed (section 14). The only runtime evidence is a short set of read-only requests made by the Security review to confirm SEC-001. D-16 (live Graph validation) remains open and no finding here is tenant evidence.
+
+### 1.1 Count reconciliation
+
+All ten specialists are represented. The table gives the raw count of findings as raised by each specialist, then reconciles it to distinct issues so that nothing is counted twice.
+
+| Specialist | Section | Critical | High | Medium | Low | Polish | Total |
+|---|---|---|---|---|---|---|---|
+| Documentation / Content (DOC) | 21 | 0 | 0 | 2 | 5 | 4 | 11 |
+| Frontend / UX (UX) | 21 | 0 | 0 | 5 | 11 | 3 | 19 |
+| SRE / Operations (SRE) | 21 | 0 | 4 | 7 | 3 | 0 | 14 |
+| QA / Reliability (QA) | 21 | 0 | 0 | 4 | 3 | 1 | 8 |
+| Security / Privacy (SEC) | 15 | 0 | 1 | 3 | 8 | 1 | 13 |
+| Messaging / Graph (MSG) | 16 | 0 | 2 | 4 | 5 | 1 | 12 |
+| Backend / Domain (BE) | 17 | 0 | 0 | 8 | 7 | 1 | 16 |
+| Lead Architect (ARC) | 18 | 0 | 0 | 4 | 5 | 0 | 9 |
+| ITSM / Service Desk (ITSM) | 19 | 0 | 0 | 3 | 4 | 0 | 7 |
+| Data / Reporting (DATA) | 20 | 0 | 0 | 3 | 6 | 0 | 9 |
+| **Raw findings** | | **0** | **7** | **43** | **57** | **11** | **118** |
+
+| Step | Effect | Critical | High | Medium | Low | Polish | Total |
+|---|---|---|---|---|---|---|---|
+| Raw specialist findings | as above | 0 | 7 | 43 | 57 | 11 | 118 |
+| Remove architectural root-cause findings that consolidate earlier defects (ARC-001 to ARC-004) | they explain existing findings and add no defect | 0 | 0 | -4 | 0 | 0 | -4 |
+| Remove duplicate halves of the same issue (SEC-006 is MSG-002; SEC-004 is BE-002) | same underlying issue reported twice; the higher-severity or fuller entry is kept | 0 | 0 | -1 | -1 | 0 | -2 |
+| **Distinct issues** | | **0** | **7** | **38** | **56** | **11** | **112** |
+
+Not counted in either table: four enhancements (ITSM section: E-1 to E-4, not defects) and the standing gates (section 10).
+
+*Related clusters that are kept as separate entries, because each needs its own fix even though they share a cause:* SEC-001 / SEC-005 / SEC-012 (same pattern on three endpoints or decisions); MSG-002 / MSG-003 / BE-001 (the party rule, three symptoms); MSG-001 / BE-009 / MSG-007 (delivery-state correctness); BE-004 / BE-005 / BE-015 (after-commit durability); SEC-002 / SRE-010 (attachment safety); SRE-008 / DOC-002 (the missing web/worker role split and the document that claims it); UX-005 / DOC-008 (mailbox deactivation warning and merge-dialog copy; DOC-008 keeps the rest); QA-004 / BE-003 / BE-010 / UX-016 (replay and staleness); SRE-011 / MSG-011 / DATA-003 (retention and audit); BE-007 / DATA-001 (first-response clock and sidebar counts); BE-006 / DATA-002 (SLA selection and the first-response figure). Where a duplicate is genuinely ambiguous the IDs are kept and the overlap is stated in the entries.
+
+| Item | Count |
 |---|---|
-| Critical | 0 |
-| High | 4 |
-| Medium | 18 |
-| Low | 22 |
-| Polish | 8 |
-| **Total** | **52** |
-
-By specialist: DOC 11 (M2, L5, P4), UX 19 (M5, L11, P3), SRE 14 (H4, M7, L3), QA 8 (M4, L3, P1). Production blockers: **5** (SRE-001, SRE-002, SRE-003, SRE-005, SRE-006; SRE-006 is unverified, see its entry). Decisions requiring the user: **12** (section 11).
-
-Overlaps merged: UX-005 with the Deactivate part of DOC-008; DOC-002 with SRE-008 (same missing `ROLE` mode); UX-016 tagged to QA-004 (idempotency of portal submit/reply). Counts above are per original finding ID; merged IDs stay listed together.
+| Raw findings | 118 |
+| Distinct issues after removing root-cause consolidations and duplicates | 112 |
+| Unique production blockers | 11 (7 High, 4 Medium) |
+| Standing gates kept separate (D-16, D-09, and evidence not yet produced) | see section 10 |
+| Unique decisions requiring the owner | 30 (from 37 raw "decision required" flags) |
+| Remediation workstreams | 16 in 5 priority bands |
+| Enhancements noted but not counted | 4 |
 
 ## 2. Production blockers
 
-Only completed-specialist items are listed. Known gates D-16 (live Graph tenant validation), D-08 (malware scanner) and D-09 (retention policy) remain open and are in section 10; they are not new findings.
+One deduplicated register of finding-level blockers. D-16 is a separate standing gate (section 10) and is not in this list.
 
-1. **SRE-001** No production deployment artefact (decision required).
-2. **SRE-002** Data Protection keys not persisted (D-13; decision required).
-3. **SRE-003** No backup/restore procedure or evidence (decision required).
-4. **SRE-005** No metrics or alertable signals; poison outbox rows retry forever.
-5. **SRE-006** Proxy trust configuration ships empty (unverified, needs one confirmation before treating as confirmed).
+| # | Finding ID(s) | Severity | Problem | Related / root cause | Decision | Stage |
+|---|---|---|---|---|---|---|
+| B-1 | SEC-001 | High | A Platform Admin without a membership reads the sender addresses and subjects of failed, uncertain and ignored mail of any department (confirmed at runtime) | SEC-005, SEC-012, ARC-002 (RC-4) | No (fix); D14 for the wider boundary | P0, WS-1 |
+| B-2 | MSG-002 (same issue as SEC-006) | High | Correlated mail is attached from any sender; the sender and its Cc join the ticket and receive every later reply; the ticket reopens | MSG-003, BE-001, MSG-012, ARC-003 (RC-2) | Yes, D8 | P0, WS-2 |
+| B-3 | MSG-001 | High | Retrying a reply after a bounce sends nothing and marks it Sent | BE-009, MSG-007, ARC-001 (RC-3) | No | P0, WS-3 |
+| B-4 | MSG-004 | Medium | Any Department Admin can register an arbitrary mailbox; only Exchange-side scoping (unverified, D-16 E-2) prevents reading or sending as another person | D-16 | Yes, D10 | P0, WS-4 |
+| B-5 | SRE-001 | High | No production deployment artefact; nothing serves the SPA; no proxy or WebSocket guidance | SEC-011 | Yes, D1 | P1, WS-5 |
+| B-6 | SRE-006 | Medium | Proxy trust ships empty (unverified: needs one confirmation) | SEC-009 context | No (verify first) | P1, WS-5 |
+| B-7 | SRE-002 | High | Data Protection keys not persisted (D-13): every container replacement drops sessions and antiforgery tokens | D-13 | Yes, D2 | P1, WS-6 |
+| B-8 | SRE-003 | High | No backup or restore procedure, script or evidence | ARC-007 | Yes, D3 | P1, WS-6 |
+| B-9 | SRE-005 | High | No metrics; stuck mail sync, outbox rows, failed jobs and SLA lag are unobservable; poison outbox rows retry forever | BE-005, SRE-004 | No | P1, WS-7 |
+| B-10 | SEC-003 | Medium | No rate limiting or abuse controls; uploads buffered in memory (a listed project gate) | MSG-005, BE-001 | No (values to agree) | P1, WS-8 |
+| B-11 | SEC-002 | Medium | Attachment policy is a short blocklist with no scanner (D-08); production accepts the scan requirement switched off | SRE-010 | Yes, D13 | P1, WS-8 |
+
+Eleven unique blockers: seven High, four Medium. B-1 to B-4 are application correctness and security (P0); B-5 to B-11 are production readiness (P1).
+
 
 ## 3. Critical findings
 
-None reported by the four completed reviews. (Security, the specialist most likely to find Critical items, did not run.)
+None raised by any of the ten specialists.
 
 ## 4. High findings
 
-### SRE-001: No production deployment artefact
-- **Specialist / category:** SRE / Deployment, Production Readiness. **Severity:** High. **Confidence:** not stated (static read).
-- **Evidence:** `docker-compose.yml` is dev only. `Program.cs` has no `UseStaticFiles`/`MapFallback`, so nothing serves the SPA. No reverse proxy, WebSocket or environment guidance.
-- **Affected area:** deployment topology, SPA hosting, SignalR through a proxy.
-- **Impact:** there is no defined way to run the product in production; the SPA is not served by the host.
-- **Smallest fix:** decide how the SPA is served (host static files vs separate web server) and the proxy; then provide one reference production compose/proxy configuration and a deployment/runbook document.
-- **Decision required:** Yes (how the SPA is served; which proxy). **Production blocker:** Yes.
+Seven findings, all on the production-blocker register in section 2. Detail and evidence: sections 15 to 21.
 
-### SRE-002: Data Protection keys not persisted (D-13)
-- **Specialist / category:** SRE / Production Readiness. **Severity:** High. **Confidence:** not stated.
-- **Evidence:** no `AddDataProtection` anywhere in `src`.
-- **Impact:** every container replacement invalidates all sessions, antiforgery tokens and any protected payloads. With more than one instance, cookies would not validate across them.
-- **Smallest fix:** persist keys to a durable store (location decision), with an application name set.
-- **Decision required:** Yes (key store location). **Production blocker:** Yes.
+| ID | Finding | Specialist | Workstream | Blocker | Decision |
+|---|---|---|---|---|---|
+| SRE-001 | No production deployment artefact | SRE | WS-5 | B-5 | D1 |
+| SRE-002 | Data Protection keys not persisted (D-13) | SRE | WS-6 | B-7 | D2 |
+| SRE-003 | No backup or restore procedure, script or evidence | SRE | WS-6 | B-8 | D3 |
+| SRE-005 | No metrics; stuck work is not observable | SRE | WS-7 | B-9 |  |
+| SEC-001 | Platform Admin reads sender addresses and subjects of any department's problem mail | Security | WS-1 | B-1 |  |
+| MSG-001 | Retry after a confirmed bounce does not send anything and reports the message as Sent | Messaging | WS-3 | B-3 |  |
+| MSG-002 | Correlated mail is accepted from any sender and can add recipients to the ticket (SEC-006) | Messaging | WS-2 | B-2 | D8 |
 
-### SRE-003: No backup or restore procedure, script or evidence
-- **Specialist / category:** SRE / Backup/Recovery. **Severity:** High. **Confidence:** not stated.
-- **Evidence:** no backup/restore script or document found; PostgreSQL and the object-store bucket must be restored consistently and nothing says how.
-- **Impact:** no demonstrated recoverability. A backup without a restore drill must not be treated as recoverability.
-- **Smallest fix:** document and script PostgreSQL + attachment backup, and perform and record one restore drill.
-- **Decision required:** Yes (RPO/RTO, storage target). **Production blocker:** Yes.
-
-### SRE-005: No metrics; stuck work is not observable
-- **Specialist / category:** SRE / Observability. **Severity:** High. **Confidence:** not stated.
-- **Evidence:** `Program.cs:68-77` is traces-only; ADR-008's metrics, denylist and correlation id are not implemented. `NotificationOutbox.cs:144-169` retries a poison row every minute indefinitely, with no counter or age signal.
-- **Impact:** nothing can alert on stale mail sync, stuck outbox rows, failed Hangfire jobs or SLA job lag; a poison notification row would loop forever silently.
-- **Smallest fix:** add a small set of operational counters/gauges (oldest unprocessed outbox row age, failed jobs, last mail-sync age, SLA job lag) and cap or park poison outbox rows with a visible state.
-- **Decision required:** No. **Production blocker:** Yes.
+(7 findings.)
 
 ## 5. Medium findings
 
-### SRE-006: Proxy trust configuration ships empty
-- **Specialist / category:** SRE / Security (deployment). **Severity:** Medium. **Confidence:** Low (the specialist recalled the framework behaviour and did not verify it).
-- **Evidence:** `Program.cs:56-66`, `appsettings.json:25` ship `Proxy:KnownProxies=[]`; nothing enforces it outside dev.
-- **Impact / abuse scenario (if confirmed):** with no known proxies or networks configured, forwarded headers may be trusted from any caller, so a client could spoof its address (rate limiting, logging, audit source IP).
-- **Smallest fix:** verify the framework behaviour with one targeted check; if confirmed, require explicit proxy configuration in Production (fail startup if absent).
-- **Decision required:** No. **Production blocker:** Yes, until verified otherwise.
+Forty-three raw findings. ARC-001 to ARC-004 are architectural root-cause findings that consolidate earlier defects, and SEC-004 duplicates BE-002; see section 1.1. Detail and evidence: sections 15 to 21.
 
-### SRE-004: Readiness check covers PostgreSQL only
-- `/health/ready` checks only Postgres; no object store, Hangfire or migration-state signal; no image `HEALTHCHECK`. **Impact:** an instance with a broken object store or stalled jobs reports ready. **Fix:** add object-store and job-processing signals to readiness. **Decision required:** Yes (what should make the instance "not ready"). **Blocker:** No. **Category:** Operations.
+| ID | Finding | Specialist | Workstream | Blocker | Decision |
+|---|---|---|---|---|---|
+| SRE-004 | Readiness check covers PostgreSQL only | SRE | WS-7 |  | D4 |
+| SRE-006 | Proxy trust configuration ships empty | SRE | WS-5 | B-6 |  |
+| SRE-007 | Per-module migrations with no cross-module atomicity or rollback policy | SRE | WS-6 |  | D5 |
+| SRE-008 | Single-host assumptions (presence in memory; ROLE not implemented) | SRE | WS-6 |  | D6 |
+| SRE-009 | Mail sync and dispatch share a small worker pool with a fixed lock and no retry | SRE | WS-7 |  |  |
+| SRE-010 | Production accepts unsafe storage/scan settings | SRE | WS-5 |  |  |
+| SRE-011 | No pruning or sizing for growing tables; console-only logs | SRE | WS-7 |  | D7 |
+| SEC-002 | Attachment policy is a short extension blocklist with no scanner behind it (D-08) | Security | WS-8 | B-11 | D13 |
+| SEC-003 | No rate limiting or abuse controls on authenticated endpoints; large uploads are buffered in memory | Security | WS-8 | B-10 |  |
+| SEC-004 | Merging tickets of different requesters shares one conversation with both people | Security | WS-2 |  | D9 |
+| MSG-003 | conversationId is accepted as sole evidence although it behaves like a subject match | Messaging | WS-2 |  | D8 |
+| MSG-004 | Any Department Admin can register an arbitrary mailbox; only Exchange-side scoping stops them | Messaging | WS-4 | B-4 | D10 |
+| MSG-005 | Acknowledgements go to an unauthenticated sender and carry attacker-chosen text | Messaging | WS-8 |  | D11 |
+| MSG-006 | Acknowledgements are not marked as automatic | Messaging | WS-3 |  |  |
+| BE-001 | Ticket participants have no limit and no way to be removed | Backend | WS-2 |  | D8 |
+| BE-002 | Merging tickets of different requesters orphans the source requester (backend side of SEC-004) | Backend | WS-2 |  | D9 |
+| BE-003 | Posting a public message has no idempotency key; the portal reply is not atomic with its attachments | Backend | WS-10 |  |  |
+| BE-004 | Automation and SLA-triggered work after commit is not durable | Backend | WS-9 |  | D16 |
+| BE-005 | One failing notification outbox item can block the whole queue; no attempt count or error is kept | Backend | WS-9 |  |  |
+| BE-006 | The SLA policy is chosen once at creation, before automation routes or classifies the ticket | Backend | WS-12 |  | D17 |
+| BE-007 | The first-response clock keeps running after a ticket is resolved or closed without a public reply | Backend | WS-12 |  | D18 |
+| BE-008 | Sorting the queue by SLA hides every ticket that has no deadline | Backend | WS-12 |  |  |
+| ARC-001 | The mail send outcome is encoded as strings across three layers | Architect | WS-3 |  |  |
+| ARC-002 | Isolation outside the Ticketing scope filter is by convention, and content can ride on administrative endpoints | Architect | WS-1 |  |  |
+| ARC-003 | "Who is a party to a ticket" has no single owner | Architect | WS-2 |  |  |
+| ARC-004 | Durable intent is applied to some after-commit work and not to the rest | Architect | WS-9 |  |  |
+| ITSM-001 | After an agent answers, the ticket looks untouched | ITSM | WS-13 |  | D20 |
+| ITSM-002 | Agents cannot hand a ticket to another team or colleague, and macros that do are invisible to them | ITSM | WS-13 |  | D21 |
+| ITSM-003 | A ticket without a stored mailbox can never be answered by email, and nothing repairs it | ITSM | WS-13 |  | D22 |
+| DATA-001 | The sidebar queue counts do not use the same definitions as the queue list or the dashboard | Data | WS-14 |  | D25 |
+| DATA-002 | "Awaiting first response" is silently an SLA figure | Data | WS-14 |  | D26 |
+| DATA-003 | The audit stream is both the source of truth for history and the place retention would have to change | Data | WS-14 |  | D7 |
+| UX-001 | Workspace shortcuts stay live behind open dialogs | Frontend/UX | WS-15 |  |  |
+| UX-002 | Notification deep link to #msg- is unreliable | Frontend/UX | WS-15 |  |  |
+| UX-003 | Article Publish leaves a stale version after a partial failure | Frontend/UX | WS-10 |  |  |
+| UX-004 | Row action buttons in admin tables share identical accessible names | Frontend/UX | WS-15 |  |  |
+| UX-005 | Mailbox Deactivate is one click with no consequence warning | Frontend/UX | WS-15 |  | D28 |
+| QA-001 | Realtime client does not reconcile after a long outage | QA | WS-10 |  |  |
+| QA-002 | Stuck-Sending outbound recovery is untested | QA | WS-11 |  |  |
+| QA-003 | Portal test helper auto-links requesters by raw SQL | QA | WS-11 |  |  |
+| QA-004 | Concurrency and duplicate coverage stops at ticket and organisation writes | QA | WS-10 |  | D19 |
+| DOC-001 | API/email docs contradict the locked "no fallback sender" rule | Documentation | WS-16 |  |  |
+| DOC-002 | Docs claim features that do not exist | Documentation | WS-16 |  |  |
 
-### SRE-007: Per-module migrations with no cross-module atomicity or rollback policy
-- Migrate runs module by module; the documented order lists 3 of 8 modules. **Impact:** a failure mid-way leaves modules at different schema versions with no stated recovery. **Fix:** document the full order and a rollback/restore policy. **Decision required:** Yes. **Blocker:** No. **Category:** Deployment.
-
-### SRE-008: Single-host assumptions (presence in memory; `ROLE` not implemented)
-- Presence is in memory; ADR-006 `ROLE=web|worker|all` is not implemented (merged with DOC-002). **Impact:** cannot run web and worker separately or scale out without presence and realtime gaps. **Fix:** either document single-instance as the supported model or schedule the role split. **Decision required:** Yes. **Blocker:** No. **Category:** Architecture/Operations.
-
-### SRE-009: Mail sync and dispatch share a small worker pool with a fixed lock and no retry
-- `SyncAll`/`Dispatch` run serially with a 120 s lock and no retry on 4 shared workers. **Impact:** a slow Graph can stall mail processing and other jobs. **Fix:** review lock timeout, per-mailbox isolation and retry. **Decision required:** No. **Blocker:** No. **Category:** Reliability. (Overlaps the unreviewed Messaging/Backend scope; confirm there.)
-
-### SRE-010: Production accepts unsafe storage/scan settings
-- Dev sign-in and the Fake mail provider are guarded and cannot be enabled in Production, but the guards key on the environment name only; `Storage:Provider=InMemory` and `RequireCleanScan=false` are accepted in Production. **Impact:** a misconfigured production could lose attachments on restart or skip scanning. **Fix:** fail startup in Production for those values (D-08 related). **Decision required:** No. **Blocker:** No. **Category:** Deployment/Security.
-
-### SRE-011: No pruning or sizing for growing tables; console-only logs
-- No pruning for the outbox, notifications, mail, or attachment orphans; logs go to the console only. **Impact:** unbounded growth; no retained logs. **Fix:** size estimates and a retention approach (ties to D-09), plus a log sink decision. **Decision required:** Yes. **Blocker:** No. **Category:** Operations.
-
-### UX-001: Workspace shortcuts stay live behind open dialogs
-- **Specialist / category:** Frontend / Accessibility. **Confidence:** High.
-- **Evidence:** `pages/WorkspacePage.tsx` (r, n) and `components/QueuePane.tsx` (j, k, arrows, Enter, x, /) call `useShortcuts` with no enabled flag; only `AppShell.tsx:63` gates on `dialog === null`. `lib/shortcuts.ts` ignores only INPUT, TEXTAREA, SELECT and contentEditable.
-- **Impact:** with focus on a button inside the Run macro dialog, `r` moves focus to the composer behind the modal; `x` ticks a row checkbox behind the dialog, which can pull unintended tickets into a later bulk action.
-- **Fix:** make the hook inert while a modal dialog is open (or pass an `enabled` flag). **Decision:** No. **Blocker:** No.
-
-### UX-002: Notification deep link to `#msg-` is unreliable
-- **Category:** Bug. **Confidence:** Medium. **Evidence:** `components/Conversation.tsx`: the message ref callback calls `scrollIntoView` on every re-render while the hash is present, and the container's effect sets `scrollTop = scrollHeight` after it, so the bottom scroll wins on first load. **Impact:** a mention notification lands on the newest message, and later renders pull the scroll back. **Fix:** scroll to the hash once in an effect after the bottom scroll; skip the bottom scroll when a hash is present. **Decision:** No. **Blocker:** No.
-
-### UX-003: Article Publish leaves a stale version after a partial failure
-- **Category:** Bug. **Confidence:** Medium. **Evidence:** `components/KnowledgeSection.tsx` `EditorForm.save` runs `saveDraft` then `publishArticle`; cache and `article` prop update only on success. **Impact:** if publish fails after the save succeeded, every retry gets a version conflict until the article is closed and reopened. **Fix:** update the cache after each step or on error. **Decision:** No. **Blocker:** No.
-
-### UX-004: Row action buttons in admin tables share identical accessible names
-- **Category:** Accessibility. **Confidence:** High. **Evidence:** bare "Edit" in `AutomationsSection.tsx:328`, `BusinessHoursSection.tsx:265`, `CannedManager.tsx:97`, `FormsSection.tsx:347`, `HelpTopicsSection.tsx:126`, `KnowledgeSection.tsx:376` (plus "Owner & review"), `MacrosSection.tsx:336`, `SlaPoliciesSection.tsx:206`, `TicketFieldsSection.tsx:203`, `TicketTypesSection.tsx:208`; the same for Deactivate, Retry and Resolve in `MailboxesSection.tsx`. `MembersSection.tsx` and `ViewsMenu` already use the correct pattern. **Impact:** screen-reader and voice users cannot tell controls apart and may change the wrong policy. **Fix:** apply the existing sr-only suffix or `aria-label` pattern. **Decision:** No. **Blocker:** No.
-
-### UX-005 (+ DOC-008, part): Mailbox Deactivate is one click with no consequence warning
-- **Category:** Administration. **Confidence:** Medium. **Evidence:** `components/MailboxesSection.tsx` `MailboxRow` calls `patch.mutate({ isActive: !m.isActive })` directly. Under the locked rule, a ticket whose stored mailbox is inactive cannot send public replies. **Impact:** one click blocks replies on every ticket that uses the mailbox; the default mailbox can be deactivated the same way. **Fix:** confirm dialog stating that replies on tickets using this mailbox are not sent until it is reactivated. **Decision required:** No for the confirmation wording; Yes only if you also want the UI to block deactivating the default mailbox. **Blocker:** No.
-
-### DOC-001: API/email docs contradict the locked "no fallback sender" rule
-- **Category:** Documentation. **Confidence:** not stated. **Evidence:** `docs/api/PHASE3_API.md:30` says sender identity is "the ticket's mailbox if active, else the department default"; `docs/architecture/EMAIL_ARCHITECTURE.md:161` (14c) says "Only tickets without a mailbox use the default." Both contradict `CLAUDE.md` and commit `ec64c07`. **Impact:** a reader (or future implementer) could reintroduce the fallback. **Fix:** state that the reply is recorded NotDelivered (`no_ticket_mailbox` / `mailbox_unavailable`) and that the default applies only at ticket creation. **Decision:** No. **Blocker:** No.
-
-### DOC-002 (+ SRE-008): Docs claim features that do not exist
-- **Category:** Documentation. **Evidence:** `ARCHITECTURE.md:4` claims `ROLE=web|worker|all` and `:49` claims OpenAPI-generated types; nothing reads `ROLE` (only a comment in `HangfireSetup.cs:11`), there is no generator script, and the BACKLOG lists both as open. **Impact:** misleads operators and developers. **Fix:** mark both as planned. **Decision:** No. **Blocker:** No.
-
-### QA-001: Realtime client does not reconcile after a long outage
-- **Category:** Reliability. **Confidence:** code-proven (per the specialist). **Evidence:** `src/web/src/lib/realtime.ts:180-186` `onreconnected` invalidates only `['tickets']`, `['ticket']`, `['notifications']`, never `['portal']`; after auto-reconnect gives up (about 47 s), `onclose` retries `start()` after 15 s (`:190`) and that success path (`:195-199`) invalidates nothing; `setConnectionFactory` (`:152`) is used by no test. **Impact:** after a long disconnection the UI shows "live" while missed events are never refetched. **Fix:** one shared reconcile function called from both paths and including `['portal']`; add one Vitest with a fake connection. **Decision:** No. **Blocker:** No.
-
-### QA-002: Stuck-`Sending` outbound recovery is untested
-- **Category:** Testing. **Evidence:** `MailSync.cs:329-345` requeues stale `Sending` rows or reconciles them if `submit_started` is set; no test mentions `Sending`; `MailOutboundTests.cs:76` forces `state='Queued'`, which a real crash never leaves; `submit_started` is matched by a raw `LIKE '%submit_started%'`, so a rename would silently turn reconcile into a blind resend. **Impact:** a regression could cause duplicate email. **Fix:** two tests (one per branch) with the flag produced by the real path. **Decision:** No. **Blocker:** No. (Not a demonstrated bug.)
-
-### QA-003: Portal test helper auto-links requesters by raw SQL
-- **Category:** Testing. **Evidence:** `Portal/PortalKit.cs:19-60` `TicketForAsync` inserts into `ticketing.requester_links` when an agent creates a ticket for a registered employee's address. **Impact:** production never does this ("email is not proof"), so many portal/merge/history tests start from an unreachable ownership state. **Fix:** add a negative control (the ticket is not visible in `/api/portal/requests` until linked) and use the real admin-resolution path in a few tests. **Decision:** No. **Blocker:** No.
-
-### QA-004: Concurrency and duplicate coverage stops at ticket and organisation writes
-- **Category:** Testing / Concurrency. **Evidence:** not raced: mailbox sync (advisory lock, `MailSync.cs:28`), the outbound claim (`OutboundMail.cs:186`; the test only dispatches sequentially), portal reply double-submit, and bulk versus a concurrent single edit (bulk passes `expectedVersion: null`, so it overwrites). **Impact:** duplicate or lost work could go unnoticed. **Fix:** targeted concurrency tests. **Decision required:** Yes for two points: should a duplicate portal reply be de-duplicated, and is bulk last-write-wins by design? **Blocker:** No.
+(43 findings.)
 
 ## 6. Low findings
 
-### SRE-012: Log privacy is convention only
-- Nothing enforces redaction (ADR-008 denylist not implemented). **Fix:** implement the denylist or a test. **Decision:** No. **Blocker:** No. **Category:** Observability/Privacy.
+Fifty-seven raw findings (SEC-006 duplicates MSG-002). Detail and evidence: sections 15 to 21.
 
-### SRE-013: No runbook for dependency-down cases
-- No documented behaviour/steps for PostgreSQL, object store or Graph unavailable. **Fix:** short runbook. **Decision:** No. **Blocker:** No. **Category:** Operations.
+| ID | Finding | Specialist | Workstream | Blocker | Decision |
+|---|---|---|---|---|---|
+| SRE-012 | Log privacy is convention only | SRE | WS-7 |  |  |
+| SRE-013 | No runbook for dependency-down cases | SRE | WS-7 |  |  |
+| SRE-014 | Floating image tags, :latest SeaweedFS, AllowedHosts=* | SRE | WS-5 |  |  |
+| SEC-005 | Automation execution history is not covered by the department scope filter | Security | WS-1 |  |  |
+| SEC-006 | A correlated inbound email is accepted from any sender into an existing ticket | Security | WS-2 |  | D8 |
+| SEC-007 | Entra email/preferred_username is treated as a verified address | Security | WS-13 |  | D15 |
+| SEC-008 | Any Department Admin can search the whole organisation's directory | Security | WS-13 |  |  |
+| SEC-009 | SignalR hub has no WebSocket origin allow-list | Security | WS-5 |  |  |
+| SEC-010 | Sanitiser keeps data: links in HTML mail and signatures | Security | WS-5 |  |  |
+| SEC-011 | Document responses carry no clickjacking or content-type headers | Security | WS-5 |  |  |
+| SEC-012 | Platform Admin's reach over non-content department data is implicit and undocumented | Security | WS-1 |  | D14 |
+| MSG-007 | Any sender can pose as a bounce and mark a sent reply as failed | Messaging | WS-3 |  |  |
+| MSG-008 | Uncertain sends are never reconciled automatically | Messaging | WS-3 |  |  |
+| MSG-009 | Ignored inbound mail cannot be released to a ticket | Messaging | WS-13 |  | D12 |
+| MSG-010 | A re-delivered message with the same Message-ID after 2 seconds becomes a second ticket | Messaging | WS-3 |  |  |
+| MSG-011 | Full bodies of all inbound mail, including ignored and bounce mail, are kept with no purge | Messaging | WS-14 |  |  |
+| BE-009 | The delivery-state report has no transition rules | Backend | WS-3 |  |  |
+| BE-010 | Bulk edits apply to whatever state a ticket is in now | Backend | WS-10 |  | D19 |
+| BE-011 | Invalid references answer with 400 in some places and 409 in others | Backend | WS-16 |  |  |
+| BE-012 | Requester identity resolution is capped at 100 cases with no paging or search | Backend | WS-13 |  |  |
+| BE-013 | Saving queue preferences for the first time twice at once returns a server error | Backend | WS-10 |  |  |
+| BE-014 | Lifecycle timestamps are overwritten, so the first resolution time is not kept | Backend | WS-12 |  |  |
+| BE-015 | A queued notification is classified from the ticket's state at drain time, not at event time | Backend | WS-9 |  |  |
+| ARC-005 | "Open work" is restated in four other files besides the shared predicate | Architect | WS-14 |  |  |
+| ARC-006 | Significant decisions since ADR-015 are recorded in long bullets, not ADRs | Architect | WS-16 |  |  |
+| ARC-007 | Cross-schema database coupling and migration order are accepted in practice but not written down or tested | Architect | WS-6 |  |  |
+| ARC-008 | A cross-module contract carries a security precondition only in prose | Architect | WS-16 |  |  |
+| ARC-009 | Maintainability: one very large service and an unchecked client contract | Architect | WS-16 |  |  |
+| ITSM-004 | The portal status "Waiting" does not say whose turn it is | ITSM | WS-13 |  | D23 |
+| ITSM-005 | Resolving or closing without a public message tells the requester nothing, and nothing ever closes a resolved ticket | ITSM | WS-13 |  | D24 |
+| ITSM-006 | The department setup overview can say "1 active form" when no requester can use it | ITSM | WS-13 |  |  |
+| ITSM-007 | New email tickets are unrouted and only an administrator-built rule routes them | ITSM | WS-13 |  |  |
+| DATA-004 | The three ticket-creation audit events have different shapes | Data | WS-14 |  |  |
+| DATA-005 | A merged ticket keeps its status and is easy to count by mistake | Data | WS-14 |  | D27 |
+| DATA-006 | Lifecycle columns hold the current value only | Data | WS-14 |  |  |
+| DATA-007 | Two ideas of "about to breach", and an age that mixes waiting on us with waiting on the requester | Data | WS-12 |  |  |
+| DATA-008 | Some facts are not captured at all and cannot be rebuilt later | Data | WS-14 |  |  |
+| DATA-009 | One person can be several requesters | Data | WS-14 |  |  |
+| UX-006 | Reorder arrows lose focus; one reorder dialog can race | Frontend/UX | WS-15 |  |  |
+| UX-007 | Focus not restored after choosing from the ticket More menu | Frontend/UX | WS-15 |  |  |
+| UX-008 | Esc or Close silently discards typed work | Frontend/UX | WS-15 |  |  |
+| UX-009 | BulkBar sends a hidden Team/Assignee choice after the selection spans departments | Frontend/UX | WS-15 |  |  |
+| UX-010 | Portal "My requests" tabs use ARIA tab roles without the keyboard model | Frontend/UX | WS-15 |  |  |
+| UX-011 | Saved-view Delete is immediate; Archive saves the draft without saying so | Frontend/UX | WS-15 |  |  |
+| UX-012 | Retry sending checks permission against any department | Frontend/UX | WS-15 |  |  |
+| UX-013 | Mention picker ARIA does not match behaviour | Frontend/UX | WS-15 |  |  |
+| UX-014 | Portal file picker silently truncates to 5; no feedback after reply or submit | Frontend/UX | WS-15 |  |  |
+| UX-015 | Mailbox edit shows a stale name; 8-column table has no overflow handling | Frontend/UX | WS-15 |  |  |
+| UX-016 | Portal state persists across route params | Frontend/UX | WS-10 |  |  |
+| QA-005 | Negative realtime leak tests rely on fixed sleeps | QA | WS-11 |  |  |
+| QA-006 | Recurring-job registration is never verified | QA | WS-11 |  |  |
+| QA-007 | Structural guard coverage is Ticketing only | QA | WS-1 |  | D30 |
+| DOC-003 | Stale phase and module statements | Documentation | WS-16 |  |  |
+| DOC-004 | Docs say "full suite at milestones", contradicting CLAUDE.md | Documentation | WS-16 |  |  |
+| DOC-005 | Demo tooling and operations runbook missing from docs | Documentation | WS-16 |  |  |
+| DOC-006 | Automation history shows raw codes | Documentation | WS-16 |  |  |
+| DOC-008 | Weak confirmation copy | Documentation | WS-16 |  |  |
 
-### SRE-014: Floating image tags, `:latest` SeaweedFS, `AllowedHosts=*`
-- Unpinned images and unrestricted host header. **Fix:** pin tags; set `AllowedHosts` for production. **Decision:** No. **Blocker:** No. **Category:** Deployment.
-
-### UX-006: Reorder arrows lose focus; one reorder dialog can race
-- `HelpTopicsSection.tsx` disables arrows while pending (focus drops); `QueuePrefsMenu.tsx` disables arrows at list ends; `KnowledgeSection.tsx` `CategoryDialog` has no pending guard and builds the order from stale props. **Impact:** keyboard users lose their place; fast double click sends mismatched orders. **Fix:** `aria-disabled` plus early return; add the pending guard. **Confidence:** Medium. **Category:** Accessibility.
-
-### UX-007: Focus not restored after choosing from the ticket More menu
-- `components/TicketLinks.tsx` `MoreMenu` closes the menu before opening the dialog, so `Dialog.tsx` records `body` as the opener. **Impact:** focus lands at the top of the page afterwards. **Fix:** focus the trigger first or add a `returnFocusTo` prop. **Confidence:** High. **Category:** Accessibility.
-
-### UX-008: Esc or Close silently discards typed work
-- `Dialog.tsx` always closes on Esc; `NewTicketDialog.tsx` and the Knowledge article editor (12-row body) have no dirty check, unlike the composer. **Fix:** optional `dirty` prop with confirmation. **Confidence:** Medium. **Category:** UX.
-
-### UX-009: BulkBar sends a hidden Team/Assignee choice after the selection spans departments
-- `components/BulkBar.tsx` does not reset `team`/`assignee` when `needDept` becomes true; the selects are disabled but `change` still includes them. **Impact:** Apply may send a team picked for department A with a ticket from department B; the server should reject per ticket but the agent cannot see what is sent. **Fix:** clear or drop those values. **Tag:** Security must confirm per-ticket server rejection (UNREVIEWED). **Confidence:** Medium. **Category:** Authorization (UX).
-
-### UX-010: Portal "My requests" tabs use ARIA tab roles without the keyboard model
-- `pages/portal/PortalRequests.tsx`: `role=tab` with no arrow keys, roving `tabIndex` or `aria-controls`; the shared `Tabs` in `components/common.tsx` is correct. **Fix:** reuse `Tabs` or use `aria-pressed` buttons. **Confidence:** High. **Category:** Accessibility.
-
-### UX-011: Saved-view Delete is immediate; Archive saves the draft without saying so
-- `ViewsMenu.tsx:102` deletes without confirmation (members removal confirms); the Archive mutation in `KnowledgeSection.tsx` calls `saveDraft` first. **Fix:** confirm the delete; state or skip the draft save. **Confidence:** High. **Category:** UX.
-
-### UX-012: Retry sending checks permission against any department
-- `components/Conversation.tsx` `Delivery` uses `me.memberships.some(canTicket(me,'tickets.reply',…))` instead of the ticket's department. **Impact:** UX only (the server authorises); a user may see a Retry button that errors. **Fix:** pass the ticket's department. **Confidence:** Medium. **Category:** Authorization (UX).
-
-### UX-013: Mention picker ARIA does not match behaviour
-- `Composer.tsx`: `role=listbox` with `role=option` buttons and constant `aria-selected="false"`; no arrow keys, `aria-controls`, `aria-expanded` or `aria-activedescendant`; results not announced. **Fix:** implement combobox behaviour, or drop roles and add a polite result count. **Confidence:** Medium. **Category:** Accessibility.
-
-### UX-014: Portal file picker silently truncates to 5; no feedback after reply or submit
-- `PortalSubmit.tsx`, `PortalRequest.tsx` use `.slice(0,5)` with no message; reply success shows no status; submit-success does not move focus. **Fix:** messages and focus (wording to Content). **Confidence:** High. **Category:** Requester Experience.
-
-### UX-015: Mailbox edit shows a stale name; 8-column table has no overflow handling
-- `MailboxRow` initialises `useState(m.displayName)` once, so a concurrent rename is overwritten on Save; `table.grid` has no overflow wrapper (about 900 px usable at 1366 wide, a static estimate, not measured). **Fix:** reset the name when the form opens; wrap the table; one laptop-width check. **Confidence:** Low. **Category:** Administration.
-
-### UX-016 (tag QA-004): Portal state persists across route params
-- `PortalRequest.tsx` keeps `text`/`files` when `:reference` changes; `PortalSubmit.tsx` `RequestForm` keeps `subject`, `values`, `submissionId` when `formId` changes; neither is keyed. **Impact:** a draft or idempotency id could carry to another request/form. **Fix:** key by `reference`/`formId`. **Tag:** Backend for idempotency scope (UNREVIEWED). **Confidence:** Low. **Category:** Requester Experience.
-
-### DOC-003: Stale phase and module statements
-- `DEVELOPMENT.md`: schemas listed as audit/identity/organisation only, "Graph added in Phase 3"; `ARCHITECTURE.md` module table still "Planned" with no Knowledge row; `PRODUCT.md`/`DEVELOPMENT_PLAN.md` still list "tags" (a locked exclusion), "later a portal", and omit Refinements 1-11. **Fix:** refresh. **Category:** Documentation.
-
-### DOC-004: Docs say "full suite at milestones", contradicting `CLAUDE.md`
-- `DEVELOPMENT.md`, `DEVELOPMENT_PLAN.md`. **Fix:** align with "full suite only on explicit request". **Category:** Documentation.
-
-### DOC-005: Demo tooling and operations runbook missing from docs
-- `dev-demo-seed`/`dev-demo-reset` undocumented in `DEVELOPMENT.md`; `docs/guides` has only the Graph runbook; README links only five documents. **Category:** Documentation.
-
-### DOC-006: Automation history shows raw codes
-- `AutomationsSection.tsx:145,198,211` show `loop_detected`, `max_depth`, `addInternalNote`. **Fix:** reuse `ACTION_LABEL` / `RESULT_TEXT`. **Category:** Copy/Terminology.
-
-### DOC-008 (rest): Weak confirmation copy
-- The merge dialog never says it cannot be undone; the member-removal `window.confirm` is vague. (The mailbox part is under UX-005.) **Category:** Copy/Terminology.
-
-### QA-005: Negative realtime leak tests rely on fixed sleeps
-- `RealtimeTests.cs:97-105` (1200 ms) and `:361, 416, 454, 488` (300 ms); a late leaked event gives a false pass; the presence test mixes wall clock with an injected sweep time. **Fix:** send a positive sentinel after the silence window; use `AdjustableClock`. **Category:** Testing.
-
-### QA-006: Recurring-job registration is never verified
-- `Jobs:Enabled=false` in all tests, so the registration of the five recurring jobs (`HangfireSetup.cs:62-76`) is untested. **Category:** Testing.
-
-### QA-007: Structural guard coverage is Ticketing only
-- Architecture tests cover Ticketing, not Knowledge, Mail or Attachments queries. **Decision required:** structural guard there, or accept example-based coverage? **Category:** Testing.
+(57 findings.)
 
 ## 7. Polish / copy / visual findings
 
-- **UX-017:** Dashboard subtitle exposes roadmap wording ("Not a history: reports come later") in `pages/DashboardPage.tsx`. Remove the sentence.
-- **UX-018:** Dead realtime foreign-change code (`lib/realtime.ts` `useRemoteChange`/`clearRemoteChange` have no non-test callers; the module-level `remote` map grows for the session). **Decision required:** remove, or wire an "updated by someone else" notice?
-- **UX-019:** Small items: breadcrumb in `DepartmentPage.tsx` where "Administration" and "Departments" both link to `/admin`; unnamed trailing `<th />` in `KnowledgeSection.tsx` and `MailboxesSection.tsx`; Knowledge title search is not debounced; every failed message renders `role=alert` in `Conversation.tsx` with no live region for new messages; `.notify-panel` hard-coded at `left:190px; top:5.25rem`; no loading state in `NotificationBell`; spacing typo `defaultStatuses =mode` in `QueueFilters.tsx`.
-- **DOC-007:** `MembersSection.tsx` shows roles as "DepartmentAdmin" / "TeamLead" (should read as names).
-- **DOC-009:** Server 400 messages read "q: q must be at least 2 characters." (not verified at runtime).
-- **DOC-010:** The `CLAUDE.md` collaboration "planned order" is already built, and `MVP.md` has no historical marker; the mailbox-assignment workflow question exists only in `CLAUDE.md`. **Decision required:** register it as a row in `OPEN_DECISIONS.md`?
-- **DOC-011:** Documentation mixes "authorization" and "authorised" (pick one spelling convention).
-- **QA-008:** Bulk edit on a merged source is untested; e2e has `retries: 0` and a fixed `waitForTimeout` at `portal.spec.ts:273`.
+Eleven findings, kept deliberately rather than discarded. Detail and evidence: sections 15 to 21.
+
+| ID | Finding | Specialist | Workstream | Blocker | Decision |
+|---|---|---|---|---|---|
+| SEC-013 | Knowledge markdown accepts /\host as an in-app link | Security | WS-16 |  |  |
+| MSG-012 | Every reply shows an opaque token to the requester | Messaging | WS-2 |  |  |
+| BE-016 | A validation message lists the wrong allowed sources | Backend | WS-16 |  |  |
+| UX-017 | Dashboard subtitle exposes roadmap wording | Frontend/UX | WS-15 |  |  |
+| UX-018 | Dead realtime foreign-change code | Frontend/UX | WS-15 |  | D29 |
+| UX-019 | Small visual items (breadcrumb, unnamed headers, debounce, live regions, panel position, loading state, spacing typo) | Frontend/UX | WS-15 |  |  |
+| QA-008 | Merged-source bulk edit untested; fixed wait in an end-to-end test | QA | WS-11 |  |  |
+| DOC-007 | Roles shown as DepartmentAdmin / TeamLead in Members | Documentation | WS-16 |  |  |
+| DOC-009 | Server 400 messages repeat the field name | Documentation | WS-16 |  |  |
+| DOC-010 | Mailbox-assignment question missing from the open-decisions list; roadmap wording stale | Documentation | WS-16 |  | D22 |
+| DOC-011 | Mixed "authorization" / "authorised" spelling in documents | Documentation | WS-16 |  |  |
+
+(11 findings.)
 
 ## 8. Cross-cutting root causes
 
-1. **Production hosting was never designed as a deliverable.** SRE-001/002/003/005/006/007/010/011/014, DOC-002 and DOC-005 all come from the same gap: the build targets development, with ADR-008/006/010 intentions (metrics, role split, deployment) not yet implemented or written down.
-2. **Docs are not updated when behaviour is decided.** DOC-001/002/003/004/010 show decisions (no fallback sender, single-agent testing policy, finished roadmap items) not propagated into older documents.
-3. **Dialog and keyboard behaviour is handled per component, not centrally.** UX-001, 006, 007, 008, 013 share one cause: `useShortcuts` and `Dialog` have no common contract (modal awareness, focus return, dirty-guard).
-4. **Mutation sequences without step-wise cache updates.** UX-003, UX-015 and UX-016 follow one pattern: client state is updated only on overall success or only on mount.
-5. **Realtime is advisory but its recovery path is weakly specified and untested.** QA-001, UX-018 and QA-005.
-6. **Recovery and concurrency paths are tested only on happy or sequential paths.** QA-002, 003, 004, 006, 007.
+From the Lead Architect's analysis (section 18.2), checked against the other specialists. A fix at the root closes several findings at once.
 
-## 9. Test gaps (from QA, and gaps flagged by UX/SRE)
+| Root cause | Findings it explains | Systemic or local | One fix that closes several |
+|---|---|---|---|
+| **RC-1. After-commit work is durable in some places and best-effort in others.** Durable: notification outbox, mail outbox, delivery re-report. Not durable: automation dispatch, SLA breach follow-up. | BE-004, BE-005, BE-015, ARC-004, SRE-005 | Systemic for automation and SLA follow-up; the rest is local | Reuse the existing outbox pattern for automation and SLA follow-up (a small intent row in the same transaction, drained by the existing job, deterministic keys kept); add attempt count and last error to the outbox row. Not a general event framework. |
+| **RC-2. Nothing defines who is a party to a ticket.** Requester, participants (a bag of addresses without provenance), message authors and merged requesters are decided separately by mail, portal, merge and outbound Cc. | MSG-002, SEC-006, MSG-003, BE-001, SEC-004, BE-002, ARC-003, MSG-012 | Systemic | One small rule in one place: a correlated message attaches only from the requester or an existing participant; participants record who added them, are capped and removable; a merge across requesters has an explicit rule. |
+| **RC-3. The send outcome crosses the Mail/Ticketing boundary as a status plus a magic string.** | MSG-001, BE-009, MSG-007, ARC-001, QA-002 | Partly systemic; the MSG-001 defect itself is local | Local first: a retry of an already-submitted message clears the draft id and is a recorded re-send. Then explicit uncertain and bounced states so string checks disappear. |
+| **RC-4. Isolation outside the scope-filtered ticket set is by convention, and administrative permissions pass for a Platform Admin without membership.** | SEC-001, SEC-005, SEC-012, ARC-002, QA-007 | Systemic but small in extent (two endpoints today) | One stated rule (content-derived fields need ticket read by membership; administrative permission returns configuration only), the two endpoint fixes, and one probe test over every administrative GET as a non-member Platform Admin. |
+| **RC-5. Lifecycle rules decided once and never re-evaluated.** SLA policy chosen at creation before routing; first-response clock independent of status; lifecycle timestamps overwritten. | BE-006, BE-007, BE-014, DATA-006, DATA-007 | Local to the SLA and lifecycle code; needs three product decisions | One decision session (D17, D18), then a small change in one module. |
+| **RC-6. Client-initiated writes lack replay and staleness protection while the core is strict.** | BE-003, BE-010, QA-004, UX-016, UX-003, BE-013 | Local, repeated | Optional client message id used as the unique source reference (the mechanism exists for portal creation); optional per-row versions for bulk. |
+| **RC-7. Production hosting is not yet a deliverable.** | SRE-001 to SRE-014, SEC-009, SEC-010, SEC-011, ARC-007 | Systemic, outside the application code | The planned deployment work (section 12). |
+| **RC-8. Decisions are recorded in dense bullets, not ADRs; documents lag decisions.** | DOC-001 to DOC-011, ARC-006, ARC-008, ARC-009 | Systemic in process, cheap to fix | The missing ADRs and a documentation refresh. |
+| **RC-9. The headline figures were each defined separately.** Open work is restated in several places; the sidebar, list and dashboard disagree; "awaiting first response" is an SLA figure. | DATA-001, DATA-002, DATA-005, ARC-005 | Systemic, easy to fix once decided | One shared definition of "counted ticket", "open work" and "awaiting first response" used by the sidebar, list, dashboard and future reports. |
 
-Highest-value targeted tests to add (no broad suites):
-1. Realtime reconcile after reconnect and after the manual restart path, including `['portal']` (QA-001).
-2. Stuck-`Sending` recovery: both branches, with the real `submit_started` flag (QA-002).
+Blockers outside hosting: B-2 traces to RC-2, B-3 to RC-3, B-1 to RC-4. B-4 (MSG-004), B-10 (SEC-003) and B-11 (SEC-002) have no architectural cause: a missing verification step and decision, the abuse-controls gate and the attachment-scanning gate.
+
+## 9. Test gaps
+
+Targeted tests only; none of these asks for a broad suite. Sources in brackets.
+
+1. Realtime reconcile after reconnect and after the manual restart path, including the portal query keys (QA-001).
+2. Stuck-`Sending` recovery for both branches, with the real `submit_started` flag; and send, bounce, retry, assert a second provider send (QA-002, MSG-001).
 3. Negative control that an agent-created ticket is not portal-visible until a real link exists (QA-003).
-4. Concurrency: mailbox sync lock, outbound claim, portal reply double-submit, bulk vs concurrent edit (QA-004; two need decisions).
+4. Concurrency and replay: mailbox sync lock, outbound claim, portal and agent reply double-submit, bulk against a concurrent edit (QA-004, BE-003, BE-010; two need decisions D19 and none for BE-003).
 5. Sentinel-based negative realtime assertions instead of fixed sleeps (QA-005).
-6. Recurring job registration (QA-006).
-7. Structural guards for Knowledge/Mail/Attachments queries, if wanted (QA-007).
-8. Frontend: shortcut suppression behind dialogs (UX-001), BulkBar clearing hidden choices (UX-009), Knowledge editor retry after partial failure (UX-003).
-9. Server-side confirmation (not performed) that bulk change rejects a foreign-department team/assignee per ticket (UX-009).
+6. Recurring job registration (QA-006) and bulk edit of a merged source (QA-008).
+7. Structural guards for Knowledge, Mail and Attachments queries, if wanted (QA-007, D30).
+8. A probe test: sign in as a non-member Platform Admin and call every GET under an administrative permission, asserting that no content-classified field appears (ARC-002, SEC-001, SEC-005).
+9. The sender rule for correlated mail, participant cap and removal (MSG-002, BE-001); the outcome of a cross-requester merge for both requesters (BE-002).
+10. Sidebar counts against the lists they open (DATA-001).
+11. Frontend: shortcut suppression behind dialogs (UX-001), BulkBar clearing hidden choices (UX-009), Knowledge editor retry after a partial failure (UX-003).
+12. Durable automation after a restart between commit and dispatch, and an outbox item that fails persistently (BE-004, BE-005), once the decisions are made.
+13. Test-quality items: the portal helper that links requesters by raw SQL hides an unreachable state (QA-003); negative realtime tests rely on fixed sleeps (QA-005).
 
-Strengths noted by QA: tests use the real stack (dev-login, real migrations, database per fixture, real CSRF); isolation, revocation and Internal Note realtime paths are well covered; architecture tests pin the anonymous/authenticated-only endpoint lists, the CSRF-exempt webhooks and every `IgnoreDepartmentScope()` caller; mail covers uncertain and duplicate cases.
+What the existing tests do well (do not disturb): they use the real stack (dev-login, real migrations, a database per fixture, real CSRF); isolation, revocation and Internal Note realtime paths are well covered; the architecture tests pin the anonymous and authenticated-only endpoint lists, the CSRF exemptions, every scope-bypass call and the module dependency graph; mail covers uncertain and duplicate cases.
 
 ## 10. Production-readiness gates
 
-Open gates known from the project (not re-assessed by any completed specialist unless stated):
-- **D-16** live Graph tenant validation: OPEN (simulator evidence only). Messaging review did not complete.
-- **D-08** malware scanning gate: open (SRE-010 adds that `RequireCleanScan=false` is accepted in Production).
-- **D-13** persistent Data Protection keys: open (SRE-002).
-- **D-09** retention policy: open (SRE-011 pruning depends on it).
-- **Backup/restore evidence:** open (SRE-003).
-- **New from this review:** production deployment artefact (SRE-001), metrics/alerting (SRE-005), proxy trust confirmation (SRE-006).
-- **Security review of the delivered product:** not done; this is a gate in its own right.
+Standing gates, separate from the finding-level blockers in section 2.
 
-## 11. Decisions required from you (12)
+| Gate | Status | Notes |
+|---|---|---|
+| **D-16 live Graph tenant validation** | **OPEN.** Runbook unrun; the E-1 to E-38 result table is empty; the Refinement 3 attempt was recorded as blocked (no approved tenant). | All Graph and Exchange behaviour is code and simulator evidence only. Nothing in this review is tenant evidence. Experiments that the findings depend on are tabled in section 16.7. |
+| **D-09 retention and data lifecycle policy** | OPEN (policy). | Retention, export, anonymisation and legal hold are undecided. Pruning (SRE-011), raw mail retention (MSG-011) and audit-stream separation (DATA-003) wait on it. |
+| **D-08 malware scanning engine** | OPEN (engine choice). | Scanning is required before production releases that accept attachments. SEC-002 and SRE-010 depend on it. |
+| **D-13 persistent Data Protection keys** | OPEN. | Same item as blocker B-7 (SRE-002). |
+| **Backup and restore evidence** | OPEN. | Same item as blocker B-8 (SRE-003). A backup without a restore drill must not be treated as recoverability. |
+| **Abuse controls** | OPEN. | Same item as blocker B-10 (SEC-003). |
+| **Evidence not yet produced** | NOT RUN | A full regression run, a broad browser pass, load or query testing at scale, and a restore drill have not been performed (by instruction). They are the evidence that would be needed to claim readiness; each needs explicit permission before it is run. |
 
-1. **SRE-001** How is the SPA served (host static files vs separate server) and which reverse proxy?
-2. **SRE-002** Where do Data Protection keys live?
-3. **SRE-003** Backup targets, RPO/RTO, and who performs the restore drill?
-4. **SRE-004** What should make an instance "not ready" (object store, jobs, migrations)?
-5. **SRE-007** Migration order/rollback policy across the eight modules (restore-from-backup vs down migrations)?
-6. **SRE-008** Is single-instance the supported model, or is the web/worker role split to be built?
-7. **SRE-011** Retention/pruning and log sink approach (depends on D-09).
-8. **UX-005** Beyond a consequence confirmation, should the UI block deactivating the default mailbox?
-9. **UX-018** Remove the dead foreign-change realtime code, or wire an "updated by someone else" notice?
-10. **DOC-010** Register the mailbox-assignment workflow question in `OPEN_DECISIONS.md`?
-11. **QA-004** Should a duplicate portal reply be de-duplicated? Is bulk last-write-wins by design?
-12. **QA-007** Structural guards for Knowledge/Mail/Attachments, or accept example-based coverage?
+Not a gate but a precondition: ITSM-003 (tickets without a stored mailbox) should be settled before the portal is opened to requesters.
 
-(The two parts of QA-004 count as one decision here.)
+## 11. Decisions required from you
 
-## 12. Recommended remediation order
+Thirty distinct questions. Raw "decision required" flags across the specialist entries were 37; several specialists asked the same question. "Blocks" says whether the related remediation cannot be finished until you decide; most fixes that do not depend on a decision can proceed independently. "Default" is given only where the review clearly supports one.
 
-1. Re-run the six unreviewed specialist reviews, **Security first**, then Messaging and Backend. Fix nothing security-related until that exists.
-2. Resolve decisions 1-3 and 7, then build production readiness: deployment artefact and proxy trust check (SRE-001, SRE-006), persistent Data Protection keys (SRE-002), backup/restore plus one restore drill (SRE-003), minimal metrics and poison-row handling (SRE-005, SRE-004).
-3. Fix confirmed workspace defects: UX-001 (shortcuts behind dialogs), UX-003 (stale publish version), UX-002 (notification deep link), QA-001 (realtime reconcile) with its test.
-4. Documentation fixes that remove contradictions with locked rules (DOC-001, DOC-002, DOC-004, DOC-003).
-5. Accessibility sweep: UX-004, 006, 007, 010, 013.
-6. Safety/clarity: UX-005 (mailbox deactivate), UX-008, UX-009, UX-011, DOC-008.
-7. Recovery and concurrency tests: QA-002, QA-003, QA-004 (after decision), QA-005, QA-006.
-8. Remaining Low and Polish items together in one pass.
+| # | Related IDs | Question | Why it matters | Options the review supports | Default (if clearly supported) | Blocks |
+|---|---|---|---|---|---|---|
+| D1 | SRE-001, SEC-011 | How is the web app served in production, and which reverse proxy terminates TLS and WebSockets? | There is no production artefact; security headers for the app page belong to this layer. | Host serves the built app; or a separate static web server behind the same proxy. | None | WS-5 |
+| D2 | SRE-002 (D-13) | Where do the Data Protection keys live? | Without durable keys every container replacement signs everyone out. | PostgreSQL; or a persistent volume (the open decision lists both). | None | WS-6 |
+| D3 | SRE-003 | What are the backup targets, recovery point and time objectives, and who performs the restore drill? | Database and object store must be restored consistently; none of it is documented. | Set RPO/RTO and a drill owner. | None | WS-6 |
+| D4 | SRE-004 | What makes an instance "not ready"? | Readiness currently checks only the database. | Add object store, job processing and/or migration state to readiness. | None | No |
+| D5 | SRE-007, ARC-007 | What is the migration order and rollback policy across the eight modules? | Modules share one database with hard cross-schema keys; per-module rollback is impossible while later modules exist. | Document one database, one role, the order, and rollback by restore. | Architect: this is acceptable for a modular monolith if written down. | WS-6 (documentation) |
+| D6 | SRE-008 | Is a single instance the supported model, or is the web/worker role split to be built? | Presence and the connection registry are in memory; the role mode in the docs is not implemented. | State single-instance as supported; or schedule the split. | None | No |
+| D7 | DATA-003, MSG-011, SRE-011 (D-09) | Retention periods; which facts are kept for reporting separately from personal data; pruning for outbox, notifications, mail, attachments and logs; the log sink. | The append-only audit stream is the source of truth for history and also holds personal data; raw mail bodies are kept indefinitely. | A content-free lifecycle record kept separately from personal data (a view or a small table written by the same audit write); pruning rules once D-09 is settled. | None | WS-14, WS-7 (pruning) |
+| D8 | MSG-002, SEC-006, MSG-003, BE-001 | What happens to mail that carries a valid thread identifier from a sender who is neither the requester nor a participant? Keep, restrict or remove the conversation-id evidence? Cap on participants, and an agent action to remove one? | A single email can currently join a ticket, reopen it and capture later replies. | Mail from other senders: (a) becomes a new ticket with a note naming the suggested ticket; (b) is held for review without showing or reopening; (c) attaches without participants and without reopening. Conversation id: keep with a participant sender, or remove. | Review minimum: never create participants from a non-participant's message. | WS-2 (B-2) |
+| D9 | SEC-004, BE-002 | What happens when tickets of different requesters are merged? | The source requester's request vanishes from their portal and they stop receiving replies; the other requester sees their later mail. | Block; warn; or allow and add the source requester as a participant (and show them the canonical request). | ITSM: allow, and add the source requester as a participant, because merging different people's reports is common and blocking would hurt. | WS-2 |
+| D10 | MSG-004 | Who may register a mailbox, and should creation probe the mailbox through Graph? | Without Exchange-side scoping a Department Admin could read or send as any mailbox. | Platform Admin only; approved-address list; creation-time probe refusing 403/404. | None | WS-4 (B-4) |
+| D11 | MSG-005 | Which control stops acknowledgements being sent to unauthenticated or forged senders? | Rotating sender addresses bypass the per-sender limit; attacker text can appear in the subject. | A per-mailbox acknowledgement cap; acknowledge only senders that pass SPF/DKIM/DMARC; drop the subject placeholder from the default template. | None | WS-8 |
+| D12 | MSG-009 | Should an operator be able to create a ticket from ignored inbound mail, and for which reasons? | Legitimate mail ignored by a rule or the rate limit can never become a ticket. | An audited "create ticket from this message" action for chosen ignore reasons. | None | No |
+| D13 | SEC-002 | Which further attachment types are blocked, and may legitimate macro-enabled files be allowed after scanning? | The blocklist is the only control until a scanner exists. | Extend the list (macro-enabled Office, disk images, HTML/SVG, shortcuts, and similar); fail startup in production if the scan requirement is off. | None | WS-8 (B-11) |
+| D14 | SEC-012 | Which administrative capabilities does a Platform Admin keep without membership (mail retry and resend, Knowledge drafts, form audience lists, member lists, department audit)? | The boundary is implicit; two of its side doors leaked content. | Write the list into the permissions document. | None | WS-1 (documentation part only) |
+| D15 | SEC-007 | Is the tenant-controlled mail attribute trusted as the requester's verified address? | A user who can set that attribute can pre-claim someone's unused requester row. | Accept and document the trust assumption; or require an immutable-identity match before an address-based link. | None | No |
+| D16 | BE-004, ARC-004 | Is best-effort automation after commit acceptable, or must it be durable? | A restart between commit and dispatch silently skips routing and escalation rules. | Accept (current behaviour); or store an intent row in the same transaction and drain it with the existing job. | Architect: reuse the existing outbox pattern. | WS-9 |
+| D17 | BE-006 | When is the SLA policy chosen? | Team, type and priority conditions rarely match email tickets that are routed afterwards. | Document and hide unusable conditions; re-evaluate on team, type or priority change (original start kept); or run automation before the SLA is applied. | ITSM direction: re-evaluate on change with the original start time kept. | WS-12 |
+| D18 | BE-007 | Does resolving or closing a ticket without a public reply stop the first-response clock, and how does it count? | Every first-contact resolution and every spam or duplicate otherwise records a first-response breach afterwards. | Stop and count as not applicable; stop and count as met; require a reply (today). | ITSM: stop and not applicable, the usual convention. | WS-12, WS-14 |
+| D19 | BE-010, QA-004 | Is bulk edit last-write-wins by design, or should it check each row's version? | A stale selection can overwrite a decision made in between. | Keep (atomic and audited per ticket); or send per-row versions and report "changed since you selected it". | None | No |
+| D20 | ITSM-001 | How should an agent and a lead tell "needs us" from "answered" after the first reply? | After an agent replies the ticket stays Open and possibly Unassigned. | A per-department default status after a public reply; an agent-reply automation trigger; a last-speaker marker in the queue. No new status. | None | WS-13 |
+| D21 | ITSM-002 | May Agents change a ticket's team (routing), or should unavailable macros show as disabled with a reason? | Escalation to a specialist team needs a team lead every time. | Allow team change for Agents (assignee changes stay with leads); or show disabled macros with the reason. | None | WS-13 |
+| D22 | ITSM-003, DOC-010 | How are tickets without a stored mailbox handled? Also: register the question in the open-decisions list. | They can never be answered by email and nothing repairs them; connecting a mailbox later does not help. | Refuse portal submissions until the department has a usable default mailbox; or design the explicit "assign a mailbox to this ticket" action. | None | WS-13; settle before the portal opens |
+| D23 | ITSM-004 | Does the requester-facing "Waiting" always mean "waiting for you"? | Pending also covers waiting for a third party; the requester cannot tell whose turn it is. | Rename for the requester, or add one line of explanation. | None | No |
+| D24 | ITSM-005 | Should resolving without a public reply prompt the agent, and is silent resolution acceptable? | The requester is told nothing, and nothing auto-closes (timers are in the backlog). | Prompt with the option to send a reply now. | None | No |
+| D25 | DATA-001 | Do Pending tickets belong in the sidebar counts? | The sidebar counts Open only; the list and dashboard use Open and Pending. (The SLA badge counting resolved and closed tickets is a plain bug, no decision.) | Open only (then say so everywhere); or Open and Pending. | None | WS-14 |
+| D26 | DATA-002 | What does "awaiting first response" mean? | It is currently an SLA figure and reads zero when no policy applies. | Define from the message stream (no public agent message yet), independent of SLA; or rename it "SLA first response pending". | None | WS-14 |
+| D27 | DATA-005 | Are merged duplicates counted in "created during the period"? | A merged source keeps its status and can be counted twice. | Count (they were raised); or exclude (not separate demand). Either, stated once. | None | WS-14 |
+| D28 | UX-005 | Should the UI block deactivating the default mailbox? | Deactivation blocks replies for every ticket using that mailbox. | A consequence confirmation (no decision needed); and optionally block the default. | Confirmation only. | No |
+| D29 | UX-018 | Remove the dead foreign-change realtime code, or use it for an "updated by someone else" notice? | Dead code that grows state for the session. | Remove; or wire a notice. | None | No |
+| D30 | QA-007 | Extend structural guards to Knowledge, Mail and Attachments queries, or accept example-based coverage? | Isolation outside the ticket set is by convention. | Add guards; or accept. The administrative-endpoint probe test (ARC-002) is separate and supported. | The probe test is supported; broader guards optional. | No |
+
+Decisions D8, D9, D10 and D22 gate the work that closes four of the eleven blockers; D1 to D3 and D13 gate the production-readiness blockers; the rest can be decided later without delaying the P0 work.
+
+## 12. Recommended remediation plan
+
+Remediation is not started. The plan groups findings into 16 workstreams in five priority bands so that shared fixes close several findings at once. Each workstream lists the findings it closes. Sequencing assumes one implementation agent working sequentially with targeted tests only.
+
+### 12.1 Workstreams
+
+**P0. Security, data and mail correctness blockers**
+
+| WS | Workstream | Findings closed | Needs decision | Notes |
+|---|---|---|---|---|
+| WS-1 | Administrative endpoint isolation | SEC-001, SEC-005, SEC-012, ARC-002, QA-007 | D14 (documentation), D30 (optional) | Fix the two endpoints; state the rule; add the probe test over every administrative GET. The endpoint fix needs no decision. |
+| WS-2 | Ticket-party rule (inbound sender, participants, merge) | MSG-002, SEC-006, MSG-003, BE-001, SEC-004, BE-002, ARC-003, MSG-012 | D8, D9 | One small rule and service used by the mail bridge, merge and the Cc builder; participant provenance, cap and removal; composer shows Cc by name. |
+| WS-3 | Mail delivery-state and retry correctness | MSG-001, BE-009, MSG-007, MSG-008, MSG-010, MSG-006, ARC-001 | None | Start here: a retry of an already-submitted message clears the draft id and is a deliberate re-send, with a guard on the delivery report; then explicit uncertain and bounced states; mark acknowledgements as automatic; automatic read-only reconcile of uncertain sends. |
+| WS-4 | Mailbox registration and tenant scoping | MSG-004 | D10 | Creation-time probe and the decision on who may register; depends on the D-16 tenant evidence (E-2, E-3). |
+
+**P1. Production-readiness blockers**
+
+| WS | Workstream | Findings closed | Needs decision | Notes |
+|---|---|---|---|---|
+| WS-5 | Hosting and security hardening | SRE-001, SRE-006, SRE-010, SRE-014, SEC-011, SEC-009, SEC-010 | D1 | Production artefact and proxy; verify SRE-006 first; production start-up guards (storage, scan requirement); document security headers for the app page; origin allow-list for the hub; restrict `data:` links to images. |
+| WS-6 | Recovery: backup and restore, Data Protection keys, migration policy | SRE-002, SRE-003, SRE-007, SRE-008, ARC-007 | D2, D3, D5, D6 | Persistent keys; backup plus one recorded restore drill; the migration-order paragraph and test; state the supported topology. |
+| WS-7 | Observability and operations | SRE-004, SRE-005, SRE-009, SRE-011, SRE-012, SRE-013 | D4, D7 (pruning) | Small set of counters (oldest pending outbox age, failed jobs, last mail sync, SLA lag); readiness; log redaction; dependency-down runbook. |
+| WS-8 | Abuse controls and attachment safety | SEC-002, SEC-003, MSG-005 | D11, D13 (and D-08 engine) | Built-in rate limiter and body limits; extend blocked types; acknowledgement cap; scanner when chosen. |
+
+**P2. Workflow, data-integrity and reliability**
+
+| WS | Workstream | Findings closed | Needs decision | Notes |
+|---|---|---|---|---|
+| WS-9 | Durable after-commit processing | BE-004, BE-005, BE-015, ARC-004 | D16 | Reuse the outbox pattern for automation and SLA follow-up; attempts and last error on the outbox row; store the message id on the item. |
+| WS-10 | Replay, idempotency and staleness protection | BE-003, BE-010, QA-004, UX-016, UX-003, QA-001, BE-013 | D19 | Optional client message id as the unique source reference; portal reply with attachments as one outcome; realtime reconcile; first-save race; client state keyed by route. |
+| WS-11 | Test debt for recovery and concurrency | QA-002, QA-003, QA-005, QA-006, QA-008 | None | The targeted tests in section 9. |
+
+**P3. ITSM, reporting and operational correctness**
+
+| WS | Workstream | Findings closed | Needs decision | Notes |
+|---|---|---|---|---|
+| WS-12 | SLA lifecycle and policy re-evaluation | BE-006, BE-007, BE-014, BE-008, DATA-007 | D17, D18 | Decide, then a small change in the SLA code; order the SLA sort so tickets without a deadline come last; label the two "about to breach" ideas. |
+| WS-13 | Service-desk workflow clarity | ITSM-001 to ITSM-007, MSG-009, BE-012, SEC-007, SEC-008 | D20, D21, D22, D23, D24, D12, D15 | Needs-response signal; agent handoff; mailbox-less tickets (settle before the portal opens); portal wording; resolve prompt; setup overview; identity-case paging. |
+| WS-14 | Reporting foundation and audit-retention interaction | DATA-001 to DATA-006, DATA-008, DATA-009, ARC-005, MSG-011 | D7, D25, D26, D27 (and D18) | One shared definition of counted ticket, open work and awaiting first response; fix the sidebar counts; consistent creation events; retention separation before Historical Reports. |
+
+**P4. UX, accessibility, low and polish**
+
+| WS | Workstream | Findings closed | Needs decision | Notes |
+|---|---|---|---|---|
+| WS-15 | UX and accessibility | UX-001, UX-002, UX-004 to UX-015, UX-017, UX-018, UX-019 | D28, D29 | Dialog and shortcut contract (UX-001, 006, 007, 008, 013 share one cause), notification deep link, accessible names, confirmations, mailbox deactivation warning. |
+| WS-16 | ADR, documentation and copy debt | DOC-001 to DOC-011, ARC-006, ARC-008, ARC-009, SEC-013, BE-011, BE-016 | None | The missing ADRs (outbox interceptor, identity links and audiences, mentions and presence, user preferences, reply-link contract, Platform Admin permission meaning); documents that contradict locked rules; copy and terminology; small hygiene items. |
+
+Sixteen workstreams account for every one of the 118 findings exactly once (checked when this plan was built).
+
+### 12.2 Shared fixes that close several findings
+
+| Fix | Closes |
+|---|---|
+| One ticket-party rule (sender must be requester or participant; participants have provenance, a cap and removal) | MSG-002, SEC-006, MSG-003, BE-001, and shapes SEC-004/BE-002 |
+| Reuse the outbox pattern for automation and SLA follow-up, add attempts and last error | BE-004, BE-005, BE-015, ARC-004 |
+| Classify content on administrative endpoints, fix two endpoints, add one probe test | SEC-001, SEC-005, SEC-012 (structure), ARC-002 |
+| Clear the draft id on retry, guard the delivery report, then explicit uncertain and bounced states | MSG-001, BE-009, MSG-007, ARC-001 |
+| One shared definition of counted ticket, open work and awaiting first response | DATA-001, DATA-002, DATA-005, ARC-005 |
+| Optional client message id as the unique source reference | BE-003 (agent and portal), part of QA-004 |
+| Decide D17 and D18 once | BE-006, BE-007, BE-014 (and the reporting meaning of stored SLA events) |
+
+### 12.3 Order of work
+
+1. **Decisions first (no code).** D8, D9, D10 and D22; then D1 to D3 and D13 (production readiness). The workstreams that need no decision can start immediately.
+2. **P0, in this order.** WS-3 (local, no decision, closes B-3) and WS-1 (closes B-1, no decision for the fix) first; WS-2 once D8 and D9 are made; WS-4 once D10 is made, with the tenant evidence from D-16 where possible.
+3. **Run the D-16 tenant validation after WS-2 and WS-3 land**, so the real-tenant run exercises the final threading and retry behaviour rather than code that is about to change.
+4. **P1.** Verify SRE-006 first (one check), then WS-5, WS-6, WS-7 and WS-8. WS-6 needs a recorded restore drill before it counts as closed.
+5. **P2, P3, P4** in band order. Inside P3, settle D17 and D18 before WS-14, because the reporting definitions depend on them. Do not start Historical Reports before WS-14's definitions and the retention separation (D7) are settled.
+6. After the P0 and P1 fixes, ask for permission to run broader verification (a full regression run, a broad browser pass, load and query testing, the restore drill): these have not been run and are the evidence that readiness needs.
+
+Nothing in the plan introduces a new subsystem, framework or dependency; each workstream reuses an existing mechanism.
 
 ## 13. Strengths / areas not to disturb
 
-- **Dialogs and focus:** `Dialog.tsx` Esc handling, focus trap, autofocus hook, opener restore (UX).
-- **Composer:** mode clarity (words, icon, banner, never colour alone), per-ticket drafts, collision hint (UX).
-- **Status semantics in the UI:** status, priority, SLA and health marks are glyph plus text; light/dark tokens have decent contrast; a global focus-visible ring exists (UX).
-- **Caching and concurrency in the UI:** `useApplyTicket` cache handling, version tokens on edits, mutation buttons disabled while pending (UX).
-- **Queue:** table semantics, URL-held filters, bulk selection cleared on filter change (UX).
-- **Realtime stance:** presence and realtime are advisory only; REST is the source of truth (UX).
-- **Portal:** idempotent `submissionId`, attachment partial-failure message, skip link; two-step requester-link confirmation; uncertain-send duplicate warning (UX).
-- **Copy:** portal copy consistently says "request", never "ticket"; "Internal note" naming is consistent; British spelling holds in user-visible strings; non-disclosing 404 wording is accurate; mailbox-unavailable delivery copy matches the locked rules; empty states are actionable; `OPEN_DECISIONS` matches the known gates (DOC).
-- **Operations basics:** environment guards on dev sign-in and the Fake provider; Secure/HttpOnly/SameSite cookies; HSTS; read-only Hangfire dashboard limited to platform admins; migrations off at startup by default with an explicit `migrate` command; non-root image; loopback-bound dev ports; secrets kept out of appsettings; separate live and ready probes (SRE).
-- **Test foundation:** see section 9 (QA).
+These are consolidated from all ten reviews. They should not be reworked while fixing the findings above.
 
-## 14. Limits of the completed reviews
+- **Architecture.** A one-way module graph enforced by architecture tests; contracts inverted correctly (Mail does not reference Ticketing); one consistent concurrency toolkit (version tokens, row locks, advisory locks, atomic claims, skip-locked, deterministic keys); audit, SLA clocks, notification intent and outbound mail commit in the same transaction as the change; a documented, working outbox interceptor; thin Hangfire entry points; an explicit per-module migration order; injected time everywhere.
+- **Security.** Department scope filter on tickets, messages and requesters with non-disclosing 404s; three declared authorisation patterns pinned by tests; every scope-bypass call site reviewed and pinned; per-ticket re-authorisation in bulk; Internal Notes excluded in queries, search, snippets, notifications, mentions, presence and realtime; separate note and requester realtime groups with content-free payloads; sanitised mail HTML shown in a script-less sandboxed frame; stored signature HTML sanitised; webhook client state hashed and compared in constant time; platform audit limited to organisation and identity events; no committed secrets; attachment download forced as attachment with a fixed content-type table.
+- **Mail.** Sender identity from the ticket's own mailbox, never an agent address; no silent fallback; atomic claim, draft id and submit flag persisted before sending; no blind retry of an ambiguous send; honest "accepted for delivery, not confirmed as delivered" wording; evidence into another department discarded; subject references never attach by themselves; loop and noise protection; mailbox health signals; idempotent inbound ingestion.
+- **Domain and data.** Strong CHECK constraints, composite foreign keys keeping relations inside one department, unique keys for idempotency and numbering, merge in one transaction, business-time SLA arithmetic that handles clock changes, keyset pagination, batched list projections, trigram search.
+- **Workflow.** Four statuses with defined meaning and reopen on requester reply; one conversation across email and portal; truthful delivery states; followers, mentions, presence and collision hints; queues, saved views, default view, columns and quick filters; a dashboard whose figures equal the queue filters they link to and carry no per-agent ranking; request forms with explicit audiences, help topics, requester-safe Knowledge links; a setup overview with warnings; macros that only prepare drafts and never exceed the caller's permissions.
+- **Reporting.** Messages are immutable, every lifecycle change is audited with previous and next values, every SLA transition is an event with its cycle: a truthful historical report can be built without invented snapshots.
+- **Frontend.** The dialog focus handling, composer mode clarity (words, icon, banner), per-ticket drafts, glyph-plus-text status marks, URL-held filters, advisory-only realtime, idempotent portal creation.
+- **Copy and documents.** Portal copy says "request", "Internal note" naming is consistent, British spelling holds, empty states are actionable, the open-decisions list matches the known gates.
+- **Operations basics.** Environment guards on dev sign-in and the Fake mail provider, secure cookies, HSTS, a read-only Hangfire dashboard limited to Platform Admins, migrations off at start-up by default with an explicit command, a non-root image, loopback-bound development ports, secrets out of configuration files, separate live and ready probes.
+- **Tests.** The test foundation described in section 9.
 
-- DOC: grep-based sample. Did not read the API docs, threat models, reports, ADR bodies, `UX.md` or `AGENTS.md` line by line; no runtime checks.
-- UX: static reading only, no browser, Playwright or Vitest; layout points are estimates; Automations, RuleEditors, Forms, TicketFields, TicketTypes, SLA, BusinessHours, Macros, Canned, TicketProperties/Followers, RequesterDrawer, TeamPage, ProfilePage, markdown/RichText, PortalKnowledge, StatusPage and DepartmentsPage were only skimmed or grep-checked; contrast judged from token values; server-side behaviours (version conflicts, bulk authorisation, idempotency scope) were not verified.
-- SRE: no Docker build or run, no restore drill, no live DB/container; ForwardedHeaders and EF advisory-lock behaviour unexercised.
-- QA: about 60 test files assessed by name inventory and grep, not read in depth; nothing was run; mail protocol and Fake-provider versus Graph fidelity not audited. Only QA-001 is a code-proven product defect; QA-002 to QA-004 are evidence gaps, not demonstrated bugs.
-- Not reviewed by anyone: the Refinement 9 and 10 backend code (queue preferences, queue filters, knowledge owner/review date, reply-link endpoint) beyond what the above touched.
+## 14. Review coverage
 
+All ten specialist reviews are complete and represented. The review was performed in two passes: four specialists first (DOC, UX, SRE, QA), then the other six one at a time after a session limit interrupted the first run.
+
+| Specialist | Prefix | Section | Findings | Method |
+|---|---|---|---|---|
+| Documentation / Content Designer | DOC | 21 | 11 | Grep-based sample of product copy and documents; no runtime checks |
+| Frontend / UX Engineer | UX | 21 | 19 | Static reading of the web app; no browser, Playwright or Vitest |
+| SRE / Production Operations | SRE | 21 | 14 | Static reading of deployment, configuration and jobs; no Docker run, no restore drill |
+| QA / Reliability | QA | 21 | 8 | Static review of test suites by inventory and grep; nothing run |
+| Security / Privacy | SEC | 15 | 13 | Static reading of the authorisation, identity, portal, realtime, attachment and logging paths, plus a few read-only requests against the dev API as the bootstrap Platform Admin to confirm SEC-001 |
+| Microsoft 365 / Messaging | MSG | 16 | 12 | Static reading of the Mail module and its Ticketing seams; no Graph or tenant call, no mail sent |
+| Backend / Domain | BE | 17 | 16 | Static reading of services, mappings, constraints, jobs and the migration list |
+| Lead Architect | ARC | 18 | 9 | Module graph, contracts, cross-schema coupling, after-commit mechanisms, ADR set, repeated rules |
+| ITSM / Service Desk | ITSM | 19 | 7 | Design and code read as a service desk; no screen walked in a browser |
+| Data / Reporting | DATA | 20 | 9 | Metric definitions and captured history read from the code; no query run |
+
+**Limitations that remain (do not read this report as more than it is).**
+- **D-16 is open.** Every statement about what Graph or Exchange actually does is code, simulator or documentation evidence. The runbook result table is empty.
+- **No full regression suite** (backend, frontend or end to end) was run, no broad Playwright pass, no architecture or isolation matrix run; test suites were reviewed statically.
+- **No production-scale load or query testing**, no `EXPLAIN` runs, no scale data. Performance statements are about query shape only.
+- **Runtime checks were explicitly not performed**, apart from the Security review's few read-only requests against the local dev API. The dev API may predate the newest endpoints (queue preferences, queue types, article links), which were judged from code.
+- **No restore drill, no Docker build or run, no deployment**, so hosting findings are about missing artefacts and configuration, not observed failures.
+- **No data was changed**: the DEMO department was not reset or mutated, no real email was sent, no Graph call was made.
+- **Sampling.** The Documentation, Frontend and QA reviews were sampled (see their limits in section 21.7); the later six read the areas named above, not every file.
+- **Refinement 9 and 10 code** (queue preferences, queue filters, Knowledge maintenance, reply links) was reviewed by the Security, Backend and Architect passes for the points they raised; it received no separate dedicated review.
+- **Unresolved product behaviour** is recorded as decisions (section 11); no specialist decided it on the owner's behalf.
 
 ---
+
+# Specialist evidence
+
+The sections below are the detailed evidence for the consolidated view above. They keep every finding, its evidence and its recommended fix, and the limits each specialist stated. Cross-references such as "section 16.7" refer to the numbering used here.
 
 # 15. Security / Privacy review (added after the partial report)
 
@@ -1155,3 +1280,223 @@ Nothing here requires a new data store, a warehouse, or stored snapshots.
 - Whether audit rows exist for tickets created before each event type was introduced was not checked; a database check on the real data should precede any report.
 - The exact content of the DEMO department's SLA and automation set-up (it has no automation rules), so BE-006's effect on real coverage is reasoned, not measured.
 - The behaviour of the sidebar badges at runtime was not exercised; DATA-001 rests on the code.
+
+---
+
+# 21. Documentation, Frontend, SRE and QA findings (evidence from the first four reviews)
+
+The first four specialists reported before the others. Their findings, evidence and limits are kept here unchanged except for the section titles. The consolidated summary is in sections 1 to 14.
+
+## 21.1 High findings (SRE)
+
+### SRE-001: No production deployment artefact
+- **Specialist / category:** SRE / Deployment, Production Readiness. **Severity:** High. **Confidence:** not stated (static read).
+- **Evidence:** `docker-compose.yml` is dev only. `Program.cs` has no `UseStaticFiles`/`MapFallback`, so nothing serves the SPA. No reverse proxy, WebSocket or environment guidance.
+- **Affected area:** deployment topology, SPA hosting, SignalR through a proxy.
+- **Impact:** there is no defined way to run the product in production; the SPA is not served by the host.
+- **Smallest fix:** decide how the SPA is served (host static files vs separate web server) and the proxy; then provide one reference production compose/proxy configuration and a deployment/runbook document.
+- **Decision required:** Yes (how the SPA is served; which proxy). **Production blocker:** Yes.
+
+### SRE-002: Data Protection keys not persisted (D-13)
+- **Specialist / category:** SRE / Production Readiness. **Severity:** High. **Confidence:** not stated.
+- **Evidence:** no `AddDataProtection` anywhere in `src`.
+- **Impact:** every container replacement invalidates all sessions, antiforgery tokens and any protected payloads. With more than one instance, cookies would not validate across them.
+- **Smallest fix:** persist keys to a durable store (location decision), with an application name set.
+- **Decision required:** Yes (key store location). **Production blocker:** Yes.
+
+### SRE-003: No backup or restore procedure, script or evidence
+- **Specialist / category:** SRE / Backup/Recovery. **Severity:** High. **Confidence:** not stated.
+- **Evidence:** no backup/restore script or document found; PostgreSQL and the object-store bucket must be restored consistently and nothing says how.
+- **Impact:** no demonstrated recoverability. A backup without a restore drill must not be treated as recoverability.
+- **Smallest fix:** document and script PostgreSQL + attachment backup, and perform and record one restore drill.
+- **Decision required:** Yes (RPO/RTO, storage target). **Production blocker:** Yes.
+
+### SRE-005: No metrics; stuck work is not observable
+- **Specialist / category:** SRE / Observability. **Severity:** High. **Confidence:** not stated.
+- **Evidence:** `Program.cs:68-77` is traces-only; ADR-008's metrics, denylist and correlation id are not implemented. `NotificationOutbox.cs:144-169` retries a poison row every minute indefinitely, with no counter or age signal.
+- **Impact:** nothing can alert on stale mail sync, stuck outbox rows, failed Hangfire jobs or SLA job lag; a poison notification row would loop forever silently.
+- **Smallest fix:** add a small set of operational counters/gauges (oldest unprocessed outbox row age, failed jobs, last mail-sync age, SLA job lag) and cap or park poison outbox rows with a visible state.
+- **Decision required:** No. **Production blocker:** Yes.
+
+## 21.2 Medium findings (SRE, UX, DOC, QA)
+
+### SRE-006: Proxy trust configuration ships empty
+- **Specialist / category:** SRE / Security (deployment). **Severity:** Medium. **Confidence:** Low (the specialist recalled the framework behaviour and did not verify it).
+- **Evidence:** `Program.cs:56-66`, `appsettings.json:25` ship `Proxy:KnownProxies=[]`; nothing enforces it outside dev.
+- **Impact / abuse scenario (if confirmed):** with no known proxies or networks configured, forwarded headers may be trusted from any caller, so a client could spoof its address (rate limiting, logging, audit source IP).
+- **Smallest fix:** verify the framework behaviour with one targeted check; if confirmed, require explicit proxy configuration in Production (fail startup if absent).
+- **Decision required:** No. **Production blocker:** Yes, until verified otherwise.
+
+### SRE-004: Readiness check covers PostgreSQL only
+- `/health/ready` checks only Postgres; no object store, Hangfire or migration-state signal; no image `HEALTHCHECK`. **Impact:** an instance with a broken object store or stalled jobs reports ready. **Fix:** add object-store and job-processing signals to readiness. **Decision required:** Yes (what should make the instance "not ready"). **Blocker:** No. **Category:** Operations.
+
+### SRE-007: Per-module migrations with no cross-module atomicity or rollback policy
+- Migrate runs module by module; the documented order lists 3 of 8 modules. **Impact:** a failure mid-way leaves modules at different schema versions with no stated recovery. **Fix:** document the full order and a rollback/restore policy. **Decision required:** Yes. **Blocker:** No. **Category:** Deployment.
+
+### SRE-008: Single-host assumptions (presence in memory; `ROLE` not implemented)
+- Presence is in memory; ADR-006 `ROLE=web|worker|all` is not implemented (merged with DOC-002). **Impact:** cannot run web and worker separately or scale out without presence and realtime gaps. **Fix:** either document single-instance as the supported model or schedule the role split. **Decision required:** Yes. **Blocker:** No. **Category:** Architecture/Operations.
+
+### SRE-009: Mail sync and dispatch share a small worker pool with a fixed lock and no retry
+- `SyncAll`/`Dispatch` run serially with a 120 s lock and no retry on 4 shared workers. **Impact:** a slow Graph can stall mail processing and other jobs. **Fix:** review lock timeout, per-mailbox isolation and retry. **Decision required:** No. **Blocker:** No. **Category:** Reliability. (Overlaps the unreviewed Messaging/Backend scope; confirm there.)
+
+### SRE-010: Production accepts unsafe storage/scan settings
+- Dev sign-in and the Fake mail provider are guarded and cannot be enabled in Production, but the guards key on the environment name only; `Storage:Provider=InMemory` and `RequireCleanScan=false` are accepted in Production. **Impact:** a misconfigured production could lose attachments on restart or skip scanning. **Fix:** fail startup in Production for those values (D-08 related). **Decision required:** No. **Blocker:** No. **Category:** Deployment/Security.
+
+### SRE-011: No pruning or sizing for growing tables; console-only logs
+- No pruning for the outbox, notifications, mail, or attachment orphans; logs go to the console only. **Impact:** unbounded growth; no retained logs. **Fix:** size estimates and a retention approach (ties to D-09), plus a log sink decision. **Decision required:** Yes. **Blocker:** No. **Category:** Operations.
+
+### UX-001: Workspace shortcuts stay live behind open dialogs
+- **Specialist / category:** Frontend / Accessibility. **Confidence:** High.
+- **Evidence:** `pages/WorkspacePage.tsx` (r, n) and `components/QueuePane.tsx` (j, k, arrows, Enter, x, /) call `useShortcuts` with no enabled flag; only `AppShell.tsx:63` gates on `dialog === null`. `lib/shortcuts.ts` ignores only INPUT, TEXTAREA, SELECT and contentEditable.
+- **Impact:** with focus on a button inside the Run macro dialog, `r` moves focus to the composer behind the modal; `x` ticks a row checkbox behind the dialog, which can pull unintended tickets into a later bulk action.
+- **Fix:** make the hook inert while a modal dialog is open (or pass an `enabled` flag). **Decision:** No. **Blocker:** No.
+
+### UX-002: Notification deep link to `#msg-` is unreliable
+- **Category:** Bug. **Confidence:** Medium. **Evidence:** `components/Conversation.tsx`: the message ref callback calls `scrollIntoView` on every re-render while the hash is present, and the container's effect sets `scrollTop = scrollHeight` after it, so the bottom scroll wins on first load. **Impact:** a mention notification lands on the newest message, and later renders pull the scroll back. **Fix:** scroll to the hash once in an effect after the bottom scroll; skip the bottom scroll when a hash is present. **Decision:** No. **Blocker:** No.
+
+### UX-003: Article Publish leaves a stale version after a partial failure
+- **Category:** Bug. **Confidence:** Medium. **Evidence:** `components/KnowledgeSection.tsx` `EditorForm.save` runs `saveDraft` then `publishArticle`; cache and `article` prop update only on success. **Impact:** if publish fails after the save succeeded, every retry gets a version conflict until the article is closed and reopened. **Fix:** update the cache after each step or on error. **Decision:** No. **Blocker:** No.
+
+### UX-004: Row action buttons in admin tables share identical accessible names
+- **Category:** Accessibility. **Confidence:** High. **Evidence:** bare "Edit" in `AutomationsSection.tsx:328`, `BusinessHoursSection.tsx:265`, `CannedManager.tsx:97`, `FormsSection.tsx:347`, `HelpTopicsSection.tsx:126`, `KnowledgeSection.tsx:376` (plus "Owner & review"), `MacrosSection.tsx:336`, `SlaPoliciesSection.tsx:206`, `TicketFieldsSection.tsx:203`, `TicketTypesSection.tsx:208`; the same for Deactivate, Retry and Resolve in `MailboxesSection.tsx`. `MembersSection.tsx` and `ViewsMenu` already use the correct pattern. **Impact:** screen-reader and voice users cannot tell controls apart and may change the wrong policy. **Fix:** apply the existing sr-only suffix or `aria-label` pattern. **Decision:** No. **Blocker:** No.
+
+### UX-005 (+ DOC-008, part): Mailbox Deactivate is one click with no consequence warning
+- **Category:** Administration. **Confidence:** Medium. **Evidence:** `components/MailboxesSection.tsx` `MailboxRow` calls `patch.mutate({ isActive: !m.isActive })` directly. Under the locked rule, a ticket whose stored mailbox is inactive cannot send public replies. **Impact:** one click blocks replies on every ticket that uses the mailbox; the default mailbox can be deactivated the same way. **Fix:** confirm dialog stating that replies on tickets using this mailbox are not sent until it is reactivated. **Decision required:** No for the confirmation wording; Yes only if you also want the UI to block deactivating the default mailbox. **Blocker:** No.
+
+### DOC-001: API/email docs contradict the locked "no fallback sender" rule
+- **Category:** Documentation. **Confidence:** not stated. **Evidence:** `docs/api/PHASE3_API.md:30` says sender identity is "the ticket's mailbox if active, else the department default"; `docs/architecture/EMAIL_ARCHITECTURE.md:161` (14c) says "Only tickets without a mailbox use the default." Both contradict `CLAUDE.md` and commit `ec64c07`. **Impact:** a reader (or future implementer) could reintroduce the fallback. **Fix:** state that the reply is recorded NotDelivered (`no_ticket_mailbox` / `mailbox_unavailable`) and that the default applies only at ticket creation. **Decision:** No. **Blocker:** No.
+
+### DOC-002 (+ SRE-008): Docs claim features that do not exist
+- **Category:** Documentation. **Evidence:** `ARCHITECTURE.md:4` claims `ROLE=web|worker|all` and `:49` claims OpenAPI-generated types; nothing reads `ROLE` (only a comment in `HangfireSetup.cs:11`), there is no generator script, and the BACKLOG lists both as open. **Impact:** misleads operators and developers. **Fix:** mark both as planned. **Decision:** No. **Blocker:** No.
+
+### QA-001: Realtime client does not reconcile after a long outage
+- **Category:** Reliability. **Confidence:** code-proven (per the specialist). **Evidence:** `src/web/src/lib/realtime.ts:180-186` `onreconnected` invalidates only `['tickets']`, `['ticket']`, `['notifications']`, never `['portal']`; after auto-reconnect gives up (about 47 s), `onclose` retries `start()` after 15 s (`:190`) and that success path (`:195-199`) invalidates nothing; `setConnectionFactory` (`:152`) is used by no test. **Impact:** after a long disconnection the UI shows "live" while missed events are never refetched. **Fix:** one shared reconcile function called from both paths and including `['portal']`; add one Vitest with a fake connection. **Decision:** No. **Blocker:** No.
+
+### QA-002: Stuck-`Sending` outbound recovery is untested
+- **Category:** Testing. **Evidence:** `MailSync.cs:329-345` requeues stale `Sending` rows or reconciles them if `submit_started` is set; no test mentions `Sending`; `MailOutboundTests.cs:76` forces `state='Queued'`, which a real crash never leaves; `submit_started` is matched by a raw `LIKE '%submit_started%'`, so a rename would silently turn reconcile into a blind resend. **Impact:** a regression could cause duplicate email. **Fix:** two tests (one per branch) with the flag produced by the real path. **Decision:** No. **Blocker:** No. (Not a demonstrated bug.)
+
+### QA-003: Portal test helper auto-links requesters by raw SQL
+- **Category:** Testing. **Evidence:** `Portal/PortalKit.cs:19-60` `TicketForAsync` inserts into `ticketing.requester_links` when an agent creates a ticket for a registered employee's address. **Impact:** production never does this ("email is not proof"), so many portal/merge/history tests start from an unreachable ownership state. **Fix:** add a negative control (the ticket is not visible in `/api/portal/requests` until linked) and use the real admin-resolution path in a few tests. **Decision:** No. **Blocker:** No.
+
+### QA-004: Concurrency and duplicate coverage stops at ticket and organisation writes
+- **Category:** Testing / Concurrency. **Evidence:** not raced: mailbox sync (advisory lock, `MailSync.cs:28`), the outbound claim (`OutboundMail.cs:186`; the test only dispatches sequentially), portal reply double-submit, and bulk versus a concurrent single edit (bulk passes `expectedVersion: null`, so it overwrites). **Impact:** duplicate or lost work could go unnoticed. **Fix:** targeted concurrency tests. **Decision required:** Yes for two points: should a duplicate portal reply be de-duplicated, and is bulk last-write-wins by design? **Blocker:** No.
+
+## 21.3 Low findings (SRE, UX, DOC, QA)
+
+### SRE-012: Log privacy is convention only
+- Nothing enforces redaction (ADR-008 denylist not implemented). **Fix:** implement the denylist or a test. **Decision:** No. **Blocker:** No. **Category:** Observability/Privacy.
+
+### SRE-013: No runbook for dependency-down cases
+- No documented behaviour/steps for PostgreSQL, object store or Graph unavailable. **Fix:** short runbook. **Decision:** No. **Blocker:** No. **Category:** Operations.
+
+### SRE-014: Floating image tags, `:latest` SeaweedFS, `AllowedHosts=*`
+- Unpinned images and unrestricted host header. **Fix:** pin tags; set `AllowedHosts` for production. **Decision:** No. **Blocker:** No. **Category:** Deployment.
+
+### UX-006: Reorder arrows lose focus; one reorder dialog can race
+- `HelpTopicsSection.tsx` disables arrows while pending (focus drops); `QueuePrefsMenu.tsx` disables arrows at list ends; `KnowledgeSection.tsx` `CategoryDialog` has no pending guard and builds the order from stale props. **Impact:** keyboard users lose their place; fast double click sends mismatched orders. **Fix:** `aria-disabled` plus early return; add the pending guard. **Confidence:** Medium. **Category:** Accessibility.
+
+### UX-007: Focus not restored after choosing from the ticket More menu
+- `components/TicketLinks.tsx` `MoreMenu` closes the menu before opening the dialog, so `Dialog.tsx` records `body` as the opener. **Impact:** focus lands at the top of the page afterwards. **Fix:** focus the trigger first or add a `returnFocusTo` prop. **Confidence:** High. **Category:** Accessibility.
+
+### UX-008: Esc or Close silently discards typed work
+- `Dialog.tsx` always closes on Esc; `NewTicketDialog.tsx` and the Knowledge article editor (12-row body) have no dirty check, unlike the composer. **Fix:** optional `dirty` prop with confirmation. **Confidence:** Medium. **Category:** UX.
+
+### UX-009: BulkBar sends a hidden Team/Assignee choice after the selection spans departments
+- `components/BulkBar.tsx` does not reset `team`/`assignee` when `needDept` becomes true; the selects are disabled but `change` still includes them. **Impact:** Apply may send a team picked for department A with a ticket from department B; the server should reject per ticket but the agent cannot see what is sent. **Fix:** clear or drop those values. **Tag:** Security must confirm per-ticket server rejection (UNREVIEWED). **Confidence:** Medium. **Category:** Authorization (UX).
+
+### UX-010: Portal "My requests" tabs use ARIA tab roles without the keyboard model
+- `pages/portal/PortalRequests.tsx`: `role=tab` with no arrow keys, roving `tabIndex` or `aria-controls`; the shared `Tabs` in `components/common.tsx` is correct. **Fix:** reuse `Tabs` or use `aria-pressed` buttons. **Confidence:** High. **Category:** Accessibility.
+
+### UX-011: Saved-view Delete is immediate; Archive saves the draft without saying so
+- `ViewsMenu.tsx:102` deletes without confirmation (members removal confirms); the Archive mutation in `KnowledgeSection.tsx` calls `saveDraft` first. **Fix:** confirm the delete; state or skip the draft save. **Confidence:** High. **Category:** UX.
+
+### UX-012: Retry sending checks permission against any department
+- `components/Conversation.tsx` `Delivery` uses `me.memberships.some(canTicket(me,'tickets.reply',…))` instead of the ticket's department. **Impact:** UX only (the server authorises); a user may see a Retry button that errors. **Fix:** pass the ticket's department. **Confidence:** Medium. **Category:** Authorization (UX).
+
+### UX-013: Mention picker ARIA does not match behaviour
+- `Composer.tsx`: `role=listbox` with `role=option` buttons and constant `aria-selected="false"`; no arrow keys, `aria-controls`, `aria-expanded` or `aria-activedescendant`; results not announced. **Fix:** implement combobox behaviour, or drop roles and add a polite result count. **Confidence:** Medium. **Category:** Accessibility.
+
+### UX-014: Portal file picker silently truncates to 5; no feedback after reply or submit
+- `PortalSubmit.tsx`, `PortalRequest.tsx` use `.slice(0,5)` with no message; reply success shows no status; submit-success does not move focus. **Fix:** messages and focus (wording to Content). **Confidence:** High. **Category:** Requester Experience.
+
+### UX-015: Mailbox edit shows a stale name; 8-column table has no overflow handling
+- `MailboxRow` initialises `useState(m.displayName)` once, so a concurrent rename is overwritten on Save; `table.grid` has no overflow wrapper (about 900 px usable at 1366 wide, a static estimate, not measured). **Fix:** reset the name when the form opens; wrap the table; one laptop-width check. **Confidence:** Low. **Category:** Administration.
+
+### UX-016 (tag QA-004): Portal state persists across route params
+- `PortalRequest.tsx` keeps `text`/`files` when `:reference` changes; `PortalSubmit.tsx` `RequestForm` keeps `subject`, `values`, `submissionId` when `formId` changes; neither is keyed. **Impact:** a draft or idempotency id could carry to another request/form. **Fix:** key by `reference`/`formId`. **Tag:** Backend for idempotency scope (UNREVIEWED). **Confidence:** Low. **Category:** Requester Experience.
+
+### DOC-003: Stale phase and module statements
+- `DEVELOPMENT.md`: schemas listed as audit/identity/organisation only, "Graph added in Phase 3"; `ARCHITECTURE.md` module table still "Planned" with no Knowledge row; `PRODUCT.md`/`DEVELOPMENT_PLAN.md` still list "tags" (a locked exclusion), "later a portal", and omit Refinements 1-11. **Fix:** refresh. **Category:** Documentation.
+
+### DOC-004: Docs say "full suite at milestones", contradicting `CLAUDE.md`
+- `DEVELOPMENT.md`, `DEVELOPMENT_PLAN.md`. **Fix:** align with "full suite only on explicit request". **Category:** Documentation.
+
+### DOC-005: Demo tooling and operations runbook missing from docs
+- `dev-demo-seed`/`dev-demo-reset` undocumented in `DEVELOPMENT.md`; `docs/guides` has only the Graph runbook; README links only five documents. **Category:** Documentation.
+
+### DOC-006: Automation history shows raw codes
+- `AutomationsSection.tsx:145,198,211` show `loop_detected`, `max_depth`, `addInternalNote`. **Fix:** reuse `ACTION_LABEL` / `RESULT_TEXT`. **Category:** Copy/Terminology.
+
+### DOC-008 (rest): Weak confirmation copy
+- The merge dialog never says it cannot be undone; the member-removal `window.confirm` is vague. (The mailbox part is under UX-005.) **Category:** Copy/Terminology.
+
+### QA-005: Negative realtime leak tests rely on fixed sleeps
+- `RealtimeTests.cs:97-105` (1200 ms) and `:361, 416, 454, 488` (300 ms); a late leaked event gives a false pass; the presence test mixes wall clock with an injected sweep time. **Fix:** send a positive sentinel after the silence window; use `AdjustableClock`. **Category:** Testing.
+
+### QA-006: Recurring-job registration is never verified
+- `Jobs:Enabled=false` in all tests, so the registration of the five recurring jobs (`HangfireSetup.cs:62-76`) is untested. **Category:** Testing.
+
+### QA-007: Structural guard coverage is Ticketing only
+- Architecture tests cover Ticketing, not Knowledge, Mail or Attachments queries. **Decision required:** structural guard there, or accept example-based coverage? **Category:** Testing.
+
+## 21.4 Polish / copy / visual findings (UX, DOC, QA)
+
+- **UX-017:** Dashboard subtitle exposes roadmap wording ("Not a history: reports come later") in `pages/DashboardPage.tsx`. Remove the sentence.
+- **UX-018:** Dead realtime foreign-change code (`lib/realtime.ts` `useRemoteChange`/`clearRemoteChange` have no non-test callers; the module-level `remote` map grows for the session). **Decision required:** remove, or wire an "updated by someone else" notice?
+- **UX-019:** Small items: breadcrumb in `DepartmentPage.tsx` where "Administration" and "Departments" both link to `/admin`; unnamed trailing `<th />` in `KnowledgeSection.tsx` and `MailboxesSection.tsx`; Knowledge title search is not debounced; every failed message renders `role=alert` in `Conversation.tsx` with no live region for new messages; `.notify-panel` hard-coded at `left:190px; top:5.25rem`; no loading state in `NotificationBell`; spacing typo `defaultStatuses =mode` in `QueueFilters.tsx`.
+- **DOC-007:** `MembersSection.tsx` shows roles as "DepartmentAdmin" / "TeamLead" (should read as names).
+- **DOC-009:** Server 400 messages read "q: q must be at least 2 characters." (not verified at runtime).
+- **DOC-010:** The `CLAUDE.md` collaboration "planned order" is already built, and `MVP.md` has no historical marker; the mailbox-assignment workflow question exists only in `CLAUDE.md`. **Decision required:** register it as a row in `OPEN_DECISIONS.md`?
+- **DOC-011:** Documentation mixes "authorization" and "authorised" (pick one spelling convention).
+- **QA-008:** Bulk edit on a merged source is untested; e2e has `retries: 0` and a fixed `waitForTimeout` at `portal.spec.ts:273`.
+
+
+## 21.5 Test gaps noted by QA, UX and SRE (carried into section 9)
+
+Highest-value targeted tests to add (no broad suites):
+1. Realtime reconcile after reconnect and after the manual restart path, including `['portal']` (QA-001).
+2. Stuck-`Sending` recovery: both branches, with the real `submit_started` flag (QA-002).
+3. Negative control that an agent-created ticket is not portal-visible until a real link exists (QA-003).
+4. Concurrency: mailbox sync lock, outbound claim, portal reply double-submit, bulk vs concurrent edit (QA-004; two need decisions).
+5. Sentinel-based negative realtime assertions instead of fixed sleeps (QA-005).
+6. Recurring job registration (QA-006).
+7. Structural guards for Knowledge/Mail/Attachments queries, if wanted (QA-007).
+8. Frontend: shortcut suppression behind dialogs (UX-001), BulkBar clearing hidden choices (UX-009), Knowledge editor retry after partial failure (UX-003).
+9. Server-side confirmation (not performed) that bulk change rejects a foreign-department team/assignee per ticket (UX-009).
+
+Strengths noted by QA: tests use the real stack (dev-login, real migrations, database per fixture, real CSRF); isolation, revocation and Internal Note realtime paths are well covered; architecture tests pin the anonymous/authenticated-only endpoint lists, the CSRF-exempt webhooks and every `IgnoreDepartmentScope()` caller; mail covers uncertain and duplicate cases.
+
+
+## 21.6 Strengths noted by the first four reviews (carried into section 13)
+
+- **Dialogs and focus:** `Dialog.tsx` Esc handling, focus trap, autofocus hook, opener restore (UX).
+- **Composer:** mode clarity (words, icon, banner, never colour alone), per-ticket drafts, collision hint (UX).
+- **Status semantics in the UI:** status, priority, SLA and health marks are glyph plus text; light/dark tokens have decent contrast; a global focus-visible ring exists (UX).
+- **Caching and concurrency in the UI:** `useApplyTicket` cache handling, version tokens on edits, mutation buttons disabled while pending (UX).
+- **Queue:** table semantics, URL-held filters, bulk selection cleared on filter change (UX).
+- **Realtime stance:** presence and realtime are advisory only; REST is the source of truth (UX).
+- **Portal:** idempotent `submissionId`, attachment partial-failure message, skip link; two-step requester-link confirmation; uncertain-send duplicate warning (UX).
+- **Copy:** portal copy consistently says "request", never "ticket"; "Internal note" naming is consistent; British spelling holds in user-visible strings; non-disclosing 404 wording is accurate; mailbox-unavailable delivery copy matches the locked rules; empty states are actionable; `OPEN_DECISIONS` matches the known gates (DOC).
+- **Operations basics:** environment guards on dev sign-in and the Fake provider; Secure/HttpOnly/SameSite cookies; HSTS; read-only Hangfire dashboard limited to platform admins; migrations off at startup by default with an explicit `migrate` command; non-root image; loopback-bound dev ports; secrets kept out of appsettings; separate live and ready probes (SRE).
+- **Test foundation:** see section 9.
+
+
+## 21.7 Limits of the first four reviews (carried into section 14)
+
+- DOC: grep-based sample. Did not read the API docs, threat models, reports, ADR bodies, `UX.md` or `AGENTS.md` line by line; no runtime checks.
+- UX: static reading only, no browser, Playwright or Vitest; layout points are estimates; Automations, RuleEditors, Forms, TicketFields, TicketTypes, SLA, BusinessHours, Macros, Canned, TicketProperties/Followers, RequesterDrawer, TeamPage, ProfilePage, markdown/RichText, PortalKnowledge, StatusPage and DepartmentsPage were only skimmed or grep-checked; contrast judged from token values; server-side behaviours (version conflicts, bulk authorisation, idempotency scope) were not verified.
+- SRE: no Docker build or run, no restore drill, no live DB/container; ForwardedHeaders and EF advisory-lock behaviour unexercised.
+- QA: about 60 test files assessed by name inventory and grep, not read in depth; nothing was run; mail protocol and Fake-provider versus Graph fidelity not audited. Only QA-001 is a code-proven product defect; QA-002 to QA-004 are evidence gaps, not demonstrated bugs.
+- Not reviewed by anyone at that stage: the Refinement 9 and 10 backend code (queue preferences, queue filters, knowledge owner/review date, reply-link endpoint). Update: the later Security, Backend and Architect reviews covered the points they raised; see section 14.
+
+
