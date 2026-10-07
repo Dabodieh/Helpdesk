@@ -242,9 +242,9 @@ namespace Helpdesk.Modules.Mail.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_mail_messages_direction", "direction IN ('Inbound','Outbound')");
 
-                            t.HasCheckConstraint("ck_mail_messages_direction_shape", "(direction = 'Inbound' AND provider_message_id IS NOT NULL AND state IN ('Received','Ticketed','Completed','Ignored','Failed')) OR (direction = 'Outbound' AND outbound_token IS NOT NULL AND state IN ('Queued','Sending','Sent','Failed'))");
+                            t.HasCheckConstraint("ck_mail_messages_direction_shape", "(direction = 'Inbound' AND provider_message_id IS NOT NULL AND state IN ('Received','Ticketed','Completed','Ignored','Failed')) OR (direction = 'Outbound' AND outbound_token IS NOT NULL AND state IN ('Queued','Sending','Sent','Uncertain','Failed'))");
 
-                            t.HasCheckConstraint("ck_mail_messages_state", "state IN ('Received','Ticketed','Completed','Ignored','Queued','Sending','Sent','Failed')");
+                            t.HasCheckConstraint("ck_mail_messages_state", "state IN ('Received','Ticketed','Completed','Ignored','Queued','Sending','Sent','Uncertain','Failed')");
                         });
                 });
 

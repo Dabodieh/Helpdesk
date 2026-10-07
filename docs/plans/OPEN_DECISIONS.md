@@ -10,7 +10,7 @@
 | D-12 | Future audited emergency ("break-glass") ticket access | Not implemented. Constraints recorded in PERMISSIONS.md. | PO |
 | D-13 | Persist the ASP.NET Data Protection key ring (PostgreSQL or volume) | Today a container replacement invalidates all sessions and OIDC correlation cookies. Must be settled before any shared/production deployment. | Principal |
 | D-14 | User (de)activation API; do inactive users count toward last-admin rules | `is_active` is enforced per request but no endpoint changes it (Phase 1 contract has none). | Principal |
-| D-16 | Close the ADR-011 production validation gate (ADR is Accepted as design direction; production readiness conditional on real-tenant validation) | Requires a test tenant + shared mailboxes + Exchange admin (runbook `docs/guides/GRAPH_TENANT_VALIDATION.md`). Gate stays OPEN until the runbook has run successfully against an approved test mailbox. Blocks Phase 3 production email readiness, not Phase 2. | Principal / PO |
+| D-16 (OPEN; Refinement 3 real-tenant run BLOCKED: no approved tenant configuration, see docs/guides/GRAPH_TENANT_VALIDATION.md) | Close the ADR-011 production validation gate (ADR is Accepted as design direction; production readiness conditional on real-tenant validation) | Requires a test tenant + shared mailboxes + Exchange admin (runbook `docs/guides/GRAPH_TENANT_VALIDATION.md`). Gate stays OPEN until the runbook has run successfully against an approved test mailbox. Blocks Phase 3 production email readiness, not Phase 2. | Principal / PO |
 
 ## Resolved
 | ID | Decision | Resolution |

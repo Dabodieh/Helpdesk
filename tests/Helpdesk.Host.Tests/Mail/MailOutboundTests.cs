@@ -55,7 +55,7 @@ public sealed class MailOutboundTests(HelpdeskFixture fixture) : IClassFixture<H
 
         var failed = (await s.D.Agent.MessagesAsync(s.TicketId)).Single(m => m.Str("body") == "Rejected by the provider");
         Assert.Equal("Failed", failed.Str("deliveryState"));
-        Assert.Contains("send_rejected", failed.Str("deliveryError"), StringComparison.Ordinal);
+        Assert.Equal("rejected_by_provider", failed.Str("deliveryError")); // a safe category; the raw provider code stays in the mail attention list
         Assert.Empty(fixture.Fake().SentMail(s.Box.Address));
         var attention = (await s.D.Admin.Client.GetAsync($"{s.D.Department.Url}/mail/attention")).Expect(HttpStatusCode.OK);
         Assert.Contains(attention.Json.GetProperty("items").EnumerateArray(), i => i.Str("state") == "Failed" && i.Str("direction") == "Outbound");
@@ -117,23 +117,19 @@ public sealed class MailOutboundTests(HelpdeskFixture fixture) : IClassFixture<H
     }
 
     [Fact]
-    public async Task A_deactivated_mailbox_falls_back_to_the_department_default_or_records_the_reply_unsent()
+    public async Task A_deactivated_ticket_mailbox_never_switches_the_sender()
     {
         var s = await StartAsync();
         var second = await fixture.CreateMailboxAsync(s.D);
         var list = (await s.D.Admin.Client.GetAsync($"{s.D.Department.Url}/mailboxes/{s.Box.Id}")).Expect(HttpStatusCode.OK);
         (await s.D.Admin.Client.PatchAsync($"{s.D.Department.Url}/mailboxes/{s.Box.Id}", new { version = list.Version, isActive = false })).Expect(HttpStatusCode.OK);
 
-        // The ticket's own mailbox is inactive and the default flag was cleared with it: the only active mailbox sends.
-        (await s.D.Agent.PostMessageAsync(s.TicketId, "Public", "Via the other desk")).Expect(HttpStatusCode.Created);
+        // The ticket belongs to the first mailbox, which is now inactive: the reply is recorded but NOT sent from the other mailbox.
+        var unsent = (await s.D.Agent.PostMessageAsync(s.TicketId, "Public", "Not via the other desk")).Expect(HttpStatusCode.Created);
+        Assert.Equal("NotDelivered", unsent.Json.GetProperty("message").Str("deliveryState"));
         await fixture.DispatchAsync();
         Assert.Empty(fixture.Fake().SentMail(s.Box.Address));
-        Assert.Single(fixture.Fake().SentMail(second.Address));
-
-        var secondDto = (await s.D.Admin.Client.GetAsync($"{s.D.Department.Url}/mailboxes/{second.Id}")).Expect(HttpStatusCode.OK);
-        (await s.D.Admin.Client.PatchAsync($"{s.D.Department.Url}/mailboxes/{second.Id}", new { version = secondDto.Version, isActive = false })).Expect(HttpStatusCode.OK);
-        var unsent = (await s.D.Agent.PostMessageAsync(s.TicketId, "Public", "No desk left")).Expect(HttpStatusCode.Created);
-        Assert.Equal("NotDelivered", unsent.Json.GetProperty("message").Str("deliveryState"));
+        Assert.Empty(fixture.Fake().SentMail(second.Address));
     }
 
     [Fact]

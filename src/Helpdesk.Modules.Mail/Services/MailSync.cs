@@ -325,11 +325,21 @@ internal sealed class MailJobRunner(
     {
         var now = clock.GetUtcNowMicroseconds();
 
-        // Sends that were claimed but never finished (crashed worker) go back to the queue; the persisted draft id prevents a double send.
+        // Sends that were claimed but never finished (crashed worker). Before the provider send call they simply go back to the queue. Once the
+        // send call may have happened (submit_started) they are reconciled against the provider sent copy instead and, without one, become Uncertain:
+        // a blind resend could mail the requester twice.
         var stuckBefore = now - TimeSpan.FromMinutes(10);
         await db.Database.ExecuteSqlAsync(
-            $"UPDATE mail.messages SET state = 'Queued', next_attempt_at = {now}, updated_at = {now} WHERE direction = 'Outbound' AND state = 'Sending' AND updated_at < {stuckBefore}",
+            $"UPDATE mail.messages SET state = 'Queued', next_attempt_at = {now}, updated_at = {now} WHERE direction = 'Outbound' AND state = 'Sending' AND updated_at < {stuckBefore} AND (flags IS NULL OR flags NOT LIKE '%submit_started%')",
             cancellationToken);
+        var stuckSubmitted = await db.Messages.AsNoTracking()
+            .Where(m => m.Direction == MessageDirections.Outbound && m.State == MessageStates.Sending && m.UpdatedAt < stuckBefore)
+            .Select(m => m.Id).Take(BatchSize).ToListAsync(cancellationToken);
+        foreach (var stuckId in stuckSubmitted)
+        {
+            await sender.ReconcileAsync(stuckId, cancellationToken);
+            db.ChangeTracker.Clear();
+        }
 
         var due = await db.Messages.AsNoTracking()
             .Where(m => m.Direction == MessageDirections.Outbound && m.State == MessageStates.Queued && m.NextAttemptAt <= now)
@@ -341,7 +351,7 @@ internal sealed class MailJobRunner(
         }
 
         var unreported = await db.Messages
-            .Where(m => m.Direction == MessageDirections.Outbound && (m.State == MessageStates.Sent || m.State == MessageStates.Failed) && m.DeliveryReportedAt == null)
+            .Where(m => m.Direction == MessageDirections.Outbound && (m.State == MessageStates.Sent || m.State == MessageStates.Failed || m.State == MessageStates.Uncertain) && m.DeliveryReportedAt == null)
             .OrderBy(m => m.UpdatedAt).Take(BatchSize).ToListAsync(cancellationToken);
         foreach (var message in unreported)
         {

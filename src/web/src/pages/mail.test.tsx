@@ -12,6 +12,7 @@ import {
   membership,
   mockFetch,
   page,
+  problem,
   renderApp,
   workspaceRoutes,
 } from '../test-utils'
@@ -43,7 +44,7 @@ test('delivery states are reported truthfully: queued, sent, failed, and recorde
   )
   await openTicket()
   expect(await screen.findByText('Queued to send by email')).toBeInTheDocument()
-  expect(screen.getByText('Sent by email from the department mailbox')).toBeInTheDocument()
+  expect(screen.getByText('Sent by email from the ticket’s mailbox (accepted for delivery; not confirmed as delivered)')).toBeInTheDocument()
   expect(screen.getByText(/Email delivery failed \(send_rejected\)/)).toBeInTheDocument()
   expect(screen.getByText(/Recorded, not emailed/)).toBeInTheDocument()
   // exactly one entry claims a send
@@ -213,4 +214,39 @@ test('creating a mailbox posts the trimmed values and shows server field errors'
   fireEvent.click(within(form).getByRole('button', { name: 'Add mailbox' }))
   await waitFor(() => expect(calls.filter((c) => c.method === 'POST' && c.path.endsWith('/mailboxes'))).toHaveLength(2))
   expect(calls.find((c) => c.method === 'POST')?.body).toEqual({ address: 'new@helpdesk.test', displayName: 'IT Desk' })
+})
+
+test('mailbox health shows its status and reasons, and an uncertain send is resolved only after a warning', async () => {
+  const calls = mockFetch({
+    ...deptRoutes(),
+    'GET /api/departments/d1/mailboxes': () => [
+      { ...MAILBOX, health: { status: 'Attention', reasons: ['subscription_expiring', 'outbound_uncertain'] }, lastSendAt: '2026-10-05T09:30:00Z', outboundUncertainCount: 1, outboundFailedCount: 0 },
+    ],
+    'GET /api/departments/d1/mail/attention': () =>
+      page([
+        { id: 'u1', mailboxId: 'mb1', direction: 'Outbound', state: 'Uncertain', ignoreReason: null, occurredAt: '2026-10-05T09:00:00Z', address: 'desk@helpdesk.test', subject: 'Re: Printer', lastError: 'outcome_uncertain', attempts: 1, ticketId: 't1', category: 'outcome_uncertain' },
+      ]),
+    'POST /api/departments/d1/mail/u1/retry': (c) =>
+      (c.body as { acceptDuplicateRisk?: boolean } | undefined)?.acceptDuplicateRisk ? new Response(JSON.stringify({ outcome: 'requeued' }), { status: 200, headers: { 'Content-Type': 'application/json' } }) : problem(409, 'Conflict', { code: 'outcome_uncertain', detail: 'x' }),
+  })
+  renderApp('/admin/departments/d1')
+  fireEvent.click(await screen.findByRole('tab', { name: 'Mailboxes' }))
+  expect(await screen.findByText('Attention')).toBeInTheDocument()
+  expect(screen.getByText(/Inbound subscription renewal is overdue · Some sends have an uncertain outcome/)).toBeInTheDocument()
+  expect(await screen.findByText('Send outcome uncertain (not retried automatically)')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument() // no plain retry for an uncertain send
+  fireEvent.click(screen.getByRole('button', { name: 'Resolve…' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Send outcome uncertain' })
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Check with the mail service' }))
+  expect(await within(dialog).findByText(/requester receives it twice/)).toBeInTheDocument()
+  expect(calls.filter((c) => c.method === 'POST').every((c) => !(c.body as { acceptDuplicateRisk?: boolean } | undefined)?.acceptDuplicateRisk)).toBe(true)
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Re-send anyway (may duplicate)' }))
+  await waitFor(() => expect(calls.some((c) => (c.body as { acceptDuplicateRisk?: boolean } | undefined)?.acceptDuplicateRisk === true)).toBe(true))
+})
+
+test('a failed send shows a safe category; an uncertain one offers no retry button', async () => {
+  mockFetch(ticketRoutes([makeMessage({ id: 'c', ...AGENT_REPLY, body: 'maybe sent', deliveryState: 'Failed', deliveryError: 'outcome_uncertain' })]))
+  await openTicket()
+  expect(await screen.findByText(/Send outcome uncertain: it may or may not have been sent/)).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Retry sending' })).not.toBeInTheDocument()
 })

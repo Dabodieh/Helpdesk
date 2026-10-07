@@ -197,10 +197,39 @@ internal sealed class InboundProcessor(
         if (reason is not null)
         {
             await audit.WriteSystemAsync(MailAuditActions.Ignored, MailAudit.MessageObject, message.Id, mailbox.DepartmentId, null, new { reason }, ct);
+            if (MailGuard.LooksLikeNdr(email))
+            {
+                await CorrelateNdrAsync(mailbox, message, ct);
+            }
         }
 
         await tx.CommitAsync(ct);
         return message;
+    }
+
+    /// <summary>
+    /// A suppressed non-delivery report may prove an earlier outbound message was NOT delivered. Matched only by message id or our own token within this
+    /// mailbox; the report itself stays ignored (no ticket, no requester reply). Unmatched reports are logged by id only.
+    /// </summary>
+    private async Task CorrelateNdrAsync(Mailbox mailbox, MailMessage ndr, CancellationToken ct)
+    {
+        var match = await NdrCorrelation.FindAsync(db, ndr, ct);
+        if (match is null)
+        {
+            log.NdrUncorrelated(mailbox.Id);
+            return;
+        }
+
+        var outbound = match.Outbound;
+        outbound.State = MessageStates.Failed;
+        outbound.LastError = MailErrorCodes.NdrDeliveryFailed;
+        outbound.NextAttemptAt = null;
+        outbound.DeliveryReportedAt = null; // the dispatcher reports it to the ticket
+        outbound.UpdatedAt = clock.GetUtcNowMicroseconds();
+        ndr.Flags = MessageFlags.With(ndr.Flags, "ndr_correlated");
+        await db.SaveChangesAsync(ct);
+        await audit.WriteSystemAsync(MailAuditActions.DeliveryFailedReported, MailAudit.MessageObject, outbound.Id, outbound.DepartmentId, null, new { via = match.Evidence, ndrId = ndr.Id }, ct);
+        log.NdrCorrelated(mailbox.Id, outbound.Id, match.Evidence);
     }
 
     // ----- steps 2-5: correlate, ticket, attachments -----

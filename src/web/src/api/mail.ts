@@ -14,6 +14,10 @@ export const mailboxSchema = z.object({
   lastSyncAt: z.string().nullable(),
   lastSyncError: z.string().nullable(),
   attentionCount: z.number(),
+  health: z.object({ status: z.enum(['Healthy', 'Attention', 'Failed', 'NotConfigured', 'Disabled']), reasons: z.array(z.string()) }).optional(),
+  lastSendAt: z.string().nullish(),
+  outboundFailedCount: z.number().optional(),
+  outboundUncertainCount: z.number().optional(),
 })
 export type Mailbox = z.infer<typeof mailboxSchema>
 
@@ -21,7 +25,7 @@ export const attentionItemSchema = z.object({
   id: z.string(),
   mailboxId: z.string(),
   direction: z.enum(['Inbound', 'Outbound']),
-  state: z.enum(['Failed', 'Ignored']),
+  state: z.enum(['Failed', 'Uncertain', 'Ignored']),
   ignoreReason: z.string().nullable(),
   occurredAt: z.string(),
   address: z.string(),
@@ -29,6 +33,7 @@ export const attentionItemSchema = z.object({
   lastError: z.string().nullable(),
   attempts: z.number(),
   ticketId: z.string().nullable(),
+  category: z.string().nullish(),
 })
 export type AttentionItem = z.infer<typeof attentionItemSchema>
 
@@ -53,5 +58,6 @@ export const updateMailbox = (
 export const listAttention = (departmentId: string, cursor: string | null) =>
   api('GET', `${base(departmentId)}/mail/attention${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { schema: attentionPageSchema })
 
-export const retryMail = (departmentId: string, mailMessageId: string) =>
-  api('POST', `${base(departmentId)}/mail/${encodeURIComponent(mailMessageId)}/retry`)
+/** Retry failed mail. For an Uncertain send the server first checks the provider; re-sending anyway needs `acceptDuplicateRisk` (the requester may then get it twice). */
+export const retryMail = (departmentId: string, mailMessageId: string, acceptDuplicateRisk = false) =>
+  api('POST', `${base(departmentId)}/mail/${encodeURIComponent(mailMessageId)}/retry`, acceptDuplicateRisk ? { body: { acceptDuplicateRisk: true } } : {})

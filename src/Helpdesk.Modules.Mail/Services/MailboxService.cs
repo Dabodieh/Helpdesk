@@ -26,7 +26,18 @@ internal sealed record MailboxDto(
     SubscriptionDto Subscription,
     DateTimeOffset? LastSyncAt,
     string? LastSyncError,
-    int AttentionCount);
+    int AttentionCount,
+    MailboxHealthDto Health,
+    DateTimeOffset? LastSendAt,
+    int OutboundFailedCount,
+    int OutboundUncertainCount);
+
+/// <summary>
+/// Derived from persisted state only (no probes). <see cref="Status"/>: Healthy, Attention, Failed, NotConfigured, Disabled. <see cref="Reasons"/> are stable codes
+/// (subscription_failed, subscription_expired, subscription_expiring, sync_failing, sync_stale, outbound_failed, outbound_uncertain, inbound_failed, ...).
+/// Having no traffic is never a reason: the sync job runs every few minutes whether or not mail arrives, so a stale LastSyncAt means sync itself stopped.
+/// </summary>
+internal sealed record MailboxHealthDto(string Status, IReadOnlyList<string> Reasons);
 
 internal sealed record CreateMailboxRequest(string? Address, string? DisplayName, string? ProviderRef, bool? IsDefault);
 
@@ -43,7 +54,10 @@ internal sealed record AttentionItemDto(
     string Subject,
     string? LastError,
     int Attempts,
-    Guid? TicketId);
+    Guid? TicketId,
+    string? Category = null);
+
+internal sealed record RetryOutcomeDto(string Outcome);
 
 internal sealed record AttentionPage(IReadOnlyList<AttentionItemDto> Items, string? NextCursor);
 
@@ -56,9 +70,12 @@ internal sealed partial class MailboxService(
     InboundProcessor processor,
     IMailJobScheduler scheduler,
     IOptions<MailOptions> options,
+    OutboundSender sender,
     TimeProvider clock)
 {
     private const int MaxLimit = 100;
+    private static readonly TimeSpan StaleSyncAfter = TimeSpan.FromMinutes(30); // the sync-all job runs every 5 minutes, traffic or not
+    private static readonly TimeSpan ExpiringSoon = TimeSpan.FromHours(12); // renewal starts 36 h before expiry and runs every 6 h: this close means renewal is failing
 
     [GeneratedRegex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$")]
     private static partial Regex EmailPattern();
@@ -67,15 +84,15 @@ internal sealed partial class MailboxService(
     {
         var mailboxes = await db.Mailboxes.AsNoTracking().Include(m => m.Sync)
             .Where(m => m.DepartmentId == departmentId).OrderByDescending(m => m.IsDefault).ThenBy(m => m.Address).ToListAsync(ct);
-        var attention = await AttentionCountsAsync(departmentId, ct);
-        return [.. mailboxes.Select(m => ToDto(m, attention.GetValueOrDefault(m.Id)))];
+        var stats = await StatsAsync(departmentId, ct);
+        return [.. mailboxes.Select(m => ToDto(m, stats.GetValueOrDefault(m.Id) ?? new MailboxStats()))];
     }
 
     public async Task<MailboxDto> GetAsync(Guid departmentId, Guid mailboxId, CancellationToken ct)
     {
         var mailbox = await FindAsync(departmentId, mailboxId, track: false, ct);
-        var attention = await AttentionCountsAsync(departmentId, ct);
-        return ToDto(mailbox, attention.GetValueOrDefault(mailbox.Id));
+        var stats = await StatsAsync(departmentId, ct);
+        return ToDto(mailbox, stats.GetValueOrDefault(mailbox.Id) ?? new MailboxStats());
     }
 
     public async Task<MailboxDto> CreateAsync(Guid departmentId, CreateMailboxRequest request, CancellationToken ct)
@@ -232,7 +249,7 @@ internal sealed partial class MailboxService(
             throw new RequestValidationException("limit", $"limit must be between 1 and {MaxLimit}.");
         }
 
-        var query = db.Messages.AsNoTracking().Where(m => m.DepartmentId == departmentId && (m.State == MessageStates.Failed || m.State == MessageStates.Ignored));
+        var query = db.Messages.AsNoTracking().Where(m => m.DepartmentId == departmentId && (m.State == MessageStates.Failed || m.State == MessageStates.Uncertain || m.State == MessageStates.Ignored));
         if (cursor is not null)
         {
             if (!Cursor.TryDecode(cursor, out var payload) || payload.Split('|') is not { Length: 2 } parts
@@ -254,15 +271,49 @@ internal sealed partial class MailboxService(
 
         var items = rows.Select(m => new AttentionItemDto(
             m.Id, m.MailboxId, m.Direction, m.State, m.IgnoreReason, m.OccurredAt, m.FromAddress, m.Subject.Length > 200 ? m.Subject[..200] : m.Subject,
-            m.LastError, m.Attempts, m.TicketId)).ToList();
+            m.LastError, m.Attempts, m.TicketId, m.Direction == MessageDirections.Outbound ? MailErrors.Category(m.LastError) : null)).ToList();
         var next = more ? Cursor.Encode(string.Create(CultureInfo.InvariantCulture, $"{rows[^1].CreatedAt.UtcTicks}|{rows[^1].Id}")) : null;
         return new AttentionPage(items, next);
     }
 
-    public async Task RetryAsync(Guid departmentId, Guid mailMessageId, CancellationToken ct)
+    /// <summary>
+    /// Re-queues failed mail. An Uncertain outbound message is first reconciled against the provider sent copy (and simply marked Sent when it is found); only
+    /// with <paramref name="acceptDuplicateRisk"/> is it re-sent, as a NEW message, knowing the requester may then receive it twice. Returns null for the plain retry.
+    /// </summary>
+    public async Task<RetryOutcomeDto?> RetryAsync(Guid departmentId, Guid mailMessageId, bool acceptDuplicateRisk, CancellationToken ct)
     {
-        var message = await db.Messages.AsNoTracking().Where(m => m.Id == mailMessageId && m.DepartmentId == departmentId && m.State == MessageStates.Failed)
-            .Select(m => new { m.Direction, m.MailboxId, m.ProviderMessageId }).SingleOrDefaultAsync(ct) ?? throw new NotFoundException();
+        var message = await db.Messages.AsNoTracking()
+            .Where(m => m.Id == mailMessageId && m.DepartmentId == departmentId && (m.State == MessageStates.Failed || m.State == MessageStates.Uncertain))
+            .Select(m => new { m.Direction, m.MailboxId, m.ProviderMessageId, m.State }).SingleOrDefaultAsync(ct) ?? throw new NotFoundException();
+        if (message.State == MessageStates.Uncertain)
+        {
+            if (await sender.ReconcileAsync(mailMessageId, ct))
+            {
+                return new RetryOutcomeDto("reconciled");
+            }
+
+            if (!acceptDuplicateRisk)
+            {
+                throw new ConflictException(
+                    "The provider has no record that this message was sent, but it may have been. Re-sending can deliver it twice. Confirm to re-send anyway.", MailProblemCodes.OutcomeUncertain);
+            }
+
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            var at = clock.GetUtcNowMicroseconds();
+            var requeued = await db.Database.ExecuteSqlAsync(
+                $"UPDATE mail.messages SET state = 'Queued', attempts = 0, last_error = NULL, provider_draft_id = NULL, next_attempt_at = {at}, delivery_reported_at = NULL, updated_at = {at} WHERE id = {mailMessageId} AND department_id = {departmentId} AND state = 'Uncertain'",
+                ct);
+            if (requeued != 1)
+            {
+                throw new ConflictException("The message was resolved by someone else.", ProblemCodes.InvalidState);
+            }
+
+            await audit.WriteAsync(MailAuditActions.UncertainRetried, MailAudit.MessageObject, mailMessageId, departmentId, null, new { acceptedDuplicateRisk = true }, ct);
+            await tx.CommitAsync(ct);
+            scheduler.EnqueueSend(mailMessageId);
+            return new RetryOutcomeDto("requeued");
+        }
+
         if (message.Direction == MessageDirections.Outbound)
         {
             var now = clock.GetUtcNowMicroseconds();
@@ -270,7 +321,7 @@ internal sealed partial class MailboxService(
                 $"UPDATE mail.messages SET state = 'Queued', attempts = 0, last_error = NULL, next_attempt_at = {now}, delivery_reported_at = NULL, updated_at = {now} WHERE id = {mailMessageId} AND department_id = {departmentId} AND state = 'Failed'",
                 ct);
             scheduler.EnqueueSend(mailMessageId);
-            return;
+            return null;
         }
 
         if (!await processor.RequeueAsync(departmentId, mailMessageId, ct))
@@ -279,6 +330,7 @@ internal sealed partial class MailboxService(
         }
 
         scheduler.EnqueueSync(message.MailboxId);
+        return null;
     }
 
     // ----- helpers -----
@@ -291,16 +343,126 @@ internal sealed partial class MailboxService(
         return await query.SingleOrDefaultAsync(m => m.Id == mailboxId && m.DepartmentId == departmentId, ct) ?? throw new NotFoundException();
     }
 
-    private async Task<Dictionary<Guid, int>> AttentionCountsAsync(Guid departmentId, CancellationToken ct) =>
-        await db.Messages.AsNoTracking()
-            .Where(m => m.DepartmentId == departmentId && m.State == MessageStates.Failed)
-            .GroupBy(m => m.MailboxId).Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count, ct);
+    private sealed class MailboxStats
+    {
+        public int InboundFailed { get; set; }
 
-    private static MailboxDto ToDto(Mailbox m, int attention) =>
+        public int OutboundFailed { get; set; }
+
+        public int OutboundUncertain { get; set; }
+
+        public DateTimeOffset? LastSendAt { get; set; }
+    }
+
+    /// <summary>Counts per mailbox of this department only (the department id is part of every query).</summary>
+    private async Task<Dictionary<Guid, MailboxStats>> StatsAsync(Guid departmentId, CancellationToken ct)
+    {
+        var rows = await db.Messages.AsNoTracking()
+            .Where(m => m.DepartmentId == departmentId && (m.State == MessageStates.Failed || m.State == MessageStates.Uncertain))
+            .GroupBy(m => new { m.MailboxId, m.Direction, m.State }).Select(g => new { g.Key.MailboxId, g.Key.Direction, g.Key.State, Count = g.Count() }).ToListAsync(ct);
+        var sends = await db.Messages.AsNoTracking()
+            .Where(m => m.DepartmentId == departmentId && m.Direction == MessageDirections.Outbound && m.State == MessageStates.Sent)
+            .GroupBy(m => m.MailboxId).Select(g => new { Id = g.Key, At = g.Max(m => m.UpdatedAt) }).ToListAsync(ct);
+        var result = new Dictionary<Guid, MailboxStats>();
+        MailboxStats Of(Guid id) => result.TryGetValue(id, out var s) ? s : result[id] = new MailboxStats();
+        foreach (var r in rows)
+        {
+            var s = Of(r.MailboxId);
+            if (r.State == MessageStates.Uncertain)
+            {
+                s.OutboundUncertain += r.Count;
+            }
+            else if (r.Direction == MessageDirections.Outbound)
+            {
+                s.OutboundFailed += r.Count;
+            }
+            else
+            {
+                s.InboundFailed += r.Count;
+            }
+        }
+
+        foreach (var s in sends)
+        {
+            Of(s.Id).LastSendAt = s.At;
+        }
+
+        return result;
+    }
+
+    private MailboxDto ToDto(Mailbox m, MailboxStats stats) =>
         new(
             m.Id, m.DepartmentId, m.Address, m.DisplayName, m.Provider, m.IsActive, m.IsDefault, ConcurrencyVersion.ToToken(m.Version),
             new SubscriptionDto(m.Sync?.SubscriptionState ?? SubscriptionStates.None, m.Sync?.SubscriptionExpiresAt),
-            m.Sync?.LastSyncAt, m.Sync?.LastSyncError, attention);
+            m.Sync?.LastSyncAt, m.Sync?.LastSyncError, stats.InboundFailed + stats.OutboundFailed + stats.OutboundUncertain,
+            HealthOf(m, stats), stats.LastSendAt, stats.OutboundFailed, stats.OutboundUncertain);
+
+    private MailboxHealthDto HealthOf(Mailbox m, MailboxStats stats)
+    {
+        if (!m.IsActive)
+        {
+            return new MailboxHealthDto("Disabled", ["mailbox_inactive"]);
+        }
+
+        var now = clock.GetUtcNowMicroseconds();
+        var sync = m.Sync;
+        if (sync is null || (sync.SubscriptionState == SubscriptionStates.None && sync.LastSyncAt is null))
+        {
+            return new MailboxHealthDto("NotConfigured", ["subscription_not_created"]);
+        }
+
+        var failed = new List<string>();
+        var attention = new List<string>();
+        if (sync.SubscriptionState == SubscriptionStates.Failed)
+        {
+            failed.Add("subscription_failed");
+        }
+        else if (sync.SubscriptionState == SubscriptionStates.None)
+        {
+            attention.Add("subscription_missing");
+        }
+        else if (sync.SubscriptionExpiresAt is { } expires)
+        {
+            if (expires <= now)
+            {
+                failed.Add("subscription_expired");
+            }
+            else if (expires - now < ExpiringSoon)
+            {
+                attention.Add("subscription_expiring");
+            }
+        }
+
+        if (sync.ConsecutiveFailures >= 3)
+        {
+            failed.Add("sync_failing");
+        }
+        else if (sync.ConsecutiveFailures > 0)
+        {
+            attention.Add("sync_failing");
+        }
+        else if (sync.LastSyncAt is { } last && now - last > StaleSyncAfter)
+        {
+            attention.Add("sync_stale");
+        }
+
+        if (stats.OutboundUncertain > 0)
+        {
+            attention.Add("outbound_uncertain");
+        }
+
+        if (stats.OutboundFailed > 0)
+        {
+            attention.Add("outbound_failed");
+        }
+
+        if (stats.InboundFailed > 0)
+        {
+            attention.Add("inbound_failed");
+        }
+
+        return failed.Count > 0 ? new MailboxHealthDto("Failed", [.. failed, .. attention]) : attention.Count > 0 ? new MailboxHealthDto("Attention", attention) : new MailboxHealthDto("Healthy", []);
+    }
 
     private static void ValidateDisplayName(Dictionary<string, string[]> errors, string? value)
     {
@@ -343,10 +505,12 @@ internal sealed class MailboxDirectory(MailDbContext db) : IMailboxDirectory
         var active = await db.Mailboxes.AsNoTracking().Where(m => m.DepartmentId == departmentId && m.IsActive)
             .Select(m => new { m.Id, m.Address, m.DisplayName, m.IsDefault }).ToListAsync(cancellationToken);
 
-        // The ticket's own mailbox; else the department's default; else the only active one. Never another department's, never a global sender.
-        var chosen = active.FirstOrDefault(m => m.Id == ticketMailboxId)
-            ?? active.FirstOrDefault(m => m.IsDefault)
-            ?? (active.Count == 1 ? active[0] : null);
+        // A ticket that has its own mailbox is answered from THAT mailbox or not at all: when it is unavailable the reply is recorded as not delivered and an
+        // administrator must act; it is never silently sent from another identity. Only a ticket with no mailbox of its own uses the department default
+        // (else the only active one). Never another department's, never a global sender.
+        var chosen = ticketMailboxId is not null
+            ? active.FirstOrDefault(m => m.Id == ticketMailboxId)
+            : active.FirstOrDefault(m => m.IsDefault) ?? (active.Count == 1 ? active[0] : null);
         return chosen is null ? null : new ReplyMailbox(chosen.Id, chosen.Address, chosen.DisplayName, chosen.IsDefault);
     }
 

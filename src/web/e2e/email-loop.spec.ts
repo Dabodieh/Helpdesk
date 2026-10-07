@@ -40,7 +40,7 @@ test('email in, reply out from the department mailbox, requester answer threads 
   // Reply: it is sent from the department's mailbox, and the page says so only once the provider accepted it.
   await ticket.getByRole('textbox', { name: 'Public reply' }).fill('We have booked an engineer for tomorrow.')
   await ticket.getByRole('button', { name: 'Post public reply' }).click()
-  await expect(ticket.getByText('Sent by email from the department mailbox')).toBeVisible({ timeout: 20_000 })
+  await expect(ticket.getByText('Sent by email from the ticket’s mailbox (accepted for delivery; not confirmed as delivered)')).toBeVisible({ timeout: 20_000 })
   const sent = await admin.get<{ draftId: string; to: string[]; bodyHtml: string }[]>(`/api/dev/mail/sent?mailbox=${encodeURIComponent(address)}`)
   expect(sent).toHaveLength(1)
   expect(sent[0]!.to).toEqual([requester])

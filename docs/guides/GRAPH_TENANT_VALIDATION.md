@@ -2,7 +2,11 @@
 
 Purpose: run the experiments E-1..E-38 listed in `docs/architecture/EMAIL_ARCHITECTURE.md` ("Graph spike findings") against a **test** Microsoft 365 tenant, record observations, and then confirm or amend ADR-011 (accepted as design direction; this run closes its production validation gate) and close or re-rate R-04.
 
-Status: **not yet run**. Written from Microsoft documentation only. Nothing in this runbook was executed by the authors; request/response shapes may need small corrections on first contact.
+Status: **not yet run. D-16 is OPEN.** Real-tenant validation attempted for Refinement 3 (2026-10-07): **BLOCKED / NOT RUN**. The development environment has no Graph configuration (no `Mail__Graph__*` settings, no approved test tenant, shared mailbox or safe recipient), and none may be invented. Everything below the provider seam is covered by simulator tests only; simulator results are not Graph evidence.
+
+Minimum operator evidence still required to close D-16 (one controlled message per scenario, record ids/booleans only, never bodies or secrets): (1) public reply: From = ticket shared mailbox, Reply-To = same mailbox, agent address not exposed, sent copy location and owner in Sent Items (E-10, E-12, E-21..E-26); (2) one ticket, reply, change team/assignee, reply again: same From; (3) threading: reply to an inbound message, then a requester reply: In-Reply-To/References and Graph vs Internet message ids as stored in `mail.messages` (E-23); (4) Graph identifier behaviour: does `internetMessageId` of the draft equal that of the Sent Items copy, is the immutable id of the draft the sent copy id (what `FindSentCopyAsync` relies on); (5) one acknowledgement if enabled; (6) one controlled invalid-recipient NDR: does it arrive within the test window, and does it quote our `[hd:token]` footer and/or carry In-Reply-To/References of the sent copy (the two pieces of evidence `NdrCorrelation` uses); (7) whether Graph accepts an `Auto-Submitted` header on a draft (it is believed to allow only `x-` internet headers, so acknowledgements do NOT carry it; they are protected by inbound suppression and the sender rate limit instead).
+
+Original status:  Written from Microsoft documentation only. Nothing in this runbook was executed by the authors; request/response shapes may need small corrections on first contact.
 
 Rules for the run
 - Use a dedicated test tenant (or a clearly separated test OU). Never run against production mailboxes.

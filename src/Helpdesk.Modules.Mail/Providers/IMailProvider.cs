@@ -53,6 +53,9 @@ internal sealed class TransientProviderException(string code, Exception? inner =
     public string Code { get; } = code;
 
     public TimeSpan? RetryAfter { get; init; }
+
+    /// <summary>True when the request may nevertheless have been processed (connection lost, timeout, 5xx). False when the provider certainly did not act (e.g. 429).</summary>
+    public bool Ambiguous { get; init; }
 }
 
 /// <summary>Permanent provider failure (4xx other than 429): retrying will not help.</summary>

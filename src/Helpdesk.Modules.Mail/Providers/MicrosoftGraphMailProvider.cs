@@ -333,11 +333,11 @@ internal sealed class MicrosoftGraphMailProvider : IMailProvider
         }
         catch (HttpRequestException ex)
         {
-            throw new TransientProviderException("graph_network", ex);
+            throw new TransientProviderException("graph_network", ex) { Ambiguous = true };
         }
         catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new TransientProviderException("graph_timeout", ex);
+            throw new TransientProviderException("graph_timeout", ex) { Ambiguous = true };
         }
 
         if (response.IsSuccessStatusCode)
@@ -351,7 +351,7 @@ internal sealed class MicrosoftGraphMailProvider : IMailProvider
         response.Dispose();
         if (status is 429 or 408 || status >= 500)
         {
-            throw new TransientProviderException($"graph_{status}:{code}") { RetryAfter = retryAfter };
+            throw new TransientProviderException($"graph_{status}:{code}") { RetryAfter = retryAfter, Ambiguous = status != 429 };
         }
 
         throw new PermanentProviderException($"graph_{status}", new InvalidOperationException(code));

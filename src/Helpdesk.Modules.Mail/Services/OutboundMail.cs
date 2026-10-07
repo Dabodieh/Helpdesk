@@ -198,7 +198,7 @@ internal sealed class OutboundSender(
             var mailbox = await db.Mailboxes.AsNoTracking().SingleOrDefaultAsync(m => m.Id == message.MailboxId && m.DepartmentId == message.DepartmentId, ct);
             if (mailbox is not { IsActive: true })
             {
-                throw new PermanentProviderException("mailbox_inactive");
+                throw new PermanentProviderException(MailErrorCodes.MailboxInactive);
             }
 
             var mref = new MailboxRef(mailbox.Id, mailbox.Address, mailbox.ProviderRef ?? mailbox.Address);
@@ -233,8 +233,11 @@ internal sealed class OutboundSender(
                     draftId = draft.DraftId;
                 }
 
-                await provider.SendDraftAsync(mref, draftId, ct);
-                sentCopy = await provider.FindSentCopyAsync(mref, draftId, ct);
+                // From here the provider may have the message even if the call fails: remember that BEFORE asking, so a crash cannot turn into a blind resend.
+                message.Flags = MessageFlags.With(message.Flags, MessageFlags.SubmitStarted);
+                message.UpdatedAt = clock.GetUtcNowMicroseconds();
+                await db.SaveChangesAsync(ct);
+                sentCopy = await SubmitAsync(message, mref, draftId, ct);
             }
 
             await using var tx = await db.Database.BeginTransactionAsync(ct);
@@ -258,6 +261,10 @@ internal sealed class OutboundSender(
         {
             throw;
         }
+        catch (UncertainSubmissionException ex)
+        {
+            await MarkUncertainAsync(message, ex.InnerException ?? ex, ct);
+        }
         catch (Exception ex)
         {
             await FailAsync(message, ex, ct);
@@ -266,18 +273,128 @@ internal sealed class OutboundSender(
         await ReportAsync(message, ct);
     }
 
+    /// <summary>
+    /// The provider send call. A failure that leaves the outcome open (connection lost, timeout, 5xx) is NEVER retried blindly: the sent copy is looked up
+    /// once, and without it the message becomes Uncertain for an operator. A 429 (the provider certainly did not act) and every 4xx are not ambiguous.
+    /// </summary>
+    private async Task<SentCopy?> SubmitAsync(MailMessage message, MailboxRef mref, string draftId, CancellationToken ct)
+    {
+        TransientProviderException? ambiguous = null;
+        try
+        {
+            await provider.SendDraftAsync(mref, draftId, ct);
+        }
+        catch (TransientProviderException ex) when (ex.Ambiguous)
+        {
+            ambiguous = ex;
+        }
+
+        SentCopy? copy;
+        try
+        {
+            copy = await provider.FindSentCopyAsync(mref, draftId, ct);
+        }
+        catch (Exception ex) when (ambiguous is not null && ex is not OperationCanceledException)
+        {
+            copy = null;
+        }
+
+        if (ambiguous is not null)
+        {
+            if (copy is null)
+            {
+                throw new UncertainSubmissionException(ambiguous);
+            }
+
+            log.OutboundReconciled(message.Id);
+        }
+
+        return copy;
+    }
+
+    /// <summary>
+    /// Resolves a message whose send may have reached the provider (a crashed worker left it Sending, or an operator asks): the sent copy proves it was
+    /// submitted; without one the message is Uncertain. Never sends. Returns true when the sent copy was found.
+    /// </summary>
+    public async Task<bool> ReconcileAsync(Guid outboundId, CancellationToken ct)
+    {
+        var message = await db.Messages.SingleOrDefaultAsync(
+            m => m.Id == outboundId && m.Direction == MessageDirections.Outbound && (m.State == MessageStates.Sending || m.State == MessageStates.Uncertain), ct);
+        if (message is null)
+        {
+            return false;
+        }
+
+        SentCopy? copy = null;
+        try
+        {
+            var mailbox = await db.Mailboxes.AsNoTracking().SingleOrDefaultAsync(m => m.Id == message.MailboxId && m.DepartmentId == message.DepartmentId, ct);
+            if (mailbox is not null && message.ProviderDraftId is { } draftId)
+            {
+                copy = await provider.FindSentCopyAsync(new MailboxRef(mailbox.Id, mailbox.Address, mailbox.ProviderRef ?? mailbox.Address), draftId, ct);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            log.OutboundUncertain(message.Id, MailText.ShortError(ex));
+        }
+
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        if (copy is not null)
+        {
+            message.ProviderMessageId = copy.ProviderMessageId;
+            message.InternetMessageId = MailText.NormaliseMessageId(copy.InternetMessageId) ?? message.InternetMessageId;
+            message.State = MessageStates.Sent;
+            message.LastError = null;
+            message.NextAttemptAt = null;
+            message.DeliveryReportedAt = null;
+            message.UpdatedAt = clock.GetUtcNowMicroseconds();
+            await db.SaveChangesAsync(ct);
+            await audit.WriteSystemAsync(MailAuditActions.SendReconciled, MailAudit.MessageObject, message.Id, message.DepartmentId, null, new { ticketId = message.TicketId }, ct);
+            log.OutboundReconciled(message.Id);
+        }
+        else if (message.State == MessageStates.Sending)
+        {
+            await ApplyUncertainAsync(message, ct);
+        }
+
+        await tx.CommitAsync(ct);
+        await ReportAsync(message, ct);
+        return copy is not null;
+    }
+
+    private async Task MarkUncertainAsync(MailMessage message, Exception ex, CancellationToken ct)
+    {
+        log.OutboundUncertain(message.Id, MailText.ShortError(ex));
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await ApplyUncertainAsync(message, ct);
+        await tx.CommitAsync(ct);
+    }
+
+    private async Task ApplyUncertainAsync(MailMessage message, CancellationToken ct)
+    {
+        message.State = MessageStates.Uncertain;
+        message.LastError = MailErrorCodes.OutcomeUncertain;
+        message.NextAttemptAt = null;
+        message.DeliveryReportedAt = null;
+        message.UpdatedAt = clock.GetUtcNowMicroseconds();
+        await db.SaveChangesAsync(ct);
+        await audit.WriteSystemAsync(MailAuditActions.SendUncertain, MailAudit.MessageObject, message.Id, message.DepartmentId, null, new { attempts = message.Attempts }, ct);
+    }
+
     /// <summary>Tells Ticketing how it ended (Sent/Failed). Safe to repeat; rows still unreported are retried by the dispatcher.</summary>
     public async Task ReportAsync(MailMessage message, CancellationToken ct)
     {
-        if (message.TicketMessageId is not { } ticketMessageId || message.State is not (MessageStates.Sent or MessageStates.Failed))
+        if (message.TicketMessageId is not { } ticketMessageId || message.State is not (MessageStates.Sent or MessageStates.Failed or MessageStates.Uncertain))
         {
             return;
         }
 
         try
         {
+            // Ticketing only learns "submitted" or "not (confirmed) submitted" plus a safe category. Neither means delivered.
             await delivery.SetAsync(
-                message.DepartmentId, ticketMessageId, message.State == MessageStates.Sent ? MailDeliveryStates.Sent : MailDeliveryStates.Failed, message.LastError, ct);
+                message.DepartmentId, ticketMessageId, message.State == MessageStates.Sent ? MailDeliveryStates.Sent : MailDeliveryStates.Failed, MailErrors.Category(message.LastError), ct);
             message.DeliveryReportedAt = clock.GetUtcNowMicroseconds();
             await db.SaveChangesAsync(ct);
         }
@@ -338,3 +455,6 @@ internal sealed class OutboundSender(
     private static List<EmailAddress> Parse(string json) =>
         [.. (JsonSerializer.Deserialize<List<MailParticipant>>(json, Json) ?? []).Select(p => new EmailAddress(p.Address, p.Name))];
 }
+
+/// <summary>The provider call failed in a way that leaves it unknown whether the message was accepted.</summary>
+internal sealed class UncertainSubmissionException(Exception inner) : Exception("outcome_uncertain", inner);

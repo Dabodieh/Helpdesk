@@ -14,14 +14,29 @@ internal static class MessageStates
     public const string Completed = "Completed";
     public const string Ignored = "Ignored";
 
-    // Outbound lifecycle: Queued -> Sending -> Sent (or Failed).
+    // Outbound lifecycle: Queued -> Sending -> Sent (or Failed, or Uncertain).
+    // Queued/Sending: not yet submitted (or in progress). Sent: the provider ACCEPTED the message for submission; this is never proof of delivery.
+    // Failed: definitely not submitted (permanent/exhausted pre-submission error), or a confirmed non-delivery report (see MailErrorCodes.NdrDeliveryFailed).
+    // Uncertain: the request may or may not have reached the provider. Never retried automatically (a retry could send the mail twice).
     public const string Queued = "Queued";
     public const string Sending = "Sending";
     public const string Sent = "Sent";
+    public const string Uncertain = "Uncertain";
 
     public const string Failed = "Failed";
 
-    public static readonly string[] All = [Received, Ticketed, Completed, Ignored, Queued, Sending, Sent, Failed];
+    public static readonly string[] All = [Received, Ticketed, Completed, Ignored, Queued, Sending, Sent, Uncertain, Failed];
+}
+
+/// <summary>Comma separated markers in <c>mail.messages.flags</c>.</summary>
+internal static class MessageFlags
+{
+    /// <summary>Set (and saved) immediately before the provider send call: from then on the outcome is only certain once the sent copy is seen or the provider rejected the call.</summary>
+    public const string SubmitStarted = "submit_started";
+
+    public static bool Has(string? flags, string flag) => flags is not null && flags.Split(',').Contains(flag, StringComparer.Ordinal);
+
+    public static string With(string? flags, string flag) => Has(flags, flag) ? flags! : string.IsNullOrEmpty(flags) ? flag : flags + "," + flag;
 }
 
 internal static class SubscriptionStates

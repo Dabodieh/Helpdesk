@@ -26,8 +26,8 @@ public sealed record ReplyMailbox(Guid MailboxId, string Address, string Name, b
 public interface IMailboxDirectory
 {
     /// <summary>
-    /// The mailbox a reply for this department leaves from: the ticket's own mailbox when it is active, otherwise the department's
-    /// default active mailbox. Null when the department has none (the reply is then recorded but not sent). Never crosses departments.
+    /// The mailbox a reply for this department leaves from: the ticket's own mailbox when it has one (null when that mailbox is not active: no fallback to
+    /// another identity), otherwise the department's default active mailbox. Null means the reply is recorded but not sent. Never crosses departments.
     /// </summary>
     Task<ReplyMailbox?> FindReplyMailboxAsync(Guid departmentId, Guid? ticketMailboxId, CancellationToken cancellationToken = default);
 

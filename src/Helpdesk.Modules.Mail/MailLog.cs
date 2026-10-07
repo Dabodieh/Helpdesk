@@ -29,6 +29,18 @@ internal static partial class MailLog
     [LoggerMessage(Level = LogLevel.Warning, Message = "Outbound mail {OutboundId} failed: {Error} (transient: {Transient})")]
     public static partial void OutboundFailed(this ILogger logger, Guid outboundId, string error, bool transient);
 
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Outbound mail {OutboundId}: send outcome is uncertain ({Error}); not retried automatically")]
+    public static partial void OutboundUncertain(this ILogger logger, Guid outboundId, string error);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Outbound mail {OutboundId}: reconciled with the provider sent copy")]
+    public static partial void OutboundReconciled(this ILogger logger, Guid outboundId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Mailbox {MailboxId}: a non-delivery report was matched to outbound mail {OutboundId} by {Evidence}")]
+    public static partial void NdrCorrelated(this ILogger logger, Guid mailboxId, Guid outboundId, string evidence);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Mailbox {MailboxId}: a non-delivery report could not be matched to any outbound mail (suppressed, no ticket)")]
+    public static partial void NdrUncorrelated(this ILogger logger, Guid mailboxId);
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Reporting delivery of {OutboundId} to Ticketing failed ({Error}); the dispatcher will retry")]
     public static partial void DeliveryReportFailed(this ILogger logger, Guid outboundId, string error);
 }

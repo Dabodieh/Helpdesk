@@ -17,6 +17,10 @@ internal static class MailAuditActions
     public const string Retried = "mail.retried";
     public const string Sent = "mail.sent";
     public const string SendFailed = "mail.send_failed";
+    public const string SendUncertain = "mail.send_uncertain";
+    public const string SendReconciled = "mail.send_reconciled";
+    public const string DeliveryFailedReported = "mail.delivery_failed_reported";
+    public const string UncertainRetried = "mail.uncertain_retried";
 }
 
 /// <summary>Writes mail-category audit events on the Mail DbContext's open transaction. Never receives subjects, addresses of correspondents or bodies.</summary>

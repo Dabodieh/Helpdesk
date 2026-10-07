@@ -2,6 +2,7 @@ import { ApiError } from './http'
 
 /** Structured problem codes (docs/api/PHASE2_API.md). Clients branch on `code`, never on message text. */
 export const isVersionConflict = (e: unknown) => e instanceof ApiError && e.code === 'version_conflict'
+export const isOutcomeUncertain = (e: unknown) => e instanceof ApiError && e.code === 'outcome_uncertain'
 
 /** Human-readable message for an API failure. 404 deliberately does not say which of "missing" or "no access" applies. */
 export function describeError(e: unknown): string {

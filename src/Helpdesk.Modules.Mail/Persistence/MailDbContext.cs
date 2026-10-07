@@ -86,13 +86,13 @@ internal sealed class MailDbContext(DbContextOptions<MailDbContext> options) : D
                 t.HasCheckConstraint("ck_mail_messages_direction", "direction IN ('Inbound','Outbound')");
                 t.HasCheckConstraint(
                     "ck_mail_messages_state",
-                    "state IN ('Received','Ticketed','Completed','Ignored','Queued','Sending','Sent','Failed')");
+                    "state IN ('Received','Ticketed','Completed','Ignored','Queued','Sending','Sent','Uncertain','Failed')");
 
                 // Inbound mail has a provider id and only inbound states; outbound mail has a token and only outbound states.
                 t.HasCheckConstraint(
                     "ck_mail_messages_direction_shape",
                     "(direction = 'Inbound' AND provider_message_id IS NOT NULL AND state IN ('Received','Ticketed','Completed','Ignored','Failed')) "
-                    + "OR (direction = 'Outbound' AND outbound_token IS NOT NULL AND state IN ('Queued','Sending','Sent','Failed'))");
+                    + "OR (direction = 'Outbound' AND outbound_token IS NOT NULL AND state IN ('Queued','Sending','Sent','Uncertain','Failed'))");
                 t.HasCheckConstraint("ck_mail_messages_attempts", "attempts >= 0");
             });
             e.HasKey(x => x.Id);

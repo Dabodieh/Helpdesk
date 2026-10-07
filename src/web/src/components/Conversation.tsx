@@ -10,9 +10,9 @@ import { livePolling, PENDING_POLL_MS } from '../queries'
 import { ErrorNotice, Loading } from './common'
 import { Icon } from './icons'
 
-export const NOT_EMAILED = 'Recorded, not emailed (this department has no active mailbox to send from)'
+export const NOT_EMAILED = 'Recorded, not emailed (the ticket’s mailbox is not available to send from)'
 export const QUEUED = 'Queued to send by email'
-export const SENT = 'Sent by email from the department mailbox'
+export const SENT = 'Sent by email from the ticket’s mailbox (accepted for delivery; not confirmed as delivered)'
 
 const BLOCK_REASONS: Record<string, string> = {
   blocked_type: 'blocked file type',
@@ -60,6 +60,17 @@ function AttachmentList({ ticketId, items }: { ticketId: string; items: Attachme
   )
 }
 
+/** What an agent may be told about a failed send: a safe category, never a provider payload. Unknown codes keep the plain "(code)" form. */
+const FAILURE_TEXT: Record<string, string> = {
+  outcome_uncertain: 'Send outcome uncertain: it may or may not have been sent. A mailbox administrator needs to check it; it is not retried automatically.',
+  delivery_failed: 'Delivery failed: the recipient’s mail system reported it could not be delivered.',
+  mailbox_unavailable: 'Not sent: the ticket’s mailbox is unavailable. A mailbox administrator needs to check it.',
+  authentication: 'Not sent: the mailbox connection needs an administrator (sign-in or consent).',
+  permission_denied: 'Not sent: the mailbox connection lacks permission. A mailbox administrator needs to check it.',
+  rate_limited: 'Not sent: the mail service is busy. Try again shortly.',
+  provider_unavailable: 'Not sent: the mail service is temporarily unavailable.',
+}
+
 function Delivery({ message: m }: { message: Message }) {
   const qc = useQueryClient()
   const me = useMe()
@@ -91,8 +102,9 @@ function Delivery({ message: m }: { message: Message }) {
     case 'Failed':
       return (
         <p className="delivery small failed" role="alert">
-          <Icon name="nomail" /> Email delivery failed{m.deliveryError ? ` (${m.deliveryError})` : ''}.{' '}
-          {canRetry && (
+          <Icon name="nomail" />{' '}
+          {m.deliveryError && FAILURE_TEXT[m.deliveryError] ? FAILURE_TEXT[m.deliveryError] : `Email delivery failed${m.deliveryError ? ` (${m.deliveryError})` : ''}.`}{' '}
+          {canRetry && m.deliveryError !== 'outcome_uncertain' && (
             <button type="button" disabled={retry.isPending} onClick={() => retry.mutate()}>
               Retry sending
             </button>

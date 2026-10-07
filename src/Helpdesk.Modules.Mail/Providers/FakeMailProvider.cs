@@ -51,6 +51,9 @@ internal sealed class FakeMailProvider : IMailProvider
     private int _failNextSends;
     private int _failNextAttachmentFetches;
     private bool _failNextSendPermanently;
+    private int _timeoutNextSends;
+    private bool _timeoutNextSendsReach;
+    private int _throttleNextSends;
 
     public string Kind => Contracts.MailProviderKinds.Fake;
 
@@ -155,6 +158,25 @@ internal sealed class FakeMailProvider : IMailProvider
         {
             _failNextSends = count;
             _failNextSendPermanently = permanently;
+        }
+    }
+
+    /// <summary>SIMULATOR ONLY. The next sends end in a connection timeout: the caller cannot know the outcome. <paramref name="reachedProvider"/> says whether the "provider" did accept the message.</summary>
+    public void TimeoutNextSends(int count, bool reachedProvider)
+    {
+        lock (_gate)
+        {
+            _timeoutNextSends = count;
+            _timeoutNextSendsReach = reachedProvider;
+        }
+    }
+
+    /// <summary>SIMULATOR ONLY. The next sends are throttled (429): the provider certainly did not act.</summary>
+    public void ThrottleNextSends(int count)
+    {
+        lock (_gate)
+        {
+            _throttleNextSends = count;
         }
     }
 
@@ -304,10 +326,26 @@ internal sealed class FakeMailProvider : IMailProvider
                 throw _failNextSendPermanently ? new PermanentProviderException("send_rejected") : new TransientProviderException("send_unavailable");
             }
 
+            if (_throttleNextSends > 0)
+            {
+                _throttleNextSends--;
+                throw new TransientProviderException("graph_429:throttled") { Ambiguous = false, RetryAfter = TimeSpan.FromSeconds(1) };
+            }
+
             var state = StateOf(mailbox.Address);
             if (!state.Drafts.TryGetValue(draftId, out var draft))
             {
                 throw new PermanentProviderException("draft_not_found");
+            }
+
+            var timeout = _timeoutNextSends > 0;
+            if (timeout)
+            {
+                _timeoutNextSends--;
+                if (!_timeoutNextSendsReach)
+                {
+                    throw new TransientProviderException("graph_timeout") { Ambiguous = true };
+                }
             }
 
             state.Drafts.Remove(draftId);
@@ -315,7 +353,7 @@ internal sealed class FakeMailProvider : IMailProvider
                 mailbox.Address, draftId, draft.InternetMessageId, draft.InReplyTo, draft.References, draft.ConversationId,
                 draft.Content.ReplyToProviderMessageId is null ? draft.Content.Subject : (draft.Content.Subject.StartsWith("Re:", StringComparison.OrdinalIgnoreCase) ? draft.Content.Subject : "Re: " + draft.Content.Subject),
                 draft.Content.BodyHtml, draft.Content.To, draft.Content.Cc, draft.Content.Token, DateTimeOffset.UtcNow, draft.Content.ReplyTo));
-            return Task.CompletedTask;
+            return timeout ? throw new TransientProviderException("graph_timeout") { Ambiguous = true } : Task.CompletedTask;
         }
     }
 

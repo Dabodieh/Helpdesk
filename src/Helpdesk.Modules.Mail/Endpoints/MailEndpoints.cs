@@ -12,6 +12,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Helpdesk.Modules.Mail.Endpoints;
 
+internal sealed record RetryRequest(bool? AcceptDuplicateRisk);
+
 internal static class MailEndpoints
 {
     private const int MaxWebhookBytes = 256 * 1024;
@@ -54,10 +56,10 @@ internal static class MailEndpoints
                 TypedResults.Ok(await service.AttentionAsync(departmentId, cursor, limit, ct)))
             .RequirePermission(PermissionCodes.DepartmentMailboxesManage);
 
-        mail.MapPost("{mailMessageId:guid}/retry", async (Guid departmentId, Guid mailMessageId, MailboxService service, CancellationToken ct) =>
+        mail.MapPost("{mailMessageId:guid}/retry", async (Guid departmentId, Guid mailMessageId, RetryRequest? body, MailboxService service, CancellationToken ct) =>
             {
-                await service.RetryAsync(departmentId, mailMessageId, ct);
-                return TypedResults.NoContent();
+                var outcome = await service.RetryAsync(departmentId, mailMessageId, body?.AcceptDuplicateRisk == true, ct);
+                return outcome is null ? Results.NoContent() : Results.Ok(outcome);
             })
             .RequirePermission(PermissionCodes.DepartmentMailboxesManage);
     }

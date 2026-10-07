@@ -55,7 +55,7 @@ public sealed class EmailIdentityTests(HelpdeskFixture fixture) : IClassFixture<
     private static Task<ApiResponse> SetAutoReplyAsync(Dept d, object body) => d.Admin.Client.PutAsync($"{d.Department.Url}/auto-reply", body);
 
     private async Task<long> OutboundCountAsync(Dept d, string? flag = null) =>
-        await fixture.CountAsync("SELECT count(*) FROM mail.messages WHERE department_id = @d AND direction = 'Outbound' AND (@f::text IS NULL OR flags = @f)", TicketKit.P("d", d.Id), new Npgsql.NpgsqlParameter("f", NpgsqlTypes.NpgsqlDbType.Text) { Value = (object?)flag ?? DBNull.Value });
+        await fixture.CountAsync("SELECT count(*) FROM mail.messages WHERE department_id = @d AND direction = 'Outbound' AND (@f::text IS NULL OR @f = ANY(string_to_array(flags, ',')))", TicketKit.P("d", d.Id), new Npgsql.NpgsqlParameter("f", NpgsqlTypes.NpgsqlDbType.Text) { Value = (object?)flag ?? DBNull.Value });
 
     // ----- sender identity -----
 

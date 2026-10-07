@@ -69,15 +69,21 @@ internal static class MailGuard
             return IgnoreReasons.MailingList;
         }
 
-        var local = from.Split('@')[0];
-        if (BounceSenders.Contains(local, StringComparer.Ordinal)
-            || (headers.TryGetValue("Content-Type", out var contentType)
-                && contentType.Contains("report-type=delivery-status", StringComparison.OrdinalIgnoreCase)))
+        return LooksLikeNdr(email) ? IgnoreReasons.Bounce : null;
+    }
+
+    /// <summary>A delivery-status report or a mailer-daemon/postmaster sender. Exchange NDRs may also carry Auto-Submitted, so this is checked independently of the ignore reason.</summary>
+    public static bool LooksLikeNdr(InboundEmail email)
+    {
+        if (email.From is null || string.IsNullOrWhiteSpace(email.From.Address))
         {
-            return IgnoreReasons.Bounce;
+            return false;
         }
 
-        return null;
+        var local = MailText.NormaliseAddress(email.From.Address).Split('@')[0];
+        return BounceSenders.Contains(local, StringComparer.Ordinal)
+            || (email.Headers.TryGetValue("Content-Type", out var contentType)
+                && contentType.Contains("report-type=delivery-status", StringComparison.OrdinalIgnoreCase));
     }
 }
 

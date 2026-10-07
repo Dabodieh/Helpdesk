@@ -7,8 +7,25 @@ import type { Department } from '../api/schemas'
 import { useMe } from '../auth'
 import { formatDateTime } from '../lib/format'
 import AutoReplySection from './AutoReplySection'
-import { ActiveBadge, ErrorNotice, Field, Loading } from './common'
+import { ActiveBadge, ErrorNotice, Field, Loading, StatusBadge, type Tone } from './common'
+import { isOutcomeUncertain } from '../api/errors'
 import Dialog from './Dialog'
+
+const HEALTH_TONE: Record<string, Tone> = { Healthy: 'ok', Attention: 'warn', Failed: 'bad', NotConfigured: 'off', Disabled: 'off' }
+const HEALTH_LABEL: Record<string, string> = { Healthy: 'Healthy', Attention: 'Attention', Failed: 'Failed', NotConfigured: 'Not set up', Disabled: 'Disabled' }
+const HEALTH_REASON: Record<string, string> = {
+  subscription_not_created: 'No inbound subscription yet',
+  subscription_missing: 'Inbound subscription is missing',
+  subscription_failed: 'Inbound subscription failed',
+  subscription_expired: 'Inbound subscription expired',
+  subscription_expiring: 'Inbound subscription renewal is overdue',
+  sync_failing: 'Inbound sync is failing',
+  sync_stale: 'Inbound sync has not run recently',
+  outbound_uncertain: 'Some sends have an uncertain outcome',
+  outbound_failed: 'Some sends failed',
+  inbound_failed: 'Some inbound mail failed',
+  mailbox_inactive: 'Mailbox is deactivated',
+}
 
 const IGNORE_REASONS: Record<string, string> = {
   own_address: 'sent from a helpdesk mailbox',
@@ -87,6 +104,15 @@ function MailboxRow({ departmentId, mailbox: m }: { departmentId: string; mailbo
           <ActiveBadge active={m.isActive} />
         </td>
         <td>
+          {m.health ? (
+            <>
+              <StatusBadge tone={HEALTH_TONE[m.health.status] ?? 'off'}>{HEALTH_LABEL[m.health.status] ?? m.health.status}</StatusBadge>
+              {m.health.reasons.length > 0 && <div className="muted small">{m.health.reasons.map((r) => HEALTH_REASON[r] ?? r).join(' · ')}</div>}
+              <div className="muted small">{m.lastSendAt ? `Last send accepted ${formatDateTime(m.lastSendAt)}` : 'No send recorded yet'}</div>
+            </>
+          ) : null}
+        </td>
+        <td>
           {m.subscription.state}
           {m.subscription.expiresAt ? <span className="muted small"> until {formatDateTime(m.subscription.expiresAt)}</span> : null}
         </td>
@@ -111,7 +137,7 @@ function MailboxRow({ departmentId, mailbox: m }: { departmentId: string; mailbo
       </tr>
       {(editing || patch.isError) && (
         <tr>
-          <td colSpan={7}>
+          <td colSpan={8}>
             {editing && (
               <form
                 className="form inline"
@@ -137,8 +163,59 @@ function MailboxRow({ departmentId, mailbox: m }: { departmentId: string; mailbo
   )
 }
 
+/** An Uncertain send: check the provider first; re-sending is a separate, explicit choice that can duplicate the email. */
+function UncertainDialog({ departmentId, item, onClose }: { departmentId: string; item: AttentionItem; onClose: () => void }) {
+  const qc = useQueryClient()
+  const [warned, setWarned] = useState(false)
+  const done = async () => {
+    await qc.invalidateQueries({ queryKey: ['mail-attention', departmentId] })
+    await qc.invalidateQueries({ queryKey: ['mailboxes', departmentId] })
+    onClose()
+  }
+  const check = useMutation({
+    mutationFn: (acceptDuplicateRisk: boolean) => retryMail(departmentId, item.id, acceptDuplicateRisk),
+    onSuccess: done,
+    onError: (e) => {
+      if (isOutcomeUncertain(e)) setWarned(true)
+    },
+  })
+  return (
+    <Dialog title="Send outcome uncertain" onClose={onClose}>
+      <div className="dialog-form">
+        <p>
+          The connection to the mail service failed while this message was being sent, so it is not known whether it was sent. It is not retried automatically, because that could email the
+          requester twice.
+        </p>
+        <p className="muted small">Subject: {item.subject}</p>
+        {!warned && <p>First check the mailbox&rsquo;s Sent Items. “Check with the mail service” looks for the sent copy and marks the message as sent if it is there.</p>}
+        {warned && (
+          <p className="notice error" role="alert">
+            The mail service has no record of this message. If you re-send it and the original did go out, the requester receives it twice.
+          </p>
+        )}
+        {check.isError && !warned && <ErrorNotice error={check.error} />}
+        <div className="dialog-actions">
+          <button type="button" onClick={onClose}>
+            Close
+          </button>
+          {!warned ? (
+            <button type="button" className="primary" disabled={check.isPending} onClick={() => check.mutate(false)}>
+              Check with the mail service
+            </button>
+          ) : (
+            <button type="button" disabled={check.isPending} onClick={() => check.mutate(true)}>
+              Re-send anyway (may duplicate)
+            </button>
+          )}
+        </div>
+      </div>
+    </Dialog>
+  )
+}
+
 function Attention({ departmentId }: { departmentId: string }) {
   const qc = useQueryClient()
+  const [uncertain, setUncertain] = useState<AttentionItem | null>(null)
   const q = useQuery({ queryKey: ['mail-attention', departmentId], queryFn: () => listAttention(departmentId, null), refetchInterval: 30_000 })
   const retry = useMutation({
     mutationFn: (item: AttentionItem) => retryMail(departmentId, item.id),
@@ -171,9 +248,18 @@ function Attention({ departmentId }: { departmentId: string }) {
               <td>
                 {i.state === 'Ignored'
                   ? `Ignored: ${IGNORE_REASONS[i.ignoreReason ?? ''] ?? i.ignoreReason ?? 'unknown'}`
-                  : `Failed${i.lastError ? ` (${i.lastError})` : ''} after ${i.attempts} attempt(s)`}
+                  : i.state === 'Uncertain'
+                    ? 'Send outcome uncertain (not retried automatically)'
+                    : i.lastError === 'ndr_delivery_failed'
+                      ? 'Delivery failed (non-delivery report received)'
+                      : `Failed${i.lastError ? ` (${i.lastError})` : ''} after ${i.attempts} attempt(s)`}
               </td>
               <td>
+                {i.state === 'Uncertain' && (
+                  <button type="button" onClick={() => setUncertain(i)}>
+                    Resolve…
+                  </button>
+                )}
                 {i.state === 'Failed' && (
                   <button type="button" disabled={retry.isPending} onClick={() => retry.mutate(i)}>
                     Retry
@@ -185,6 +271,7 @@ function Attention({ departmentId }: { departmentId: string }) {
         </tbody>
       </table>
       <ErrorNotice error={retry.error} />
+      {uncertain && <UncertainDialog departmentId={departmentId} item={uncertain} onClose={() => setUncertain(null)} />}
     </>
   )
 }
@@ -219,6 +306,7 @@ export default function MailboxesSection({ department }: { department: Departmen
                 <th scope="col">Address</th>
                 <th scope="col">Sender name</th>
                 <th scope="col">Status</th>
+                <th scope="col">Health</th>
                 <th scope="col">Webhook subscription</th>
                 <th scope="col">Last sync</th>
                 <th scope="col">Mail needing attention</th>
