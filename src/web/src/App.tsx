@@ -1,6 +1,6 @@
 import { QueryClientProvider, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { BrowserRouter, NavLink, Outlet, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, NavLink, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { setUnauthorizedHandler } from './api/http'
 import { createQueryClient, endSession } from './queryClient'
 import RequireAuth from './components/RequireAuth'
@@ -20,14 +20,18 @@ import TeamPage from './pages/TeamPage'
 import WorkspacePage from './pages/WorkspacePage'
 
 function AdminLayout() {
+  // Inside a department the page header carries its own breadcrumb; the switch between Departments and System status is for the top-level pages.
+  const inDepartment = useLocation().pathname.startsWith('/admin/departments/')
   return (
-    <div className="page">
-      <nav className="subnav" aria-label="Administration">
-        <NavLink to="/admin" end>
-          Departments
-        </NavLink>
-        <NavLink to="/admin/status">System status</NavLink>
-      </nav>
+    <div className="page admin">
+      {!inDepartment && (
+        <nav className="subnav" aria-label="Administration">
+          <NavLink to="/admin" end>
+            Departments
+          </NavLink>
+          <NavLink to="/admin/status">System status</NavLink>
+        </nav>
+      )}
       <Outlet />
     </div>
   )

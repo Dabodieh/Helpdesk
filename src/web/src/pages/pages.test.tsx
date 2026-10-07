@@ -76,10 +76,10 @@ test('users without platform.departments.manage get no create form', async () =>
 test('permission-aware controls: an Agent sees read-only details and no management controls', async () => {
   mockFetch(deptRoutes(agentMe))
   renderApp('/admin/departments/d1')
-  expect(await screen.findByLabelText('Name')).toHaveAttribute('readonly')
-  expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument()
-  expect(screen.getByLabelText('Active')).toBeDisabled()
-  await screen.findByText('Test User')
+  expect(await screen.findByRole('heading', { name: /IT Support/ })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Edit department' })).not.toBeInTheDocument()
+  fireEvent.click(await screen.findByRole('tab', { name: 'Members' }))
+  expect((await screen.findAllByText('Test User')).length).toBeGreaterThan(0)
   expect(screen.queryByRole('heading', { name: 'Add member' })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /Remove/ })).not.toBeInTheDocument()
   expect(screen.queryByRole('form', { name: 'New team' })).not.toBeInTheDocument()
@@ -88,6 +88,7 @@ test('permission-aware controls: an Agent sees read-only details and no manageme
 test('department admin can edit details but the Active toggle stays disabled without the platform permission', async () => {
   mockFetch(deptRoutes())
   renderApp('/admin/departments/d1')
+  fireEvent.click(await screen.findByRole('button', { name: 'Edit department' }))
   expect(await screen.findByLabelText('Name')).not.toHaveAttribute('readonly')
   expect(screen.getByLabelText('Active')).toBeDisabled()
   expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled()
@@ -104,6 +105,7 @@ test('version conflict: shows a reload message and reloading picks up the latest
     },
   })
   renderApp('/admin/departments/d1')
+  fireEvent.click(await screen.findByRole('button', { name: 'Edit department' }))
   const name = await screen.findByLabelText('Name')
     type(name, 'Mine')
   fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
@@ -163,4 +165,20 @@ test('team members: only department members that are not yet in the team are sel
   const select = await screen.findByLabelText('Add department member')
   await waitFor(() => expect(within(select).getByRole('option', { name: 'Bob Jones' })).toBeInTheDocument())
   expect(within(select).queryByRole('option', { name: 'Test User' })).not.toBeInTheDocument()
+})
+
+test('department shell: grouped section navigation, a setup overview, and sections are deep-linkable', async () => {
+  mockFetch(deptRoutes())
+  renderApp('/admin/departments/d1')
+  expect(await screen.findByRole('tablist', { name: 'Department administration' })).toHaveAttribute('aria-orientation', 'vertical')
+  expect(await screen.findByRole('list', { name: 'Setup status' })).toBeInTheDocument()
+  expect(screen.getByText(/Department code:/)).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Open Members' }))
+  expect(await screen.findByRole('tab', { name: 'Members', selected: true })).toBeInTheDocument()
+})
+
+test('deep link to a section opens it directly', async () => {
+  mockFetch(deptRoutes())
+  renderApp('/admin/departments/d1?section=members')
+  expect(await screen.findByRole('tab', { name: 'Members', selected: true })).toBeInTheDocument()
 })

@@ -88,6 +88,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <nav aria-label="Main">
             {hasTickets && (
               <>
+                <h2 className="rail-heading">Workspace</h2>
                 <ul>
                   {QUEUE_NAV.map((n) => (
                     <li key={n.to}>
@@ -115,9 +116,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
                       </NavLink>
                     </li>
                   )}
+                </ul>
+                <h2 className="rail-heading">Tools</h2>
+                <ul>
                   <li>
                     <NavLink to="/portal/knowledge">
-                      <Icon name="snippet" />
+                      <Icon name="file" />
                       <span className="nav-label">Knowledge</span>
                     </NavLink>
                   </li>
@@ -148,6 +152,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <ul className="rail-bottom">
               {canAdminister(me) && (
                 <li>
+                  <h2 className="rail-heading">Administration</h2>
                   <NavLink to="/admin">
                     <Icon name="admin" />
                     <span className="nav-label">Administration</span>

@@ -3,7 +3,7 @@ import { readPref, writePref } from './prefs'
 
 export const SPLIT_KEY = 'helpdesk.queueWidth'
 export const SPLIT_MIN = 360
-export const SPLIT_DEFAULT = 520
+export const SPLIT_DEFAULT = 420
 const TICKET_MIN = 460
 
 /** Clamp to sensible bounds: the queue never shrinks below 360px and never leaves the ticket less than 460px. */

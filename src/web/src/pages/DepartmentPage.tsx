@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useParams } from 'react-router-dom'
+import { useState } from 'react'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { getDepartment, updateDepartment } from '../api/organisation'
 import { canInDepartment, canPlatform } from '../api/permissions'
 import { useMe } from '../auth'
@@ -7,6 +8,8 @@ import AutomationsSection from '../components/AutomationsSection'
 import BusinessHoursSection from '../components/BusinessHoursSection'
 import CannedManager from '../components/CannedManager'
 import { ActiveBadge, ErrorNotice, Loading, PageHeader, Tabs } from '../components/common'
+import DepartmentOverview from '../components/DepartmentOverview'
+import Dialog from '../components/Dialog'
 import EditForm from '../components/EditForm'
 import TicketingSection from '../components/TicketingSection'
 import KnowledgeSection from '../components/KnowledgeSection'
@@ -16,10 +19,15 @@ import MembersSection from '../components/MembersSection'
 import SlaPoliciesSection from '../components/SlaPoliciesSection'
 import TeamsSection from '../components/TeamsSection'
 
+/** Section selection lives in the URL (?section=...), so a section can be bookmarked; the route itself is unchanged. */
+const SECTION = 'section'
+
 export default function DepartmentPage() {
   const { departmentId = '' } = useParams()
   const me = useMe()
   const qc = useQueryClient()
+  const [, setSearch] = useSearchParams()
+  const [editing, setEditing] = useState(false)
   const dept = useQuery({ queryKey: ['department', departmentId], queryFn: () => getDepartment(departmentId) })
 
   if (dept.isPending) return <Loading />
@@ -35,13 +43,15 @@ export default function DepartmentPage() {
   }
   const d = dept.data
   const canManage = canInDepartment(me, 'department.manage', d.id)
+  const canActivate = canPlatform(me, 'platform.departments.manage')
+  const open = (section: string) => setSearch((s) => new URLSearchParams({ ...Object.fromEntries(s), [SECTION]: section }), { replace: true })
 
   return (
     <>
       <PageHeader
         crumbs={
           <>
-            <Link to="/admin">Departments</Link> / {d.key}
+            <Link to="/admin">Administration</Link> / <Link to="/admin">Departments</Link> / {d.name}
           </>
         }
         title={
@@ -49,78 +59,56 @@ export default function DepartmentPage() {
             {d.name} <ActiveBadge active={d.isActive} />
           </>
         }
-        subtitle={`Key ${d.key}${d.myRole ? ` · Your role: ${d.myRole}` : ''}`}
+        subtitle={
+          <>
+            Department code: <code className="key-chip">{d.key}</code>
+            {d.myRole ? ` · Your role: ${d.myRole}` : ''}
+          </>
+        }
+        actions={
+          (canManage || canActivate) && (
+            <button type="button" onClick={() => setEditing(true)}>
+              Edit department
+            </button>
+          )
+        }
       />
+      {editing && (
+        <Dialog title="Edit department" onClose={() => setEditing(false)}>
+          <EditForm
+            initial={{ name: d.name, description: d.description ?? '', isActive: d.isActive, version: d.version }}
+            canEditDetails={canManage}
+            canEditActive={canActivate}
+            save={async (body) => {
+              await updateDepartment(d.id, body)
+              await qc.invalidateQueries({ queryKey: ['department', d.id] })
+              await qc.invalidateQueries({ queryKey: ['departments'] })
+              setEditing(false)
+            }}
+            reload={() => dept.refetch()}
+          />
+          <p className="muted small">The department code ({d.key}) prefixes ticket references and cannot be changed.</p>
+        </Dialog>
+      )}
       <Tabs
         label="Department administration"
+        vertical
+        param={SECTION}
         tabs={[
-          {
-            id: 'overview',
-            label: 'Overview',
-            content: (
-              <section aria-labelledby="details-h">
-                <h2 id="details-h">Details</h2>
-                <EditForm
-                  initial={{ name: d.name, description: d.description ?? '', isActive: d.isActive, version: d.version }}
-                  canEditDetails={canManage}
-                  canEditActive={canPlatform(me, 'platform.departments.manage')}
-                  save={async (body) => {
-                    await updateDepartment(d.id, body)
-                    await qc.invalidateQueries({ queryKey: ['department', d.id] })
-                    await qc.invalidateQueries({ queryKey: ['departments'] })
-                  }}
-                  reload={() => dept.refetch()}
-                />
-              </section>
-            ),
-          },
-          { id: 'teams', label: 'Teams', content: <TeamsSection department={d} /> },
-          { id: 'members', label: 'Members', content: <MembersSection department={d} /> },
+          { id: 'overview', label: 'Overview', group: 'Department', content: <DepartmentOverview department={d} onOpen={open} /> },
+          { id: 'teams', label: 'Teams', group: 'People', content: <TeamsSection department={d} /> },
+          { id: 'members', label: 'Members', group: 'People', content: <MembersSection department={d} /> },
           {
             id: 'mailboxes',
             label: 'Mailboxes',
+            group: 'Communication',
             hidden: !canInDepartment(me, 'department.mailboxes.manage', d.id),
             content: <MailboxesSection department={d} />,
           },
           {
-            id: 'hours',
-            label: 'Business hours',
-            hidden: !canInDepartment(me, 'department.sla.manage', d.id),
-            content: <BusinessHoursSection department={d} />,
-          },
-          {
-            id: 'sla',
-            label: 'SLA policies',
-            hidden: !canInDepartment(me, 'department.sla.manage', d.id),
-            content: <SlaPoliciesSection department={d} />,
-          },
-          {
-            id: 'automations',
-            label: 'Automations',
-            hidden: !canInDepartment(me, 'department.automation.manage', d.id),
-            content: <AutomationsSection department={d} />,
-          },
-          {
-            id: 'ticketing',
-            label: 'Ticketing',
-            hidden: !canInDepartment(me, 'department.forms.manage', d.id),
-            content: <TicketingSection department={d} />,
-          },
-          {
-            id: 'knowledge',
-            label: 'Knowledge',
-            hidden: !canInDepartment(me, 'department.knowledge.manage', d.id),
-            content: <KnowledgeSection department={d} />,
-          },
-          {
-            id: 'macros',
-            label: 'Macros',
-            hidden: !canInDepartment(me, 'department.canned.manage', d.id),
-            content: <MacrosSection department={d} />,
-          },
-          {
             id: 'responses',
             label: 'Responses',
+            group: 'Communication',
             hidden: !canInDepartment(me, 'department.canned.manage', d.id),
             content: (
               <section aria-labelledby="responses-h">
@@ -129,6 +117,48 @@ export default function DepartmentPage() {
                 <CannedManager scope={{ scope: 'Department', departmentId: d.id }} />
               </section>
             ),
+          },
+          {
+            id: 'ticketing',
+            label: 'Ticketing',
+            group: 'Ticket setup',
+            hidden: !canInDepartment(me, 'department.forms.manage', d.id),
+            content: <TicketingSection department={d} />,
+          },
+          {
+            id: 'hours',
+            label: 'Business hours',
+            group: 'Service management',
+            hidden: !canInDepartment(me, 'department.sla.manage', d.id),
+            content: <BusinessHoursSection department={d} />,
+          },
+          {
+            id: 'sla',
+            label: 'SLA policies',
+            group: 'Service management',
+            hidden: !canInDepartment(me, 'department.sla.manage', d.id),
+            content: <SlaPoliciesSection department={d} />,
+          },
+          {
+            id: 'automations',
+            label: 'Automations',
+            group: 'Service management',
+            hidden: !canInDepartment(me, 'department.automation.manage', d.id),
+            content: <AutomationsSection department={d} />,
+          },
+          {
+            id: 'knowledge',
+            label: 'Knowledge',
+            group: 'Self service',
+            hidden: !canInDepartment(me, 'department.knowledge.manage', d.id),
+            content: <KnowledgeSection department={d} />,
+          },
+          {
+            id: 'macros',
+            label: 'Macros',
+            group: 'Productivity',
+            hidden: !canInDepartment(me, 'department.canned.manage', d.id),
+            content: <MacrosSection department={d} />,
           },
         ]}
       />

@@ -65,6 +65,15 @@ function CreateDepartment({ onClose }: { onClose: () => void }) {
   )
 }
 
+/** What each management area is and where it lives. Everything below Departments stays inside its department (its security boundary). */
+const AREAS = [
+  { name: 'Organisation', text: 'Departments, teams and members.', where: 'Departments' },
+  { name: 'Communication', text: 'Mailboxes, acknowledgements and shared responses.', where: 'Each department' },
+  { name: 'Ticketing and self service', text: 'Ticket types, fields, request forms and knowledge.', where: 'Each department' },
+  { name: 'Service management', text: 'Business hours, SLA policies and automations.', where: 'Each department' },
+  { name: 'Agent productivity', text: 'Macros and canned responses.', where: 'Each department' },
+] as const
+
 export default function DepartmentsPage() {
   const me = useMe()
   const list = useQuery({ queryKey: ['departments'], queryFn: listDepartments })
@@ -74,8 +83,8 @@ export default function DepartmentsPage() {
   return (
     <>
       <PageHeader
-        title="Departments"
-        subtitle="Teams, members and email for each department."
+        title="Administration"
+        subtitle="Set up departments and how they run. Configuration is kept inside each department."
         actions={
           canCreate && (
             <button type="button" className="primary" onClick={() => setCreating(true)}>
@@ -92,37 +101,62 @@ export default function DepartmentsPage() {
             : ''}
         </p>
       )}
-      {list.isPending && <Loading />}
-      {list.isError && <ErrorNotice error={list.error} onRetry={() => void list.refetch()} />}
-      {list.data && list.data.length === 0 && <p>No departments to show yet.</p>}
-      {list.data && list.data.length > 0 && (
-        <table>
-          <caption className="sr-only">Departments</caption>
-          <thead>
-            <tr>
-              <th scope="col">Department</th>
-              <th scope="col">Status</th>
-              <th scope="col">My role</th>
-            </tr>
-          </thead>
-          <tbody>
+      <section aria-labelledby="depts-h">
+        <h2 id="depts-h" className="section-title">
+          Departments
+        </h2>
+        {list.isPending && <Loading />}
+        {list.isError && <ErrorNotice error={list.error} onRetry={() => void list.refetch()} />}
+        {list.data && list.data.length === 0 && (
+          <p className="empty">
+            No departments to show. A department is the boundary for tickets, people and configuration.
+            {canCreate ? ' Create the first one to get started.' : ' Ask a platform administrator to add one or give you a membership.'}
+          </p>
+        )}
+        {list.data && list.data.length > 0 && (
+          <ul className="rows" aria-label="Departments">
             {list.data.map((d) => (
-              <tr key={d.id}>
-                <td>
-                  <Link to={`/admin/departments/${d.id}`} className="dept-link">
-                    {d.name}
-                  </Link>{' '}
-                  <code className="key-chip">{d.key}</code>
-                </td>
-                <td>
-                  <ActiveBadge active={d.isActive} />
-                </td>
-                <td>{d.myRole ?? '—'}</td>
-              </tr>
+              <li key={d.id} className="row">
+                <div className="row-main">
+                  <div className="row-title">
+                    <Link to={`/admin/departments/${d.id}`} className="dept-link">
+                      {d.name}
+                    </Link>
+                    <code className="key-chip">{d.key}</code>
+                    <ActiveBadge active={d.isActive} />
+                  </div>
+                  {d.description && <p className="muted small row-sub">{d.description}</p>}
+                  {d.myRole && <p className="muted small row-sub">Your role: {d.myRole}</p>}
+                </div>
+                <Link to={`/admin/departments/${d.id}`} className="row-action" aria-label={`Manage ${d.name}`}>
+                  Manage →
+                </Link>
+              </li>
             ))}
-          </tbody>
-        </table>
-      )}
+          </ul>
+        )}
+      </section>
+      <section aria-labelledby="areas-h">
+        <h2 id="areas-h" className="section-title">
+          Management areas
+        </h2>
+        <dl className="areas">
+          {AREAS.map((a) => (
+            <div key={a.name}>
+              <dt>{a.name}</dt>
+              <dd>
+                {a.text} <span className="muted small">{a.where}</span>
+              </dd>
+            </div>
+          ))}
+          <div>
+            <dt>System</dt>
+            <dd>
+              Health of mail, storage and background work. <Link to="/admin/status">System status</Link>
+            </dd>
+          </div>
+        </dl>
+      </section>
       {creating && <CreateDepartment onClose={() => setCreating(false)} />}
     </>
   )

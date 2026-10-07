@@ -185,7 +185,7 @@ test('mailbox administration: shows health and mail needing attention, and faile
 test('mailbox administration is not offered without department.mailboxes.manage', async () => {
   mockFetch(deptRoutes(agentMe()))
   renderApp('/admin/departments/d1')
-  await screen.findByLabelText('Name')
+  await screen.findByRole('tab', { name: 'Members' })
   expect(screen.queryByRole('tab', { name: 'Mailboxes' })).not.toBeInTheDocument()
   expect(screen.queryByRole('heading', { name: 'Mailboxes' })).not.toBeInTheDocument()
   expect(screen.queryByRole('form', { name: 'New mailbox' })).not.toBeInTheDocument()

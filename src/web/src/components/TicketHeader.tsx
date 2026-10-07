@@ -3,6 +3,7 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { updateTicket } from '../api/tickets'
 import type { TicketDetail } from '../api/ticketSchemas'
 import { useApplyTicket } from '../hooks/useApplyTicket'
+import { formatDateTime } from '../lib/format'
 import { Icon } from './icons'
 import { PriorityMark, StatusPill } from './Pills'
 import { RequesterName } from './RequesterDrawer'
@@ -63,6 +64,9 @@ export default function TicketHeader({
         <span className="t-state">
           <StatusPill status={t.status} />
           <PriorityMark priority={t.priority} />
+        </span>
+        <span className="muted small t-times">
+          Opened {formatDateTime(t.createdAt)} · Updated {formatDateTime(t.updatedAt)}
         </span>
       </div>
     </header>
