@@ -150,7 +150,11 @@ ${draft}` : draft
         </p>
       ) : (
         <p className="mode-banner public-banner" role="note">
-          <Icon name="reply" /> Public reply — the requester is the audience. It is emailed from the department mailbox; with no active mailbox it is only recorded.
+          <Icon name="reply" />
+          <span>
+            Public reply to <span className="composer-recipient">{ticket.requester.displayName} &lt;{ticket.requester.email}&gt;</span>
+            {ticket.participants.length > 0 ? ` (Cc ${ticket.participants.length})` : ''} — emailed from the department mailbox; with no active mailbox it is only recorded.
+          </span>
         </p>
       )}
       <textarea

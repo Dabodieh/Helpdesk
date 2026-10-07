@@ -35,7 +35,7 @@ test('ticket details list the type and fields, flag a missing required value and
   mockFetch(routes())
   renderApp('/queue/my/IT-1')
   const pane = await screen.findByRole('region', { name: 'Ticket' })
-  const details = await within(pane).findByText('Required, not set')
+  const details = await within(pane).findByText('Required · Not set')
   expect(details).toBeInTheDocument()
   expect(within(pane).getByText('HQ')).toBeInTheDocument()
   expect(within(pane).getByText('Old kit')).toBeInTheDocument()

@@ -1,8 +1,8 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { fieldErrors } from '../api/errors'
-import { getTicketProperties, updateTicketProperties, type TicketProperties as Properties, type TicketProperty } from '../api/ticketing'
-import { livePolling } from '../queries'
+import { updateTicketProperties, type TicketProperties as Properties, type TicketProperty } from '../api/ticketing'
+import { useTicketProperties } from '../hooks/useTicketProperties'
 import { ErrorNotice, Field, Loading } from './common'
 import Dialog from './Dialog'
 import { FieldControl } from './FieldControl'
@@ -10,22 +10,20 @@ import { FieldControl } from './FieldControl'
 const sameValue = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
 const isEmpty = (v: unknown) => v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0)
 
-/** Type and configured fields of the ticket. Read-only list with a focused editor; the editor touches nothing but these. */
-export default function TicketProperties({ reference, canEdit }: { reference: string; canEdit: boolean }) {
-  const [editing, setEditing] = useState(false)
-  const q = useQuery({ queryKey: ['ticket', reference, 'properties'], queryFn: () => getTicketProperties(reference), ...livePolling })
+/** Configured field values as Label / Value rows. Missing required values are flagged, retired values stay readable. Editing opens the structured dialog. */
+export default function FieldSummary({ reference, canEdit, onEdit }: { reference: string; canEdit: boolean; onEdit: () => void }) {
+  const q = useTicketProperties(reference)
   const p = q.data
   return (
-    <details className="t-props">
-      <summary>
+    <section className="prop-section" aria-label="Details">
+      <h3>
         Details
-        {p && <span className="muted small"> · {p.type ? p.type.displayName : 'No type'}</span>}
-        {p?.fields.some((f) => f.missingRequired) && <span className="badge"> Needs details</span>}
-      </summary>
-      {q.isPending && <Loading label="Loading details" />}
+        {p?.fields.some((f) => f.missingRequired) && <span className="badge warn"> Needs details</span>}
+      </h3>
+      {q.isPending && <div className="skeleton" aria-hidden="true" />}
       {q.isError && <ErrorNotice error={q.error} onRetry={() => void q.refetch()} />}
       {p && (
-        <dl className="t-meta">
+        <dl className="prop-list">
           <div>
             <dt>Type</dt>
             <dd>{p.type ? p.type.displayName : <span className="muted">Not set</span>}</dd>
@@ -34,23 +32,41 @@ export default function TicketProperties({ reference, canEdit }: { reference: st
             <div key={f.key}>
               <dt>{f.label}</dt>
               <dd>
-                {f.display ? f.display : f.missingRequired ? <span className="muted">Required, not set</span> : <span className="muted">Not set</span>}
+                {f.display ? (
+                  f.display
+                ) : f.missingRequired ? (
+                  <span className="missing">Required · Not set</span>
+                ) : (
+                  <span className="muted">Not set</span>
+                )}
                 {f.display && !f.active && <span className="muted small"> (field retired)</span>}
+                {f.display && f.active && !f.applicable && <span className="muted small"> (not used by this type)</span>}
               </dd>
             </div>
           ))}
         </dl>
       )}
       {canEdit && p && (
-        <p>
-          <button type="button" onClick={() => setEditing(true)}>
-            Edit details
-          </button>
-        </p>
+        <button type="button" className="ghost" onClick={onEdit}>
+          Edit details
+        </button>
       )}
-      {editing && p && <DetailsDialog reference={reference} properties={p} onClose={() => setEditing(false)} />}
-    </details>
+    </section>
   )
+}
+
+/** Opens the structured editor for the cached properties of a ticket. */
+export function EditDetailsDialog({ reference, onClose }: { reference: string; onClose: () => void }) {
+  const q = useTicketProperties(reference)
+  if (!q.data) {
+    return (
+      <Dialog title="Edit ticket details" onClose={onClose}>
+        {q.isError ? <ErrorNotice error={q.error} onRetry={() => void q.refetch()} /> : <Loading label="Loading details" />}
+      </Dialog>
+    )
+  }
+
+  return <DetailsDialog reference={reference} properties={q.data} onClose={onClose} />
 }
 
 function DetailsDialog({ reference, properties, onClose }: { reference: string; properties: Properties; onClose: () => void }) {

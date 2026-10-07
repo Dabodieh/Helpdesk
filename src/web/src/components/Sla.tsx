@@ -123,3 +123,58 @@ export function SlaStrip({ ticketRef, sla }: { ticketRef: string; sla: SlaSummar
     </div>
   )
 }
+
+function clockText(clock: TicketSla['firstResponse'], createdAt: string): string {
+  switch (clock.state) {
+    case 'Met':
+    case 'MetLate': {
+      const minutes = clock.metAt ? Math.max(1, Math.round((Date.parse(clock.metAt) - Date.parse(createdAt)) / 60000)) : 0
+      const took = clock.metAt ? ` in ${formatMinutes(minutes) || '1m'}` : ''
+      return clock.state === 'Met' ? `Met${took}` : `Met late${took}`
+    }
+    case 'Breached':
+      return `BREACHED · ${dueIn(clock.dueAt).replace(' overdue', '') || 'now'} ago`
+    case 'Paused':
+      return 'Paused while Pending'
+    case 'Running':
+    case 'Approaching':
+      return clock.dueAt ? `${dueIn(clock.dueAt).replace(/^in /, '')} remaining` : 'Running'
+    default:
+      return ''
+  }
+}
+
+/** SLA at a glance for the properties panel: each clock with a mark, a word and the time left or overdue. Hidden when no policy applies. */
+export function SlaPanel({ reference, createdAt, merged = false }: { reference: string; createdAt: string; merged?: boolean }) {
+  const [open, setOpen] = useState(false)
+  const q = useQuery({ queryKey: ['ticket', reference, 'sla'], queryFn: () => getTicketSla(reference), ...livePolling })
+  if (q.isPending) return <div className="skeleton" aria-hidden="true" />
+  if (q.isError || !q.data) return null
+  const sla = q.data
+  const states = [sla.firstResponse.state, sla.resolution.state]
+  const worst = states.includes('Breached') ? 'breached' : states.includes('Approaching') ? 'approaching' : 'ok'
+  const line = (label: string, clock: TicketSla['firstResponse']) => {
+    // A merged ticket's clocks were stopped by the merge: say so instead of showing an empty line.
+    const text = clockText(clock, createdAt) || SLA_LABEL[clock.state] || (merged && clock.targetMinutes ? 'Stopped (ticket merged)' : '')
+    return !text ? null : (
+      <div className="sla-line">
+        <span className="sla-label">{label}</span>
+        <span className={`sla sla-${clock.state.toLowerCase()}`}>
+          <span aria-hidden="true">{SLA_MARK[clock.state]}</span> {text}
+        </span>
+      </div>
+    )
+  }
+  return (
+    <section className={`prop-section sla-panel sla-panel-${worst}`} aria-label="Service level">
+      <h3>SLA</h3>
+      {line('First response', sla.firstResponse)}
+      {line('Resolution', sla.resolution)}
+      <button type="button" className="ghost" onClick={() => setOpen(true)}>
+        SLA details
+      </button>
+      {open && <Details ticket={reference} onClose={() => setOpen(false)} />}
+    </section>
+  )
+}
+

@@ -17,15 +17,17 @@ import {
 import type { TicketDetail } from '../api/ticketSchemas'
 import type { ComposerHandle } from './Composer'
 import MacroRunner from './MacroRunner'
+import { EditDetailsDialog } from './TicketProperties'
 import { useApplyTicket } from '../hooks/useApplyTicket'
 import { livePolling } from '../queries'
 import { ErrorNotice, Loading } from './common'
 import Dialog from './Dialog'
 
-/** "More" actions of the ticket: kept out of the permanent header. Only offered to agents who can update the ticket. */
-export function MoreMenu({ ticket, routeRef, composerRef }: { ticket: TicketDetail; routeRef: string; composerRef: RefObject<ComposerHandle | null> }) {
+export type TicketDialogName = 'merge' | 'link' | 'macro' | 'details'
+
+/** "More" actions of the ticket: secondary actions kept out of the header. Only offered to agents who can update the ticket. */
+export function MoreMenu({ onOpen }: { onOpen: (dialog: TicketDialogName) => void }) {
   const [open, setOpen] = useState(false)
-  const [dialog, setDialog] = useState<'merge' | 'link' | 'macro' | null>(null)
   const root = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
   const panelId = useId()
@@ -49,6 +51,18 @@ export function MoreMenu({ ticket, routeRef, composerRef }: { ticket: TicketDeta
     }
   }, [open])
 
+  const item = (dialog: TicketDialogName, label: string) => (
+    <button
+      type="button"
+      onClick={() => {
+        setOpen(false)
+        onOpen(dialog)
+      }}
+    >
+      {label}
+    </button>
+  )
+
   return (
     <div className="more-menu" ref={root}>
       <button ref={trigger} type="button" aria-haspopup="true" aria-expanded={open} aria-controls={open ? panelId : undefined} onClick={() => setOpen((v) => !v)}>
@@ -56,40 +70,42 @@ export function MoreMenu({ ticket, routeRef, composerRef }: { ticket: TicketDeta
       </button>
       {open && (
         <div id={panelId} className="popover more-popover" role="group" aria-label="More ticket actions">
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(false)
-              setDialog('macro')
-            }}
-          >
-            Run macro
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(false)
-              setDialog('merge')
-            }}
-          >
-            Merge ticket
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(false)
-              setDialog('link')
-            }}
-          >
-            Link ticket
-          </button>
+          {item('macro', 'Run macro')}
+          {item('merge', 'Merge ticket')}
+          {item('link', 'Link ticket')}
+          {item('details', 'Edit details')}
         </div>
       )}
-      {dialog === 'macro' && <MacroRunner ticket={ticket} routeRef={routeRef} composerRef={composerRef} onClose={() => setDialog(null)} />}
-      {dialog === 'merge' && <MergeDialog ticket={ticket} routeRef={routeRef} onClose={() => setDialog(null)} />}
-      {dialog === 'link' && <LinkDialog ticket={ticket} onClose={() => setDialog(null)} />}
     </div>
   )
+}
+
+/** The dialogs the header actions, the More menu and the properties panel open. One at a time, owned by the ticket pane. */
+export function TicketDialogs({
+  dialog,
+  ticket,
+  routeRef,
+  composerRef,
+  onClose,
+}: {
+  dialog: TicketDialogName | null
+  ticket: TicketDetail
+  routeRef: string
+  composerRef: RefObject<ComposerHandle | null>
+  onClose: () => void
+}) {
+  switch (dialog) {
+    case 'macro':
+      return <MacroRunner ticket={ticket} routeRef={routeRef} composerRef={composerRef} onClose={onClose} />
+    case 'merge':
+      return <MergeDialog ticket={ticket} routeRef={routeRef} onClose={onClose} />
+    case 'link':
+      return <LinkDialog ticket={ticket} onClose={onClose} />
+    case 'details':
+      return <EditDetailsDialog reference={ticket.reference} onClose={onClose} />
+    default:
+      return null
+  }
 }
 
 /** Debounced server-side search; at least two characters. Results never include inaccessible, merged or the same ticket. */
@@ -313,17 +329,19 @@ function LinkDialog({ ticket: t, onClose }: { ticket: TicketDetail; onClose: () 
 }
 
 /** Informational relationships of the ticket. Clicking one opens that ticket in the normal workspace. */
-export function RelatedTickets({ ticket: t, canEdit }: { ticket: TicketDetail; canEdit: boolean }) {
+export function RelatedTickets({ ticket: t, canEdit, onLink }: { ticket: TicketDetail; canEdit: boolean; onLink?: () => void }) {
   const qc = useQueryClient()
   const links = useQuery({ queryKey: ['ticket', t.id, 'links'], queryFn: () => listLinks(t.id), ...livePolling })
   const remove = useMutation({
     mutationFn: (id: string) => removeLink(t.id, id),
     onSettled: () => qc.invalidateQueries({ queryKey: ['ticket', t.id] }),
   })
-  if (links.isPending || (links.isSuccess && links.data.length === 0)) return null
+  if (links.isPending) return <div className="skeleton" aria-hidden="true" />
+  if (links.isSuccess && links.data.length === 0 && !(canEdit && onLink)) return null
   return (
     <section className="related" aria-label="Related tickets">
       <h3>Related tickets</h3>
+      {links.isSuccess && links.data.length === 0 && <p className="muted small">No linked tickets.</p>}
       {links.isError && <ErrorNotice error={links.error} onRetry={() => void links.refetch()} />}
       <ul>
         {links.data?.map((l) => (
@@ -341,6 +359,11 @@ export function RelatedTickets({ ticket: t, canEdit }: { ticket: TicketDetail; c
           </li>
         ))}
       </ul>
+      {canEdit && onLink && (
+        <button type="button" className="ghost" onClick={onLink}>
+          + Link ticket
+        </button>
+      )}
     </section>
   )
 }

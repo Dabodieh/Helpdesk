@@ -1,13 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState, type FormEvent, type ReactNode, type RefObject } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState, type RefObject } from 'react'
 import { Link } from 'react-router-dom'
 import { canTicket } from '../api/permissions'
-import { getTicket, setAssignment, updateTicket } from '../api/tickets'
-import { PRIORITIES, STATUSES, type TicketDetail } from '../api/ticketSchemas'
+import { getTicket } from '../api/tickets'
 import { useMe } from '../auth'
-import { useApplyTicket } from '../hooks/useApplyTicket'
-import { useDirectory } from '../hooks/useDirectory'
 import { formatDateTime } from '../lib/format'
+import { usePref } from '../lib/prefs'
 import { livePolling } from '../queries'
 import { ErrorNotice, Loading } from './common'
 import type { ComposerHandle } from './Composer'
@@ -15,15 +13,27 @@ import Composer from './Composer'
 import Conversation from './Conversation'
 import History from './History'
 import { Icon } from './icons'
-import Followers from './Followers'
-import { MoreMenu, RelatedTickets } from './TicketLinks'
-import { PriorityMark, StatusPill } from './Pills'
-import { SlaStrip } from './Sla'
-import TicketProperties from './TicketProperties'
 import ProblemBanner from './ProblemBanner'
-import { RequesterName } from './RequesterDrawer'
+import PropertiesPanel from './PropertiesPanel'
+import TicketHeader from './TicketHeader'
+import { TicketDialogs, type TicketDialogName } from './TicketLinks'
 
 type Props = { ticketRef: string; backTo: string; composerRef: RefObject<ComposerHandle | null> }
+
+/** Below this width of the ticket pane the properties panel is an overlay instead of a docked column, so the conversation keeps usable room. */
+const DOCK_MIN_WIDTH = 720
+
+/** True while the element is narrower than <paramref name="limit"/> px. Assumes wide when ResizeObserver is unavailable. */
+function useNarrow(el: HTMLElement | null, limit: number) {
+  const [narrow, setNarrow] = useState(false)
+  useEffect(() => {
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(([entry]) => setNarrow(entry.contentRect.width < limit))
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [el, limit])
+  return narrow
+}
 
 export default function TicketPane({ ticketRef, backTo, composerRef }: Props) {
   const qc = useQueryClient()
@@ -35,6 +45,13 @@ export default function TicketPane({ ticketRef, backTo, composerRef }: Props) {
   })
   const [tab, setTab] = useState<'conversation' | 'history'>('conversation')
   const [problem, setProblem] = useState<unknown>(null)
+  const [dialog, setDialog] = useState<TicketDialogName | null>(null)
+  const [root, setRoot] = useState<HTMLDivElement | null>(null)
+  const narrow = useNarrow(root, DOCK_MIN_WIDTH)
+  const [docked, setDocked] = usePref('helpdesk.properties', ['open', 'closed'] as const, 'open')
+  const [overlayOpen, setOverlayOpen] = useState(false)
+  const panelOpen = narrow ? overlayOpen : docked === 'open'
+  const togglePanel = () => (narrow ? setOverlayOpen((v) => !v) : setDocked(docked === 'open' ? 'closed' : 'open'))
 
   function reload() {
     setProblem(null)
@@ -50,337 +67,98 @@ export default function TicketPane({ ticketRef, backTo, composerRef }: Props) {
   if (ticket.isPending)
     return (
       <div className="ticket-inner">
-        {back}
-        <Loading label="Loading ticket" />
+        <div className="ticket-main">
+          {back}
+          <Loading label="Loading ticket" />
+        </div>
       </div>
     )
   if (ticket.isError && !ticket.data)
     return (
-      <div className="ticket-inner pad">
-        {back}
-        <ErrorNotice error={ticket.error} onRetry={() => void ticket.refetch()} />
+      <div className="ticket-inner">
+        <div className="ticket-main pad">
+          {back}
+          <ErrorNotice error={ticket.error} onRetry={() => void ticket.refetch()} />
+        </div>
       </div>
     )
   const t = ticket.data!
-
-  return (
-    <div className="ticket-inner">
-      <TicketHeader ticket={t} routeRef={ticketRef} back={back} onProblem={setProblem} composerRef={composerRef} />
-      <ProblemBanner error={problem} onReload={reload} onDismiss={() => setProblem(null)} />
-      {t.mergedInto && (
-        <section className="merged-banner" aria-label="Merged ticket">
-          <strong className="badge off">MERGED</strong>
-          <span>
-            This ticket was merged into <span className="ref">{t.mergedInto.reference}</span>.
-            <span className="muted small"> {formatDateTime(t.mergedInto.mergedAt)}{t.mergedInto.mergedBy?.displayName ? ` by ${t.mergedInto.mergedBy.displayName}` : ''}. It is read-only.</span>
-          </span>
-          <Link className="button" to={`/tickets/${encodeURIComponent(t.mergedInto.reference)}`}>
-            Open {t.mergedInto.reference}
-          </Link>
-        </section>
-      )}
-      <RelatedTickets ticket={t} canEdit={canTicket(me, 'tickets.update', t.departmentId) && !t.mergedInto} />
-      <div className="tabs" role="group" aria-label="Ticket sections">
-        <button type="button" aria-pressed={tab === 'conversation'} onClick={() => setTab('conversation')}>
-          Conversation
-        </button>
-        <button type="button" aria-pressed={tab === 'history'} onClick={() => setTab('history')}>
-          History
-        </button>
-      </div>
-      {tab === 'conversation' ? <Conversation ticketId={t.id} /> : <History ticket={t} />}
-      {t.mergedInto ? (
-        <p className="empty small" role="note">
-          Replies and notes are disabled on a merged ticket. Continue on {t.mergedInto.reference}.
-        </p>
-      ) : (
-        <Composer key={t.id} ticket={t} routeRef={ticketRef} handleRef={composerRef} onReload={reload} />
-      )}
-    </div>
-  )
-}
-
-function TicketHeader({
-  ticket: t,
-  routeRef,
-  back,
-  onProblem,
-  composerRef,
-}: {
-  ticket: TicketDetail
-  routeRef: string
-  back: ReactNode
-  onProblem: (e: unknown) => void
-  composerRef: RefObject<ComposerHandle | null>
-}) {
-  const me = useMe()
-  const apply = useApplyTicket(routeRef)
-  const dir = useDirectory(t.departmentId)
-  // A merged ticket is read-only for every normal operation.
   const merged = !!t.mergedInto
+  // A merged ticket is read-only for every normal operation, whatever the layout offers.
   const canUpdate = canTicket(me, 'tickets.update', t.departmentId) && !merged
-  const canAssignAny = canTicket(me, 'tickets.assign.any', t.departmentId) && !merged
-  const canAssignSelf = canTicket(me, 'tickets.assign.self', t.departmentId) && !merged
-
-  const onSuccess = (res: TicketDetail) => {
-    onProblem(null)
-    apply(res)
-  }
-  const patch = useMutation({
-    mutationFn: (b: { version?: string; subject?: string; status?: string; priority?: string }) =>
-      updateTicket(t.id, { ...b, version: b.version ?? t.version }),
-    onSuccess,
-    onError: onProblem,
-  })
-  const assign = useMutation({
-    mutationFn: (b: { teamId: string | null; assigneeUserId: string | null }) =>
-      setAssignment(t.id, { ...b, version: t.version }),
-    onSuccess,
-    onError: onProblem,
-  })
-  const busy = patch.isPending || assign.isPending
-
-  // Assignee choices: eligible department members. Without assign.any only "me" (and "unassigned" when it is me now).
-  const eligible = dir.members.filter((m) => m.role !== 'Viewer')
-  const assigneeOptions: { id: string; name: string }[] = canAssignAny
-    ? eligible.map((m) => ({ id: m.userId, name: m.displayName }))
-    : [{ id: me.id, name: `${me.displayName} (me)` }]
-  if (t.assignee && !assigneeOptions.some((o) => o.id === t.assignee!.id))
-    assigneeOptions.push({ id: t.assignee.id, name: t.assignee.displayName })
-  const assigneeLocked = !(canAssignAny || (canAssignSelf && (!t.assignee || t.assignee.id === me.id)))
-  const teamOptions = dir.teams.filter((x) => x.isActive || x.id === t.team?.id)
 
   return (
-    <header className="t-head">
-      <div className="t-title">
-        {back}
-        <span className="ref">{t.reference}</span>
-        <span className="muted small">{t.departmentName}</span>
-        {canUpdate && <MoreMenu ticket={t} routeRef={routeRef} composerRef={composerRef} />}
-      </div>
-      <Subject ticket={t} canEdit={canUpdate} busy={busy} save={(subject, version) => patch.mutateAsync({ subject, version })} onProblem={onProblem} />
-      <div className="t-controls">
-        {canUpdate ? (
-          <>
-            <Control label="Status" value={t.status} disabled={busy} onChange={(v) => patch.mutate({ status: v })}>
-              {STATUSES.map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </Control>
-            <Control label="Priority" value={t.priority} disabled={busy} onChange={(v) => patch.mutate({ priority: v })}>
-              {PRIORITIES.map((p) => (
-                <option key={p}>{p}</option>
-              ))}
-            </Control>
-          </>
-        ) : (
-          <>
-            <div className="ctl">
-              <span className="ctl-label">Status</span>
-              <StatusPill status={t.status} />
-            </div>
-            <div className="ctl">
-              <span className="ctl-label">Priority</span>
-              <PriorityMark priority={t.priority} />
-            </div>
-          </>
-        )}
-        {canAssignAny ? (
-          <Control
-            label="Team"
-            value={t.team?.id ?? ''}
-            disabled={busy}
-            onChange={(v) => assign.mutate({ teamId: v || null, assigneeUserId: t.assignee?.id ?? null })}
-          >
-            <option value="">No team</option>
-            {teamOptions.map((x) => (
-              <option key={x.id} value={x.id}>
-                {x.name}
-              </option>
-            ))}
-            {t.team && !teamOptions.some((x) => x.id === t.team!.id) && <option value={t.team.id}>{t.team.name}</option>}
-          </Control>
-        ) : (
-          <div className="ctl">
-            <span className="ctl-label">Team</span>
-            <span>{t.team?.name ?? 'No team'}</span>
-          </div>
-        )}
-        {!assigneeLocked ? (
-          <Control
-            label="Assignee"
-            value={t.assignee?.id ?? ''}
-            disabled={busy}
-            onChange={(v) => assign.mutate({ teamId: t.team?.id ?? null, assigneeUserId: v || null })}
-          >
-            {(canAssignAny || t.assignee?.id === me.id || !t.assignee) && <option value="">Unassigned</option>}
-            {assigneeOptions.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
-            ))}
-          </Control>
-        ) : (
-          <div className="ctl">
-            <span className="ctl-label">Assignee</span>
-            <span>{t.assignee?.displayName ?? 'Unassigned'}</span>
-          </div>
-        )}
-      </div>
-      <SlaStrip ticketRef={t.reference} sla={t.sla} />
-      <dl className="t-meta">
-        <div>
-          <dt>Requester</dt>
-          <dd>
-            <RequesterName requesterId={t.requester.id} name={t.requester.displayName} /> <span className="muted">&lt;{t.requester.email}&gt;</span>
-            <span className="muted small">
-              {' '}
-              · {t.requester.openTicketCount} open / {t.requester.totalTicketCount} total ·{' '}
-              <Link to={`/requesters/${encodeURIComponent(t.requester.id)}`}>View history</Link>
+    <div className="ticket-inner" ref={setRoot} data-panel={panelOpen ? 'open' : 'closed'}>
+      <div className="ticket-main">
+        <TicketHeader
+          ticket={t}
+          routeRef={ticketRef}
+          back={back}
+          canUpdate={canUpdate}
+          onProblem={setProblem}
+          onOpen={setDialog}
+          panelOpen={panelOpen}
+          onTogglePanel={togglePanel}
+        />
+        <ProblemBanner error={problem} onReload={reload} onDismiss={() => setProblem(null)} />
+        {t.mergedInto && (
+          <section className="merged-banner" aria-label="Merged ticket">
+            <strong className="badge off">MERGED</strong>
+            <span>
+              This ticket was merged into <span className="ref">{t.mergedInto.reference}</span>.
+              <span className="muted small">
+                {' '}
+                {formatDateTime(t.mergedInto.mergedAt)}
+                {t.mergedInto.mergedBy?.displayName ? ` by ${t.mergedInto.mergedBy.displayName}` : ''}. It is read-only.
+              </span>
             </span>
-          </dd>
-        </div>
-        {t.participants.length > 0 && (
-          <div>
-            <dt>Cc</dt>
-            <dd>{t.participants.map((p) => p.displayName || p.email).join(', ')}</dd>
-          </div>
+            <Link className="button" to={`/tickets/${encodeURIComponent(t.mergedInto.reference)}`}>
+              Open {t.mergedInto.reference}
+            </Link>
+          </section>
         )}
         {t.mergedTickets && t.mergedTickets.length > 0 && (
-          <div>
-            <dt>Merged tickets</dt>
-            <dd>
-              {t.mergedTickets.map((m, i) => (
-                <span key={m.id}>
-                  {i > 0 && ', '}
-                  <Link to={`/tickets/${encodeURIComponent(m.reference)}`} title={m.subject}>
-                    {m.reference}
-                  </Link>
-                </span>
-              ))}
-            </dd>
-          </div>
+          <p className="merged-sources small muted">
+            Merged tickets:{' '}
+            {t.mergedTickets.map((m, i) => (
+              <span key={m.id}>
+                {i > 0 && ', '}
+                <Link to={`/tickets/${encodeURIComponent(m.reference)}`} title={m.subject}>
+                  {m.reference}
+                </Link>
+              </span>
+            ))}
+          </p>
         )}
-        {t.mailbox && (
-          <div>
-            <dt>Mailbox</dt>
-            <dd>{t.mailbox.address}</dd>
-          </div>
-        )}
-        <div>
-          <dt>Created</dt>
-          <dd>{formatDateTime(t.createdAt)}</dd>
-        </div>
-        <div>
-          <dt>Updated</dt>
-          <dd>{formatDateTime(t.updatedAt)}</dd>
-        </div>
-        {t.resolvedAt && (
-          <div>
-            <dt>Resolved</dt>
-            <dd>{formatDateTime(t.resolvedAt)}</dd>
-          </div>
-        )}
-        {t.closedAt && (
-          <div>
-            <dt>Closed</dt>
-            <dd>{formatDateTime(t.closedAt)}</dd>
-          </div>
-        )}
-      </dl>
-      {!merged && <Followers ticket={t} canManage={canUpdate} />}
-      <TicketProperties reference={t.reference} canEdit={canUpdate} />
-    </header>
-  )
-}
-
-function Control({
-  label,
-  value,
-  disabled,
-  onChange,
-  children,
-}: {
-  label: string
-  value: string
-  disabled?: boolean
-  onChange: (v: string) => void
-  children: ReactNode
-}) {
-  return (
-    <label className="ctl">
-      <span className="ctl-label">{label}</span>
-      <select value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
-        {children}
-      </select>
-    </label>
-  )
-}
-
-/** Subject with an explicit Edit step. The edit sends the version it started from, so a concurrent change is a conflict, never an overwrite. */
-function Subject({
-  ticket: t,
-  canEdit,
-  busy,
-  save,
-  onProblem,
-}: {
-  ticket: TicketDetail
-  canEdit: boolean
-  busy: boolean
-  save: (subject: string, version?: string) => Promise<unknown>
-  onProblem: (e: unknown) => void
-}) {
-  const [editing, setEditing] = useState<{ text: string; version: string | null } | null>(null)
-
-  async function submit(e: FormEvent) {
-    e.preventDefault()
-    if (!editing) return
-    const text = editing.text.trim()
-    if (!text || text === t.subject) return setEditing(null)
-    try {
-      await save(text, editing.version ?? undefined)
-      setEditing(null)
-    } catch (err) {
-      // The typed subject stays in the box. After a conflict the next save deliberately targets the latest version.
-      setEditing({ ...editing, version: null })
-      onProblem(err)
-    }
-  }
-
-  if (!editing)
-    return (
-      <div className="t-subject">
-        <h2>{t.subject}</h2>
-        {canEdit && (
-          <button type="button" className="ghost" onClick={() => setEditing({ text: t.subject, version: t.version })}>
-            <Icon name="edit" /> Edit subject
+        <div className="tabs" role="group" aria-label="Ticket sections">
+          <button type="button" aria-pressed={tab === 'conversation'} onClick={() => setTab('conversation')}>
+            Conversation
           </button>
+          <button type="button" aria-pressed={tab === 'history'} onClick={() => setTab('history')}>
+            History
+          </button>
+        </div>
+        {tab === 'conversation' ? <Conversation ticketId={t.id} /> : <History ticket={t} />}
+        {t.mergedInto ? (
+          <p className="empty small" role="note">
+            Replies and notes are disabled on a merged ticket. Continue on {t.mergedInto.reference}.
+          </p>
+        ) : (
+          <Composer key={t.id} ticket={t} routeRef={ticketRef} handleRef={composerRef} onReload={reload} />
         )}
       </div>
-    )
-  return (
-    <form className="t-subject" onSubmit={(e) => void submit(e)}>
-      <input
-        autoFocus
-        aria-label="Subject"
-        value={editing.text}
-        maxLength={300}
-        onChange={(e) => setEditing({ ...editing, text: e.target.value })}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') {
-            e.preventDefault()
-            e.stopPropagation()
-            setEditing(null)
-          }
-        }}
-      />
-      <button type="submit" className="primary" disabled={busy}>
-        Save subject
-      </button>
-      <button type="button" onClick={() => setEditing(null)}>
-        Cancel
-      </button>
-    </form>
+      {panelOpen && (
+        <PropertiesPanel
+          ticket={t}
+          routeRef={ticketRef}
+          canUpdate={canUpdate}
+          onProblem={setProblem}
+          onOpen={setDialog}
+          onHide={togglePanel}
+          overlay={narrow}
+        />
+      )}
+      <TicketDialogs dialog={dialog} ticket={t} routeRef={ticketRef} composerRef={composerRef} onClose={() => setDialog(null)} />
+    </div>
   )
 }

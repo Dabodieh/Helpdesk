@@ -126,7 +126,11 @@ export function MessageItem({ message: m }: { message: Message }) {
         </time>
       </header>
       {internal && <p className="msg-note small">Not visible to the requester</p>}
-      {m.importedFrom && <p className="msg-note small">Imported from {m.importedFrom}</p>}
+      {m.importedFrom && (
+        <p className="msg-note small">
+          <span className="msg-imported">↳ Imported from {m.importedFrom}</span>
+        </p>
+      )}
       {/* Plain text by default: React escapes it and CSS preserves the line breaks. */}
       {formatted && m.bodyHtml ? <FormattedBody html={m.bodyHtml} /> : <p className="msg-body">{m.body}</p>}
       {!internal && m.bodyHtml && (
