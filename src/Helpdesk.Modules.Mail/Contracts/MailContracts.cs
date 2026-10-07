@@ -37,6 +37,19 @@ public interface IMailboxDirectory
     Task<IReadOnlyDictionary<Guid, ReplyMailbox>> GetManyAsync(Guid departmentId, IReadOnlyCollection<Guid> mailboxIds, CancellationToken cancellationToken = default);
 }
 
+/// <summary>Operational summary of one mailbox. <c>Status</c>: Healthy, Attention, Failed, NotConfigured, Disabled; <c>Reasons</c> are stable codes.</summary>
+public sealed record MailboxHealthInfo(
+    Guid MailboxId, string Address, string DisplayName, string Status, IReadOnlyList<string> Reasons, int OutboundFailed, int OutboundUncertain, DateTimeOffset? LastSendAt);
+
+/// <summary>
+/// Mailbox diagnostics of ONE department. The CALLER must already have checked the department mailbox-management permission: this is configuration and
+/// operational data, not ticket content, and ticket access alone must never reach it.
+/// </summary>
+public interface IMailboxHealthReader
+{
+    Task<IReadOnlyList<MailboxHealthInfo>> ListAsync(Guid departmentId, CancellationToken cancellationToken = default);
+}
+
 public sealed record OutboundReplyRequest(
     Guid DepartmentId,
     Guid MailboxId,

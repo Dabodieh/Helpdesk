@@ -64,6 +64,7 @@ public static class TicketingModule
         services.AddScoped<SlaReadService>();
         services.AddScoped<RequesterIdentityService>();
         services.AddScoped<RequesterIdentityAdminService>();
+        services.AddScoped<DepartmentDashboardService>();
         services.AddScoped<Helpdesk.Modules.Knowledge.Contracts.IRequesterAudience, RequesterAudience>();
         services.AddScoped<PortalFormAccess>();
         services.AddScoped<PortalFormsService>();

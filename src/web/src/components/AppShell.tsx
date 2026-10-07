@@ -90,6 +90,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <>
                 <h2 className="rail-heading">Workspace</h2>
                 <ul>
+                  <li>
+                    <NavLink to="/dashboard">
+                      <Icon name="views" />
+                      <span className="nav-label">Dashboard</span>
+                    </NavLink>
+                  </li>
                   {QUEUE_NAV.map((n) => (
                     <li key={n.to}>
                       <NavLink to={n.to} className={() => (location.pathname.startsWith(n.to) && !activeView ? 'active' : undefined)}>

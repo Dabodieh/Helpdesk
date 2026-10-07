@@ -524,3 +524,10 @@ internal sealed class MailboxDirectory(MailDbContext db) : IMailboxDirectory
             : await db.Mailboxes.AsNoTracking().Where(m => m.DepartmentId == departmentId && mailboxIds.Contains(m.Id))
                 .ToDictionaryAsync(m => m.Id, m => new ReplyMailbox(m.Id, m.Address, m.DisplayName, m.IsDefault), cancellationToken);
 }
+
+internal sealed class MailboxHealthReader(MailboxService mailboxes) : IMailboxHealthReader
+{
+    public async Task<IReadOnlyList<MailboxHealthInfo>> ListAsync(Guid departmentId, CancellationToken cancellationToken = default) =>
+        [.. (await mailboxes.ListAsync(departmentId, cancellationToken)).Select(m => new MailboxHealthInfo(
+            m.Id, m.Address, m.DisplayName, m.Health.Status, m.Health.Reasons, m.OutboundFailedCount, m.OutboundUncertainCount, m.LastSendAt))];
+}

@@ -4,6 +4,7 @@ import { BrowserRouter, NavLink, Outlet, Route, Routes, useLocation } from 'reac
 import { setUnauthorizedHandler } from './api/http'
 import { createQueryClient, endSession } from './queryClient'
 import RequireAuth from './components/RequireAuth'
+import DashboardPage from './pages/DashboardPage'
 import DepartmentPage from './pages/DepartmentPage'
 import DepartmentsPage from './pages/DepartmentsPage'
 import Landing from './pages/Landing'
@@ -60,6 +61,7 @@ export function AppRoutes() {
         <Route path="queue/:queue/:ticket?" element={<WorkspacePage mode="queue" />} />
         <Route path="tickets/:ticket" element={<WorkspacePage mode="ticket" />} />
         <Route path="search/:ticket?" element={<WorkspacePage mode="search" />} />
+        <Route path="dashboard/:departmentId?" element={<DashboardPage />} />
         <Route path="requesters/:requesterId" element={<RequesterPage />} />
         <Route path="responses" element={<ResponsesPage />} />
         <Route path="profile" element={<ProfilePage />} />

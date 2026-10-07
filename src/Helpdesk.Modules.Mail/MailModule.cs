@@ -65,6 +65,7 @@ public static class MailModule
         services.AddScoped<MailboxService>();
         services.AddScoped<IMailJobRunner, MailJobRunner>();
         services.AddScoped<IMailboxDirectory, MailboxDirectory>();
+        services.AddScoped<IMailboxHealthReader, MailboxHealthReader>();
         services.AddScoped<IMailOutbox, MailOutbox>();
         services.AddSingleton<IEmailHtmlSanitiser, EmailHtmlSanitiser>();
         return services;

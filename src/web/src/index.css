@@ -3131,3 +3131,78 @@ fieldset.choice {
 .composer textarea {
   min-height: 4.75rem;
 }
+
+/* Department dashboard: figures are links into the queues, not decoration */
+.figures {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.figures li {
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  margin: 0 -1px -1px 0;
+}
+.figure {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.55rem 0.8rem;
+  color: var(--text);
+  text-decoration: none;
+  height: 100%;
+}
+a.figure:hover {
+  background: var(--hover);
+}
+.figure-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.1;
+}
+.figure-label {
+  font-size: 0.85rem;
+}
+.figure-bad .figure-value {
+  color: var(--danger);
+}
+.figure-warn .figure-value {
+  color: var(--warn);
+}
+.bars {
+  list-style: none;
+  margin: 0.3rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.2rem;
+  max-width: 36rem;
+}
+.bars li {
+  display: grid;
+  grid-template-columns: 8rem 1fr 2.5rem;
+  gap: 0.6rem;
+  align-items: center;
+}
+.bar-track {
+  height: 0.7rem;
+  background: var(--surface-2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.bar-count {
+  text-align: right;
+}
+table.compact td,
+table.compact th {
+  padding: 0.3rem 0.6rem;
+}

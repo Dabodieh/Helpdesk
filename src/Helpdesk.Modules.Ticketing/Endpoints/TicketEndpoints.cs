@@ -36,6 +36,12 @@ internal static class TicketEndpoints
             .RequirePermission(PermissionCodes.TicketsCreate)
             .WithTags("Tickets");
 
+        // Current operational state of ONE department. tickets.read on that department (a platform administrator without a membership gets a 404).
+        app.MapGet("/api/departments/{departmentId:guid}/dashboard",
+                async (Guid departmentId, DepartmentDashboardService dashboard, CancellationToken ct) => TypedResults.Ok(await dashboard.GetAsync(departmentId, ct)))
+            .RequirePermission(PermissionCodes.TicketsRead)
+            .WithTags("Dashboard");
+
         app.MapGet("/api/departments/{departmentId:guid}/requesters/lookup",
                 async (Guid departmentId, string? q, RequesterService requesters, CancellationToken ct) =>
                     TypedResults.Ok(await requesters.LookupAsync(departmentId, q, ct)))

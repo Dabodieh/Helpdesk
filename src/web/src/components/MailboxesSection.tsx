@@ -7,25 +7,10 @@ import type { Department } from '../api/schemas'
 import { useMe } from '../auth'
 import { formatDateTime } from '../lib/format'
 import AutoReplySection from './AutoReplySection'
-import { ActiveBadge, ErrorNotice, Field, Loading, StatusBadge, type Tone } from './common'
+import { HEALTH_LABEL, HEALTH_REASON, HEALTH_TONE } from '../lib/mailHealth'
+import { ActiveBadge, ErrorNotice, Field, Loading, StatusBadge } from './common'
 import { isOutcomeUncertain } from '../api/errors'
 import Dialog from './Dialog'
-
-const HEALTH_TONE: Record<string, Tone> = { Healthy: 'ok', Attention: 'warn', Failed: 'bad', NotConfigured: 'off', Disabled: 'off' }
-const HEALTH_LABEL: Record<string, string> = { Healthy: 'Healthy', Attention: 'Attention', Failed: 'Failed', NotConfigured: 'Not set up', Disabled: 'Disabled' }
-const HEALTH_REASON: Record<string, string> = {
-  subscription_not_created: 'No inbound subscription yet',
-  subscription_missing: 'Inbound subscription is missing',
-  subscription_failed: 'Inbound subscription failed',
-  subscription_expired: 'Inbound subscription expired',
-  subscription_expiring: 'Inbound subscription renewal is overdue',
-  sync_failing: 'Inbound sync is failing',
-  sync_stale: 'Inbound sync has not run recently',
-  outbound_uncertain: 'Some sends have an uncertain outcome',
-  outbound_failed: 'Some sends failed',
-  inbound_failed: 'Some inbound mail failed',
-  mailbox_inactive: 'Mailbox is deactivated',
-}
 
 const IGNORE_REASONS: Record<string, string> = {
   own_address: 'sent from a helpdesk mailbox',

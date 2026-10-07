@@ -27,7 +27,6 @@ internal sealed class TicketQueryService(
     /// <summary>Values of the <c>sla</c> list filter. Breached: past its deadline and unmet; approaching: inside its warning window; duesoon: due within four hours; paused: resolution clock paused.</summary>
     public static readonly string[] SlaFilters = ["breached", "approaching", "duesoon", "paused"];
 
-    private static readonly TimeSpan DueSoonWindow = TimeSpan.FromHours(4);
 
     public const int DefaultLimit = 50;
     public const int MaxLimit = 100;
@@ -171,14 +170,13 @@ internal sealed class TicketQueryService(
         switch (slaFilter)
         {
             case "breached":
-                tickets = tickets.Where(t => db.TicketSlas.Any(s => s.TicketId == t.Id && s.NextDueAt != null && s.NextDueAt <= now));
+                tickets = tickets.Where(QueuePredicates.SlaBreached(db, now));
                 break;
             case "approaching":
-                tickets = tickets.Where(t => db.TicketSlas.Any(s => s.TicketId == t.Id && s.NextWarnAt != null && s.NextWarnAt <= now && s.NextDueAt > now));
+                tickets = tickets.Where(QueuePredicates.SlaApproaching(db, now));
                 break;
             case "duesoon":
-                var soon = now + DueSoonWindow;
-                tickets = tickets.Where(t => db.TicketSlas.Any(s => s.TicketId == t.Id && s.NextDueAt != null && s.NextDueAt > now && s.NextDueAt <= soon));
+                tickets = tickets.Where(QueuePredicates.SlaDueSoon(db, now));
                 break;
             case "paused":
                 tickets = tickets.Where(t => db.TicketSlas.Any(s => s.TicketId == t.Id && s.ResolutionPausedAt != null));
