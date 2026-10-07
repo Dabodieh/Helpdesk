@@ -15,7 +15,7 @@ The session limit interrupted the review. Only four of the ten specialist review
 | Lead Architect / Technical Lead | **Did not complete** (rate-limited) | ARC |
 | ITSM Product & Service Desk Lead | **Did not complete** (rate-limited; no findings returned) | ITSM |
 | Backend / Domain Engineer | **Did not complete** (rate-limited) | BE |
-| Microsoft 365 / Messaging Engineer | **Did not complete** (rate-limited) | MSG |
+| Microsoft 365 / Messaging Engineer | **Completed later (section 16)** | MSG |
 | Security / Privacy Engineer | **Completed later (section 15)** | SEC |
 | Data / Reporting Engineer | **Did not complete** (rate-limited) | DATA |
 
@@ -24,7 +24,7 @@ Completed specialists also returned their findings as text (the findings files i
 **Areas that remain UNREVIEWED.** The absence of findings in these areas is not evidence that they are sound.
 
 - **Security / Privacy (highest priority gap; now reviewed, see section 15, which supersedes this bullet):** Department isolation on read and write paths, IDOR/BOLA, non-disclosure, Internal Note leakage paths, requester identity and audience enforcement, attachment security, XSS/sanitisation, audit completeness, logging privacy, and the new `article-links` and `queue-types` endpoints. Several UX/QA findings below ask for server-side confirmation (UX-009, UX-012, QA-004) that nobody has yet done.
-- **Messaging (Graph/Exchange):** inbound sync, subscriptions, delta, threading, outbound state machine, uncertain-send reconciliation, NDR/loop suppression, mailbox health. D-16 evidence status was not re-assessed (it stays OPEN: simulator evidence only).
+- **Messaging (Graph/Exchange; now reviewed, see section 16, which supersedes this bullet):** inbound sync, subscriptions, delta, threading, outbound state machine, uncertain-send reconciliation, NDR/loop suppression, mailbox health. D-16 evidence status was not re-assessed (it stays OPEN: simulator evidence only).
 - **Backend / Domain:** concurrency, data integrity, constraints, indexes, Hangfire job idempotency, SLA job correctness, migrations.
 - **Architecture:** module boundaries, outbox/transaction design, SignalR boundary, ADR gaps.
 - **ITSM product:** ticket lifecycle semantics, queue/assignment clarity, SLA semantics as users see them, requester language, admin discoverability.
@@ -391,6 +391,7 @@ Production blockers: **3** (SEC-001, SEC-002, SEC-003). Decisions required: **5*
 - **Decision required:** No. **Production blocker:** No. **Related:** SEC-001, SEC-012.
 
 ### SEC-006: A correlated inbound email is accepted from any sender into an existing ticket
+- **Update:** the Messaging review (section 16, MSG-002) confirmed this and escalated it to High: the sender and the message's To/Cc become ticket participants who receive later agent replies.
 - **Category:** Messaging / Security. **Confidence:** Low-Medium (needs the Messaging review to confirm what the correlation evidence can be).
 - **Evidence:** headers and our correlation token decide the ticket (`InboundProcessor.cs:260-289`); `MailBridge.AddMessageAsync` then adds a public Requester message authored by whatever address sent it, appears to the ticket's requester as "Another participant", and reopens the ticket (D-15). There is no check that the sender is the requester or a participant.
 - **Impact / abuse scenario:** a person who obtains a ticket's `Message-ID` or token (for example from a forwarded email) sends mail with the matching `In-Reply-To` to the department mailbox. Their text appears on the victim's ticket and reopens it.
@@ -475,3 +476,158 @@ Production blockers: **3** (SEC-001, SEC-002, SEC-003). Decisions required: **5*
 - Agent-side upload endpoints and the full set of attachment size/scan flows beyond the validator and download path.
 - No fuzzing of guessed IDs across every endpoint was run; coverage came from reading the authorisation pattern and its use. The existing isolation test matrix was not run (and not reviewed beyond noting its coverage).
 - Components for markdown/RichText beyond the files named above; exhaustive review of every admin screen's rendering.
+
+
+---
+
+# 16. Microsoft 365 / Messaging review (added after the Security section)
+
+Specialist: Microsoft 365 / Messaging Engineer (AGENTS.md section 11). Baseline: commit `081f660`. Method: single agent, read-only, static reading of `Helpdesk.Modules.Mail` (provider, inbound pipeline, correlation, outbound sender, sync, subscriptions, mailbox service), the Ticketing seams (`MailBridge`, `TicketService` reply path, acknowledgements) and the email docs and runbook. No Graph or tenant call was made, no mail was sent, nothing was run or changed. Security, Frontend, QA, SRE and Content findings were reused, not repeated.
+
+**Evidence classes used below.** *Code* = what the implementation does. *Simulator* = behaviour of `FakeMailProvider` and recorded-shape tests. *Real tenant* = observed against Microsoft 365: **none exists**. The runbook result table for E-1..E-38 is empty, so every statement about what Graph or Exchange actually does is unverified. Simulator results are not tenant evidence.
+
+**Result in one line:** the sender-identity and no-fallback rules, the outbound state model and the "never retry an uncertain send blindly" rule are well built. The two serious problems are a correctness defect in retry after a bounce and the fact that correlation evidence is trusted without checking who sent the mail.
+
+| Severity | Count |
+|---|---|
+| Critical | 0 |
+| High | 2 |
+| Medium | 4 |
+| Low | 5 |
+| Polish | 1 |
+| **Total** | **12** |
+
+Production blockers from this review: **3** (MSG-001, MSG-002, MSG-004), plus the standing gate **D-16**. Decisions required: **5** (MSG-002, MSG-003, MSG-004, MSG-005, MSG-009).
+
+## 16.1 Conclusion on SEC-006 (can an unrelated sender attach mail to an existing ticket?)
+
+**Yes, and the impact is larger than the Security review stated.** Findings from the code:
+
+1. **Attachment needs only a bearer-style identifier, never a sender check.** `CorrelationEngine.CorrelateAsync` (`MailRules.cs:110-189`) attaches a message to a ticket if any one of these matches, in order: an `In-Reply-To` or `References` id equal to a stored Message-ID of any inbound or outbound mail of that department; the `[hd:<token>]` footer text or an `x-helpdesk-token` header equal to a stored outbound token; or the Exchange `conversationId` of any message in the same mailbox. Nothing compares the sender with the ticket's requester or participants (`InboundProcessor.TicketAsync`, `MailBridge.AddMessageAsync`).
+2. **What the three kinds of evidence are worth.**
+   - Message-IDs and tokens are unguessable, but they are *capabilities*, not identities: everyone who ever received a message in the thread (To, Cc, a forwardee, an archive, a mailing list) can see them. The token is printed in the visible footer of every reply and is quoted in every later reply. The `x-helpdesk-token` header is attacker-supplied input, so it is accepted at face value too.
+   - `conversationId` is weak. The project's own spike notes expect it to derive from the conversation topic, that is, from the subject (E-15, unverified). It is accepted as sole evidence (step 4), which makes it a subject match in effect, against the rule that a subject is only ever a hint.
+3. **Consequence of attaching.** The message is added as a *public* message of the ticket, the ticket is reopened (D-15), the sender is created or reused as a requester row, and **the sender plus every To/Cc address in the message become ticket participants** (`MailBridge.cs:302-311`). `TicketService.PostMessage` (`TicketService.cs:462-470`) copies all participants as Cc on every later public agent reply. So a single email carrying a valid identifier lets an unrelated party add themselves, or anyone, to the Cc line of every future reply on that ticket. The composer banner shows only a count (for example "Cc 2"), not who.
+4. **Existing protections that still hold:** a match pointing into another department or another mailbox is discarded and flagged; the department always comes from the receiving mailbox; a subject reference alone never attaches (it only produces a note for the agent).
+
+**What evidence should be trusted.** Headers and tokens are good proof that the message belongs to the *thread*, not that the sender may *act on* it. The safe rule is: strong correlation evidence AND a sender who is the ticket's requester or an existing participant, compared on normalised addresses, may attach as today. Any other sender should not get a public message, a reopen or new participants. What happens to such mail instead is a product choice (see MSG-002). `conversationId` should not be sufficient on its own for any sender.
+
+## 16.2 High
+
+### MSG-001: Retry after a confirmed bounce does not send anything and reports the message as Sent
+- **Specialist / category:** Messaging / Bug. **Severity:** High. **Confidence:** High (code, and the simulator keeps the sent copy permanently; real-tenant behaviour depends on E-25).
+- **Evidence:** a bounce correlated by `NdrCorrelation` moves the original outbound row to `Failed` with `ndr_delivery_failed` (`InboundProcessor.cs:214-234`) and leaves its `ProviderDraftId`. The agent UI shows "Retry sending" for that failure (`Conversation.tsx:110`; the button is hidden only for `outcome_uncertain`). Both retry routes (`MailOutbox.RetryAsync`, `OutboundMail.cs:140-155`, and `MailboxService.RetryAsync`, `MailboxService.cs:318-324`) set the row back to `Queued` without clearing `provider_draft_id`. `OutboundSender.SendAsync` then calls `FindSentCopyAsync(existingDraft)` first (`OutboundMail.cs:205`); the original message is still in Sent Items, so a sent copy is found, the send is skipped, and the row is marked `Sent` with `LastError` cleared. No test covers retry after a bounce.
+- **Affected area:** outbound retry; delivery state shown to agents and requesters' replies.
+- **Impact:** an agent corrects a typo in the requester's address or simply retries a bounced reply. The system says "Sent by email", nothing leaves the mailbox, and the requester never receives the answer. The bounce evidence is cleared from the row (audit keeps the original event). Same effect for any `Failed` row whose draft was already sent, for example after a database error that followed a successful send.
+- **Smallest recommended fix:** a retry of a message whose earlier send was *submitted* (bounce, or failure after submission) must create a new draft (clear `provider_draft_id` and the submit flag) and be recorded as an explicit re-send, as the existing "accept duplicate risk" path already does for uncertain mail; or block Retry for `delivery_failed` and tell the agent to fix the address and send a new reply. Add one test: send, bounce, retry, assert a second provider send.
+- **Decision required:** No (either fix gives a correct outcome; the second is the smaller change). **Production blocker:** Yes.
+- **Related:** MSG-007 (a forged bounce can trigger this state).
+
+### MSG-002: Correlated mail is accepted from any sender and can add recipients to the ticket (SEC-006)
+- **Specialist / category:** Messaging / Security, Privacy. **Severity:** High. **Confidence:** High for the code path, Medium for ease of exploitation (needs a Message-ID or token from the thread).
+- **Evidence:** section 16.1 above; `MailRules.cs:110-189`, `InboundProcessor.cs:260-289`, `MailBridge.cs:215-311`, `TicketService.cs:462-470`.
+- **Affected area:** inbound threading; ticket participants; outbound Cc.
+- **Impact / abuse scenario:** a requester forwards a support email to a colleague, or the thread is archived in a shared mailbox. Anyone who can read that email knows the thread's Message-ID and the `[hd:…]` token. They send a message to the department mailbox with `In-Reply-To` set to that id, or quoting the footer, with their own address in Cc. The ticket reopens, their text appears to the requester as "Another participant", and from then on every public agent reply (including internal-facing detail an agent writes to the requester) is also emailed to the sender and to anyone they Cc'd. Nobody is warned.
+- **Smallest recommended fix:** do not attach, reopen, or add participants for a message whose sender is not the ticket's requester or an existing participant. As a minimum independent of the product decision, never create participants from the To/Cc of a message sent by a non-participant. List the Cc recipients by name in the composer banner so the agent sees them.
+- **Decision required:** Yes. Options for mail from other senders that carries valid evidence: (a) create a new ticket with a note naming the suggested ticket (as for a subject hint), (b) hold it for review on the suggested ticket without showing it to the requester or reopening, (c) attach but without participants and reopen (smallest change, still shows their text to the requester). Also: may a participant's reply add further participants? **Production blocker:** Yes.
+- **Related:** SEC-006, SEC-004, MSG-003, MSG-012.
+
+## 16.3 Medium
+
+### MSG-003: `conversationId` is accepted as sole evidence although it behaves like a subject match
+- **Category:** Messaging. **Severity:** Medium. **Confidence:** Low-Medium (depends on Exchange's grouping rules, which are exactly E-15/E-16/E-17 and unobserved).
+- **Evidence:** `MailRules.cs:182-193` attaches on a `conversationId` match with no sender check and any earlier message of the mailbox, inbound or outbound. `EMAIL_ARCHITECTURE.md` section 5 notes it is derived from the conversation topic and promises nothing across subject changes. Policy line 35 says a subject is never sufficient.
+- **Impact / abuse scenario:** if Exchange puts a new, unrelated message with the same normalised subject into the same conversation, a stranger who knows a ticket's subject (it appears in the requester's own copy of our replies) can land on it without any header or token.
+- **Smallest recommended fix:** do not let `conversationId` attach on its own: require it together with a participant sender (MSG-002 rule), or drop step 4 until E-15..E-17 show it is safe.
+- **Decision required:** Yes (keep, restrict to known participants, or remove). **Production blocker:** No (resolved by the MSG-002 sender rule), but E-15..E-17 must be observed.
+
+### MSG-004: Any Department Admin can register an arbitrary mailbox; only Exchange-side scoping stops them
+- **Category:** Messaging / Authorization. **Severity:** Medium. **Confidence:** Medium (code certain; outcome depends on how the tenant grants the app, which is the unobserved D-16 prerequisite).
+- **Evidence:** `MailboxService.CreateAsync` (`MailboxService.cs:100-160`) validates only the address format and a 128-character `providerRef`, then activates the mailbox and starts syncing; it never asks Graph whether the mailbox exists or is in the app's scope. Creating needs `department.mailboxes.manage`, which Department Admins and Platform Admins hold. The runbook's least-privilege setup (scoped Exchange application role, no unscoped Entra `Mail.*` consent) is the only barrier, and E-2 has not been run.
+- **Impact / abuse scenario:** if the app registration has tenant-wide mail permissions (a common shortcut), a Department Admin registers `finance-director@…` as their department's mailbox. The helpdesk ingests that mailbox's new mail as tickets of the department and replies from that identity. With the runbook's scoping the same action only produces permission-denied sync errors.
+- **Smallest recommended fix:** on create (and on enabling), probe the mailbox through Graph and refuse on 403/404; and decide whether registering a mailbox is a Platform Admin action or needs an approved-address list.
+- **Decision required:** Yes (who may register mailboxes). **Production blocker:** Yes, until the tenant scoping is proven (D-16 E-2) and the decision made.
+- **Related:** SRE-010, D-16.
+
+### MSG-005: Acknowledgements go to an unauthenticated sender and carry attacker-chosen text
+- **Category:** Messaging / Operations. **Severity:** Medium. **Confidence:** Medium.
+- **Evidence:** a new inbound ticket queues an acknowledgement to the `From` address (`EmailIdentity.cs:302-331`) using the department template, whose placeholders include `{{ticket.subject}}` (sender-supplied). The only inbound throttle is 30 messages per sender address per mailbox per 10 minutes (`InboundProcessor.cs:145-152`). The `Authentication-Results` header is available in the retrieved headers but not consulted. `BACKLOG.md` already records "per-requester acknowledgement rate limit" as deferred on the argument that the sender limit covers it.
+- **Impact / abuse scenario:** someone sends mail with a forged or rotating `From` (any address) and a subject of their choosing. Each message creates a ticket and makes the department mailbox send the acknowledgement, containing the attacker's subject text, to the forged address: a spam and phishing reflection using the organisation's reputation, and a flood of tickets. The per-sender limit is bypassed by changing the address.
+- **Smallest recommended fix:** a per-mailbox cap on acknowledgements per window, and optionally only acknowledge when the message passed SPF/DKIM/DMARC (`Authentication-Results`), or leave `{{ticket.subject}}` out of the default template.
+- **Decision required:** Yes (which control, and whether unauthenticated senders get an acknowledgement). **Production blocker:** covered by the abuse-controls gate (SEC-003); not counted separately.
+
+### MSG-006: Acknowledgements are not marked as automatic
+- **Category:** Messaging. **Severity:** Medium. **Confidence:** Medium (the Graph limit on settable headers is from documentation, unverified).
+- **Evidence:** no `Auto-Submitted`, `X-Auto-Response-Suppress` or `Precedence` header is set anywhere in the provider or sender (searched). The Graph draft path can set only custom `x-` headers, and only `x-helpdesk-token` is set (`MicrosoftGraphMailProvider.cs`, `CreateDraftAsync`). The inbound guard drops mail that carries those headers, so the system expects other systems to mark theirs.
+- **Impact:** our acknowledgement cannot be recognised as automatic by a peer autoresponder or another helpdesk, which can answer it with a ticket-creating message; the pair then ping-pong, capped only by the per-sender limit (up to 30 tickets per 10 minutes). E-37 (inter-mailbox loop) is unobserved.
+- **Smallest recommended fix:** add `x-auto-response-suppress: All` (an `x-` header) to acknowledgements through `internetMessageHeaders`, and confirm in E-37/E-38 what Exchange adds on submission.
+- **Decision required:** No. **Production blocker:** No.
+
+## 16.4 Low
+
+### MSG-007: Any sender can pose as a bounce and mark a sent reply as failed
+- **Category:** Messaging. **Confidence:** Medium. **Evidence:** `MailGuard.LooksLikeNdr` accepts a `mailer-daemon` or `postmaster` local part on any domain, or a `report-type=delivery-status` content type from anyone (`MailRules.cs:76-88`); `NdrCorrelation` then trusts a quoted Message-ID or token of a `Sent` or `Uncertain` outbound message of the same mailbox and marks it `Failed` (`InboundProcessor.cs:214-234`). **Impact / abuse scenario:** a requester, or anyone who received our reply, sends a forged bounce quoting the id; the agent sees "Delivery failed" on a reply that was delivered, and with MSG-001 a retry silently fixes nothing. **Fix:** require the bounce to come from the tenant's own transport (for example `Authentication-Results`, the `X-MS-Exchange-…` markers, or a report originating from our domain), after E-38 shows real headers. **Decision:** No. **Blocker:** No.
+
+### MSG-008: Uncertain sends are never reconciled automatically
+- **Category:** Reliability. **Confidence:** Medium. **Evidence:** `RunDispatchAsync` reconciles only rows stuck in `Sending`; an `Uncertain` row is looked at again only when an operator clicks retry (`MailboxService.RetryAsync`). After a timeout the sent copy lookup may run before Exchange has moved the draft (E-25 unmeasured), so a message that was in fact sent can stay Uncertain until someone acts. **Impact:** avoidable manual work and alarming states. **Fix:** re-run the existing read-only reconcile for Uncertain rows after a delay (never sends). **Decision:** No. **Blocker:** No.
+
+### MSG-009: Ignored inbound mail cannot be released to a ticket
+- **Category:** ITSM Workflow / Administration. **Confidence:** High. **Evidence:** the Attention list includes `Ignored` rows (`MailboxService.cs:252`) but `RetryAsync` accepts only `Failed` and `Uncertain` (`:286`). Rules that ignore mail: `Auto-Submitted` other than `no`, `Precedence` bulk/list/junk, any `List-Id`/`List-Unsubscribe`, `X-Auto-Response-Suppress`, and the sender rate limit. **Impact:** legitimate mail from monitoring tools, vendors with list headers, or a sender over the limit is recorded but can never become a ticket; the operator can only read it. **Fix:** an explicit, audited "create ticket from this message" action for ignored inbound mail. **Decision required:** Yes (is releasing ignored mail wanted, and which reasons may be released). **Blocker:** No.
+
+### MSG-010: A re-delivered message with the same Message-ID after 2 seconds becomes a second ticket
+- **Category:** Data Integrity. **Confidence:** Low (needs E-13/E-14 evidence on how often Exchange re-delivers). **Evidence:** `InboundProcessor.cs:156-175` treats the same Message-ID as a duplicate only when subject, sender and received time are within 2 seconds; otherwise it ingests the message and flags `internet_id_collision`. **Impact:** a late duplicate delivery (for example the same mail reaching the mailbox via two routes) creates a duplicate ticket or duplicate reply. **Fix:** treat same Message-ID, subject and sender as a duplicate regardless of the time gap, and flag only when the content differs. **Decision:** No. **Blocker:** No.
+
+### MSG-011: Full bodies of all inbound mail, including ignored and bounce mail, are kept with no purge
+- **Category:** Privacy. **Confidence:** High. **Evidence:** `RecordAsync` stores `BodyText` and the original HTML (`BodyHtmlOriginal`) for every inbound message, ignored ones included (`InboundProcessor.cs:112-135`); no retention job exists (SRE-011, D-09). **Impact:** unbounded retention of spam, bounces and unrelated mail containing personal data. **Fix:** after D-09, add a retention rule; until then document it. **Decision:** tied to D-09. **Blocker:** No (part of the retention gate).
+
+## 16.5 Polish
+
+### MSG-012: Every reply shows an opaque token to the requester
+- **Category:** Copy/Terminology. **Confidence:** High. **Evidence:** `OutboundMail.cs:BuildHtml` appends "Ticket IT-1042 · [hd:<32 hex characters>]" in small grey text to every reply. **Impact:** customers see a machine token with no explanation, and it is the correlation capability discussed in MSG-002. **Fix:** short explanatory wording ("Reference for replies"), once the correlation rule is settled. **Decision:** No. **Blocker:** No.
+
+## 16.6 Notes on the Security findings in the messaging area
+
+- **SEC-001 / SEC-005 (mail attention):** the attention list is operational data for the mailbox administrator. The proposed redaction must keep the sender address and subject visible to Department Admins who are members; it only withholds them from a non-member Platform Admin. The same endpoint family also lets a Platform Admin re-queue mail and, with the duplicate-risk flag, resend uncertain mail in a department they are not a member of (already covered by SEC-012).
+- **SEC-006:** answered above and escalated as MSG-002.
+- **SEC-009 / SEC-010:** no messaging aspect.
+
+## 16.7 D-16 status
+
+**OPEN. No real-tenant evidence exists.** The runbook (`docs/guides/GRAPH_TENANT_VALIDATION.md`) is unrun, its result table for E-1..E-38 is empty, and the Refinement 3 attempt was recorded as BLOCKED (no approved tenant configuration). Everything in the Graph provider is written to documented contracts and exercised only through recorded-shape tests and the in-process simulator. This review did not change that, and nothing here may be read as tenant evidence.
+
+Experiments that this review's conclusions depend on, in priority order:
+
+| Experiment | Why it matters here |
+|---|---|
+| E-21, E-22 | sender is the shared mailbox under app-only auth; Reply-To; no "on behalf of" |
+| E-25, E-12, E-10 | draft id stays valid after send; sent copy lookup; Message-ID rewritten on submission (MSG-001 on the real path, MSG-008) |
+| E-23, E-24, E-26 | reply headers carried by `createReply`; recorded id equals recipient's Message-ID (threading, NDR matching) |
+| E-15, E-16, E-17 | `conversationId` behaviour (MSG-003) |
+| E-2, E-3 | out-of-scope mailbox returns 403; send under scoped grants only (MSG-004) |
+| E-30..E-35 | subscription creation, expiry limits, renewal, missed notifications, 8-day continuity |
+| E-37, E-38 | inter-mailbox loop; real header samples for the guard rules and bounce detection (MSG-006, MSG-007) |
+| E-13, E-14 | Message-ID absence and rewriting by gateways (MSG-010) |
+
+## 16.8 Areas reviewed with no issue found
+
+- **Sender identity and Reply-To:** replies are created and sent through the ticket's own mailbox path (`users/{mailbox}/…`), `from` and `sender` are never set, agent personal addresses never appear, Reply-To is the helpdesk mailbox (code and simulator only; E-21/E-22 pending).
+- **Ticket mailbox immutability and no fallback:** a public reply without a stored mailbox is blocked as `no_ticket_mailbox`; an inactive or unavailable one is recorded as `mailbox_unavailable`; the outbox insert re-checks that the mailbox is an active mailbox of the same department and fails otherwise. Team, assignee, status and type changes do not touch the mailbox. (The department default is used only at creation, and for acknowledgements of tickets that have none, which equals the creation rule.)
+- **Outbound state model:** `Queued → Sending → Sent / Failed / Uncertain`, one atomic claim, the draft id persisted before sending, the submit flag persisted before the send call, timeouts/5xx/network treated as ambiguous and 429/4xx as not, no blind retry of an ambiguous send, explicit and audited "accept duplicate risk" as a new message, crash recovery that reconciles instead of resending once the send may have happened. Ticketing is told only "submitted" or "not confirmed", and the UI says "accepted for delivery; not confirmed as delivered" (Graph acceptance is not presented as delivery).
+- **Transactional outbox:** the outbound row and the ticket message commit together.
+- **Inbound idempotency:** one row per mailbox and immutable provider id, unique constraint race handled, replays find the existing result.
+- **Department and mailbox isolation:** department comes only from the receiving mailbox; evidence into another department or mailbox is discarded and flagged; a subject reference never attaches.
+- **Loop and noise protection:** own helpdesk addresses (every department), `Auto-Submitted`, bulk, list and `X-Auto-Response-Suppress` mail are ignored; bounces are never tickets, requester replies or acknowledgement triggers; acknowledgements are never sent to the sending mailbox and are created inside the ticket-creation transaction (one per ticket, none for replays).
+- **Webhooks and subscriptions:** per-subscription client state stored hashed and compared in constant time, mailbox taken from our own record, bounded body, handshake echo; lifecycle events (`reauthorizationRequired`, `subscriptionRemoved`, `missed`) handled; subscription failures are visible on the mailbox and delta keeps working without webhooks.
+- **Delta:** token advanced only after the whole batch, a 410 restarts from the configuration time with idempotent re-ingest, per-mailbox advisory lock, delta links accepted only on the configured Graph host.
+- **Mailbox health:** reports subscription missing/failed/expired/expiring, sync failing or stale, and outbound failed/uncertain and inbound failed counts, with the machine reasons the UI uses.
+- **Logging and diagnostics:** log templates carry ids and codes only; Graph error text is dropped and only the error code kept; tokens are not logged; audit stores no bodies.
+- **Signatures:** per agent and department, sanitised once and fixed into the queued message, appended once, never on internal notes or acknowledgements, no department footer.
+
+## 16.9 Could not be verified
+
+- Every actual Graph/Exchange behaviour (D-16): sender display, draft and sent-copy identifiers, header handling on `createReply`, `conversationId` grouping, subscription lifetime limits, delta filter support, notification timing.
+- The Graph restriction that only `x-` headers can be set when creating a draft (assumed from documentation in MSG-006).
+- Whether Exchange Online attaches usable `Authentication-Results` to messages retrieved through Graph (assumed in MSG-005 and MSG-007).
+- Retry after a bounce at runtime: the conclusion rests on the code and on the simulator keeping the sent copy; no mail was sent and the DEMO data was not changed.
+- How the tenant grants the app registration (MSG-004).
+- Exact documented subscription maximum for Outlook messages: the project's documents say just under 7 days; the configured default of 3 days is within that, but the limit was not re-checked against Microsoft documentation here and is covered by E-30.
