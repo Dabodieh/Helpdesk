@@ -14,7 +14,7 @@ The session limit interrupted the review. Only four of the ten specialist review
 | QA / Reliability Engineer | Completed | QA |
 | Lead Architect / Technical Lead | **Did not complete** (rate-limited) | ARC |
 | ITSM Product & Service Desk Lead | **Did not complete** (rate-limited; no findings returned) | ITSM |
-| Backend / Domain Engineer | **Did not complete** (rate-limited) | BE |
+| Backend / Domain Engineer | **Completed later (section 17)** | BE |
 | Microsoft 365 / Messaging Engineer | **Completed later (section 16)** | MSG |
 | Security / Privacy Engineer | **Completed later (section 15)** | SEC |
 | Data / Reporting Engineer | **Did not complete** (rate-limited) | DATA |
@@ -25,7 +25,7 @@ Completed specialists also returned their findings as text (the findings files i
 
 - **Security / Privacy (highest priority gap; now reviewed, see section 15, which supersedes this bullet):** Department isolation on read and write paths, IDOR/BOLA, non-disclosure, Internal Note leakage paths, requester identity and audience enforcement, attachment security, XSS/sanitisation, audit completeness, logging privacy, and the new `article-links` and `queue-types` endpoints. Several UX/QA findings below ask for server-side confirmation (UX-009, UX-012, QA-004) that nobody has yet done.
 - **Messaging (Graph/Exchange; now reviewed, see section 16, which supersedes this bullet):** inbound sync, subscriptions, delta, threading, outbound state machine, uncertain-send reconciliation, NDR/loop suppression, mailbox health. D-16 evidence status was not re-assessed (it stays OPEN: simulator evidence only).
-- **Backend / Domain:** concurrency, data integrity, constraints, indexes, Hangfire job idempotency, SLA job correctness, migrations.
+- **Backend / Domain (now reviewed, see section 17, which supersedes this bullet):** concurrency, data integrity, constraints, indexes, Hangfire job idempotency, SLA job correctness, migrations.
 - **Architecture:** module boundaries, outbox/transaction design, SignalR boundary, ADR gaps.
 - **ITSM product:** ticket lifecycle semantics, queue/assignment clarity, SLA semantics as users see them, requester language, admin discoverability.
 - **Data / Reporting:** dashboard and SLA metric semantics, history capture for future reports.
@@ -374,6 +374,7 @@ Production blockers: **3** (SEC-001, SEC-002, SEC-003). Decisions required: **5*
 - **Related:** SRE-005, QA-004.
 
 ### SEC-004: Merging tickets of different requesters shares one conversation with both people
+- **Update:** the Backend review (section 17, BE-002) found the other half of the effect: the source requester stops receiving replies and the request disappears from their portal.
 - **Specialist / category:** Security / Privacy. **Severity:** Medium. **Confidence:** Medium (code read; not run).
 - **Evidence:** `TicketMerge.cs` checks department and permission only; it does not compare requesters. `MailBridge.AddMessageAsync` (`MailBridge.cs:215-282`) sends later email replies for a merged source's thread to the canonical ticket as public Requester messages with the sender as author. The portal shows all public messages of the canonical ticket to its requester, labelling other authors "Another participant" (`PortalRequestService.cs:224-230`). The merge dialog shows the candidate's requester name but gives no warning.
 - **Impact / abuse scenario:** an agent merges Ana's ticket (source) into Ben's (canonical) as a "duplicate". Ana replies by email; her message and its text now appear in Ben's portal request, and Ben's replies and agent replies on the canonical thread go to Ben only. Neither requester expects to share a thread with a stranger. This is within one department and only after an agent action, but it discloses a requester's words to another requester.
@@ -631,3 +632,157 @@ Experiments that this review's conclusions depend on, in priority order:
 - Retry after a bounce at runtime: the conclusion rests on the code and on the simulator keeping the sent copy; no mail was sent and the DEMO data was not changed.
 - How the tenant grants the app registration (MSG-004).
 - Exact documented subscription maximum for Outlook messages: the project's documents say just under 7 days; the configured default of 3 days is within that, but the limit was not re-checked against Microsoft documentation here and is covered by E-30.
+
+
+---
+
+# 17. Backend / Domain review (added after the Messaging section)
+
+Specialist: Backend / Domain Engineer (AGENTS.md section 9). Baseline: commit `081f660`. Method: single agent, read-only, static reading of the services, EF mappings and constraints, jobs, migrations list and the Ticketing/Knowledge/Mail seams named below; no tests, builds or runtime writes. Security, Messaging, QA, SRE and Content findings were reused, not repeated; where they have a backend consequence it is stated and cross-referenced.
+
+**Result in one line:** the core is carefully built (row locks plus version tokens on every ticket mutation, atomic claim queries, unique keys for idempotency, strong CHECK constraints, composite foreign keys for department ownership, no N+1 in list projections). The findings are about durability of after-commit work, a few lifecycle semantics that will mislead operators or reports, and the backend side of the earlier High findings.
+
+| Severity | Count |
+|---|---|
+| Critical | 0 |
+| High | 0 |
+| Medium | 8 |
+| Low | 7 |
+| Polish | 1 |
+| **Total** | **16** |
+
+Production blockers from this review: **0** new (MSG-001 and MSG-002 stay blockers; their backend parts are BE-001, BE-002 and the notes in 17.7). Decisions required: **6** (BE-001, BE-002, BE-004, BE-006, BE-007, BE-010).
+
+## 17.1 Medium
+
+### BE-001: Ticket participants have no limit and no way to be removed
+- **Specialist / category:** Backend / Data Integrity. **Severity:** Medium. **Confidence:** High (code).
+- **Evidence:** `PeopleUpsert.ParticipantAsync` (`MailBridge.cs:47-64`) inserts every To/Cc address with `ON CONFLICT DO NOTHING`; `AddMessageAsync` adds the sender and all To/Cc of every correlated message (`MailBridge.cs:302-311`). There is no cap anywhere (searched for a limit), and no endpoint or UI action removes a participant (the endpoint list has none; the web app only reads them). The reply path copies all participants to Cc (`TicketService.cs:462-470`).
+- **Impact / scenario:** one inbound message with a very large To/Cc list (a reply-all to a distribution list, or the SEC-006 abuse) adds all of them permanently. Every later public reply on that ticket then carries that Cc list: replies go to people nobody chose, and a list over the provider's recipient limit makes every reply fail permanently with a 4xx (shown as "Delivery failed"), with no way to repair the ticket except editing the database.
+- **Smallest recommended fix:** cap participants per ticket (a small constant) and per message, and add a "remove from Cc" action for agents with `tickets.update`; list the Cc recipients by name in the composer (MSG-002).
+- **Decision required:** Yes (the removal action is new behaviour; the cap value and what happens above it). **Production blocker:** No (the abuse path is blocked by MSG-002).
+- **Related:** MSG-002, SEC-006.
+
+### BE-002: Merging tickets of different requesters orphans the source requester (backend side of SEC-004)
+- **Category:** Backend / ITSM Workflow. **Severity:** Medium. **Confidence:** High for the mechanics, Medium for the user impact.
+- **Evidence:** `TicketMerge.cs` never compares requesters. After the merge: the portal list excludes merged tickets (`PortalRequestService.cs:126`), and opening the merged request returns "Not found" unless the canonical ticket is also the caller's (`:178-190`); so the source requester's request silently disappears from their portal. Agent replies on the canonical ticket go to the canonical requester and its participants only (`TicketService.cs:462-470`); the source requester is not added as a participant. Their later email replies are routed to the canonical ticket by the merge hop in `AddMessageAsync` and show to the canonical requester as "Another participant" (`PortalRequestService.cs:224-230`).
+- **Impact:** requester B stops receiving answers and can no longer find their request, while requester A starts seeing B's replies. Both are consequences of one agent action and none of it is surfaced to the agent.
+- **Smallest recommended fix:** product decision, then either block or warn when requesters differ, or add the source requester as a participant of the canonical ticket and show them the canonical request.
+- **Decision required:** Yes: block merge across different requesters, warn, or merge and add the source requester as a participant (and show the canonical request in their portal). **Production blocker:** No.
+- **Related:** SEC-004.
+
+### BE-003: Posting a public message has no idempotency key; the portal reply is not atomic with its attachments
+- **Category:** Backend / Reliability. **Severity:** Medium. **Confidence:** High.
+- **Evidence:** `PostMessageRequest` (`TicketDtos.cs:127`) and the portal reply carry no idempotency key (portal ticket creation does, via `submissionId`). `PortalRequestService.ReplyAsync` (`:237-262`) commits the message in its own transaction (`TicketIngressService`) and only then stores the files one by one; an object-store or validation failure after the commit returns an error although the message exists.
+- **Impact / scenario:** a request that succeeded but whose response was lost (timeout, proxy retry, impatient second click after the button re-enables) is posted again. For an agent that is a second email to the requester; for a requester a second reply, a second reopen and a second "requester replied" notification. A failed attachment upload produces an error, the requester retries, and the message is duplicated while the files are lost.
+- **Smallest recommended fix:** an optional client-generated message id used as a unique `SourceRef` (the mechanism already exists for portal creation and email), returning the earlier result on replay; and store the files in the same unit of work or report the partial outcome with the saved message.
+- **Decision required:** No. **Production blocker:** No.
+- **Related:** QA-004, UX-016.
+
+### BE-004: Automation and SLA-triggered work after commit is not durable
+- **Category:** Backend / Reliability. **Severity:** Medium. **Confidence:** High (mechanism), Medium (frequency).
+- **Evidence:** user and ingestion changes run automation in `AfterCommitAsync` (`TicketLifecycle.cs:39-52`) with no stored intent; the SLA monitor commits the breach/warning rows and then, outside the transaction, publishes the event and runs the `SlaBreached`/`SlaApproaching` automation (`TicketLifecycle.cs:115-127`, deterministic key). The lease in the automation engine only resumes an execution when the same event is delivered again; nothing re-delivers an SLA event whose row is already marked breached, and nothing re-dispatches after a crash. By contrast, notifications do use a durable outbox.
+- **Impact:** a restart or crash between commit and dispatch silently skips automation: a ticket is not auto-assigned or routed on creation, or an SLA breach rule (for example escalate to a team) never fires, and nothing records that it was skipped.
+- **Smallest recommended fix:** stage a small intent row in the same transaction (the notification outbox pattern already in the codebase) and drain it with the existing recurring job, keeping the deterministic keys that make replays safe. Do not widen it into a general event framework.
+- **Decision required:** Yes (accept best-effort automation, which is the current stated behaviour, or make it durable). **Production blocker:** No.
+- **Related:** SRE-005.
+
+### BE-005: One failing notification outbox item can block the whole queue; no attempt count or error is kept
+- **Category:** Backend / Reliability. **Severity:** Medium. **Confidence:** High (mechanism), Low (likelihood of a persistent failure).
+- **Evidence:** `DrainAsync` always takes the oldest 100 unprocessed rows (`NotificationOutbox.cs:144`); an item that throws is rolled back and stays at the head (`:146-165`). The table has no attempts, last-error or dead-letter state (`NotificationOutboxItem`). The fast path runs the same drain inside the request that published the event.
+- **Impact:** if 100 items failed persistently (a data condition the recorder cannot process), no newer notification would ever be created, each agent action would spend its time retrying them, and nothing would show why. Transient failures recover on the next run, so today this is a latent risk, not an observed fault.
+- **Smallest recommended fix:** record attempts and the last error code on the item, skip items beyond a retry limit (leaving them visible), and order by attempts or skip failed ids within the batch. Also expose the oldest pending age (SRE-005).
+- **Decision required:** No. **Production blocker:** No.
+- **Related:** SRE-005.
+
+### BE-006: The SLA policy is chosen once at creation, before automation routes or classifies the ticket
+- **Category:** ITSM Workflow / Backend. **Severity:** Medium. **Confidence:** High.
+- **Evidence:** policy matching runs in `BeforeCommitAsync(Created)` inside the creating transaction (`TicketLifecycle.cs:27-37`) using the conditions `priority`, `team`, `mailbox`, `ticketType`, `subjectContains`, `requesterEmail`, `requesterDomain` (`Conditions.cs`, `PolicyFields`). Automation for `TicketCreated` runs after commit (BE-004) and may set team, priority or assignee. `OnChangesAsync` reacts only to public replies and status changes (`SlaEngine.cs:136-160`), so later team, type or priority changes never re-select the policy. ADR-014 states that the snapshot is frozen at creation, but offers Team, Type and Priority as policy conditions.
+- **Impact / scenario:** an administrator creates "Network team: first response 1 hour" and a rule "route VPN mails to the Network team". Email tickets arrive without a team, get the default (or no) policy, are routed afterwards, and never match the team policy. The same happens when an agent raises the priority to Urgent. The configuration looks right and is silently ineffective.
+- **Smallest recommended fix:** none without a decision.
+- **Decision required:** Yes: (a) document that only creation-time attributes can select a policy and hide the unusable conditions for email/portal tickets, (b) re-evaluate the policy when team, type or priority changes (and say how the running clocks restart), or (c) run automation before the SLA is applied. **Production blocker:** No.
+- **Related:** ITSM review (not yet run).
+
+### BE-007: The first-response clock keeps running after a ticket is resolved or closed without a public reply
+- **Category:** ITSM Workflow / Reporting. **Severity:** Medium. **Confidence:** High (code); the intended behaviour is not stated anywhere.
+- **Evidence:** the first-response clock is stopped only by an agent public reply (`MeetFirstResponse`, `SlaEngine.cs:190-205`); `ApplyStatus` handles the resolution clock only (`:212-285`), and `RecordDue` checks `FirstResponseDueAt` with no reference to the ticket status (`:321`). A ticket resolved or closed with no public agent reply (a duplicate, spam, solved by phone, handled by internal note) still receives a recorded warning, a breach and a `SlaBreached` automation run after it is closed.
+- **Impact:** breaches and automation fire on finished tickets, and any future first-response attainment report would count them as misses. The dashboard's SLA figures are unaffected because they read only the open backlog.
+- **Smallest recommended fix:** none without a decision.
+- **Decision required:** Yes (should resolving or closing stop the first-response clock, and should that count as met, as not applicable, or as the miss it is today?). **Production blocker:** No.
+- **Related:** Data/Reporting review (not yet run).
+
+### BE-008: Sorting the queue by SLA hides every ticket that has no deadline
+- **Category:** Bug / UX-visible. **Severity:** Medium. **Confidence:** High.
+- **Evidence:** `sla_due_asc` keeps only tickets that have a `next_due_at` (`TicketQueryService.cs:403-405`, comment "a ticket without one has no place in this order"), although the cursor code reserves a maximum-date sentinel for tickets without a deadline (`EncodeCursor`, `slaDue ?? DateTimeOffset.MaxValue`), which suggests they were meant to sort last. The queue's SLA column header toggles this sort (`QueuePane.tsx`).
+- **Impact:** an agent clicking the SLA header sees only part of the queue; in a department with no SLA policy the list becomes empty ("No tickets here", with a "Reset filters" button). Tickets disappear from view without any explanation.
+- **Smallest recommended fix:** order tickets without a deadline last instead of removing them, and make the cursor handle the sentinel.
+- **Decision required:** No. **Production blocker:** No.
+- **Related:** Frontend (UX) review.
+
+## 17.2 Low
+
+### BE-009: The delivery-state report has no transition rules
+- **Category:** Data Integrity. **Confidence:** Medium. **Evidence:** `DeliveryStateSink.SetAsync` (`MailBridge.cs:385-413`) sets any of Pending/Sent/Failed over the current value, using an `ExecuteUpdate` without a version or ordering guard; a late or replayed report can overwrite a newer one (for example Failed over Sent, or Sent over Failed). The Mail side's own state is the truth and the dispatcher re-reports, so it converges, but only on the next dispatch pass. Together with MSG-001 it lets a failed bounce be reported as Sent. **Fix:** ignore a report older than the stored one (use the mail row's `updated_at` or a sequence) and make Sent over a bounce-Failed impossible without a real new send. **Decision:** No. **Blocker:** No.
+
+### BE-010: Bulk edits apply to whatever state a ticket is in now
+- **Category:** Concurrency. **Confidence:** High. **Evidence:** `BulkOneAsync` locks the row but passes `expectedVersion: null` (`TicketService.cs:801-811`) and the request carries no versions. Each ticket is processed in its own transaction, audited with previous and next values, and permission and team/assignee validity are re-checked per ticket. **Impact:** an agent selects tickets from a list that is minutes old and sets "Resolved"; a ticket the requester has just replied to (which reopened it) is resolved again, and an assignment another agent just made is overwritten. No inconsistent state results; the loss is of a decision made in between. **Fix:** optionally send each row's version and report "changed since you selected it" per ticket. **Decision required:** Yes (last-write-wins by design, or per-ticket version checks in bulk). **Blocker:** No. **Related:** QA-004.
+
+### BE-011: Invalid references answer with 400 in some places and 409 in others
+- **Category:** API Consistency. **Confidence:** High. **Evidence:** a foreign or inactive team or assignee on a ticket is `409 invalid_state` (`TicketService.ValidateTeamAsync`/`ValidateAssigneeAsync`); the same mistake on a request form default team, ticket type, category, help-topic form, default view or owner is `400` with a field error (`FormsAdmin.cs:308`, `HelpTopics.cs:151`, `KnowledgeAdminService.CheckCategoryAsync`, `QueuePreferences.cs`). **Impact:** clients cannot treat "bad reference" uniformly, and the web client has to know which form each endpoint uses. **Fix:** pick one status for "reference not valid for this department" and apply it everywhere (the field-error 400 is the more common). **Decision:** No. **Blocker:** No.
+
+### BE-012: Requester identity resolution is capped at 100 cases with no paging or search
+- **Category:** Administration. **Confidence:** High. **Evidence:** `RequesterIdentityAdminService.ListAsync` returns the 100 most recently active unlinked requesters of the department (`:35-42`). **Impact:** in a department that receives much email, every external sender is an "unlinked requester"; an employee whose old tickets are not among the 100 most recent cannot be found in the screen, so their history cannot be resolved by an administrator. **Fix:** paging and a name/email search on the list. **Decision:** No. **Blocker:** No.
+
+### BE-013: Saving queue preferences for the first time twice at once returns a server error
+- **Category:** Concurrency (Refinement 9 code). **Confidence:** Medium. **Evidence:** `QueuePreferencesService.SetAsync` reads the row, adds one if absent and saves (`QueuePreferences.cs:77-88`) without handling the primary-key violation. **Impact:** a double click or two tabs saving before any row exists makes the second request fail with a 500 instead of succeeding. Recoverable by saving again. **Fix:** upsert in one statement or catch the unique violation and retry as an update. **Decision:** No. **Blocker:** No.
+
+### BE-014: Lifecycle timestamps are overwritten, so the first resolution time is not kept
+- **Category:** Data Integrity / Reporting. **Confidence:** High. **Evidence:** `Ticket.ApplyStatus` clears `ResolvedAt` and `ClosedAt` when a ticket is reopened and sets `ResolvedAt` to the new time when it moves from Closed to Resolved (`Entities.cs:ApplyStatus`). The SLA row keeps only the current resolution cycle (`ResolutionCycle`, earlier cycles live in `sla_events`); requester names and addresses are also rewritten by later mail and portal use. **Impact:** "when was it first resolved" and reopen counts must be rebuilt from audit and SLA events; there is no stored first-resolution time. **Fix:** none now; keep the audit and SLA event streams complete and decide the reporting definitions before Historical Reports. **Decision:** No. **Blocker:** No. **Related:** Data/Reporting review (not yet run).
+
+### BE-015: A queued notification is classified from the ticket's state at drain time, not at event time
+- **Category:** Reliability. **Confidence:** Medium. **Evidence:** the outbox item for a message carries no message id (only mentions do), and `NotificationRecorder` decides "requester reply" or "agent reply" from the latest public message when it runs (`Notifications.cs:94-99`) and "assigned" from the current assignee. **Impact:** when the drain is late (backlog, restart), a requester reply followed by an agent reply is recorded as a followed update, so the assignee misses "the requester replied"; intermediate assignees are not notified. In normal operation the fast path runs immediately, so this is rare. **Fix:** store the message id on the item and classify by that message. **Decision:** No. **Blocker:** No.
+
+## 17.3 Polish
+
+### BE-016: A validation message lists the wrong allowed sources
+- **Category:** Copy/Terminology. **Evidence:** `TicketIngressService.cs:22` says "source must be one of Web, Manual" while `MessageSources.IsValid` also accepts `portal`. **Fix:** build the text from the allowed set. **Decision:** No. **Blocker:** No.
+
+## 17.4 The specifically requested investigations
+
+- **MSG-001 (bounce retry becoming Sent):** confirmed from the backend side. `MailOutbox.RetryAsync` and the admin retry requeue a `Failed` row without clearing the provider draft id; the sender looks up the sent copy first. The Ticketing report path then accepts Failed to Sent (BE-009). A correct fix needs both the send decision (clear the draft id and record a deliberate re-send, as the accept-duplicate path already does) and a guard on the report.
+- **MSG-002 (correlated stranger joining a ticket):** the writes that follow are one requester row for the stranger, a public requester message, reopen, notifications to the assignee and followers ("requester replied"), automation `RequesterMessageAdded`, and unbounded permanent participants (BE-001). Nothing in the schema ties a message author or participant to the ticket's requester, so the database would not stop it; the fix belongs in the application (MSG-002).
+- **SEC-004 (cross-requester merge):** BE-002.
+- **Portal reply de-duplication:** BE-003 (no key, and not atomic with attachments).
+- **Bulk last-write-wins:** BE-010 (atomic and audited per ticket; the loss is of an intermediate decision).
+- **Notification outbox poison and retry:** BE-005 (head-of-line risk, no attempt tracking) and BE-015 (late classification). The claim-and-record unit is correct: one transaction, an atomic claim, so a replay or a second worker cannot duplicate; a failed item rolls back and is retried.
+
+## 17.5 Areas reviewed with no issue found
+
+- **Ticket mutation concurrency:** `LockAndLoadAsync` takes a row lock, rejects merged tickets and checks the version token; update, assignment, properties, merge (locks in sorted id order), links and follower changes all use it, and conflicts return a stable 409 version-conflict.
+- **Constraints and mappings:** CHECK constraints for status, priority, source, message kind/author/delivery combinations, internal notes never delivered or authored by requesters, SLA policy targets, ticket fields, links not self; composite foreign keys keep message, link, requester-link and merge relations inside one department; unique keys for references, numbers, email per department, source references, participants, followers, link pairs, mention keys, unread notification per user and ticket, requester link per requester and per account and department.
+- **Numbering and idempotency:** department counters, unique `(department, source, source_ref)`, portal creation key includes the requester id.
+- **Requester linking:** insert-if-absent with conflict handling for both automatic and administrator links, one account per department, audited, access refresh to the hub.
+- **Followers, mentions:** eligibility re-checked, rows cascade with membership, idempotent writes; mentions are keyed by note and user and notify only users who can read notes at creation and at read.
+- **Merge transaction:** locks, repointing of earlier merges, link cleanup, follower transfer, SLA stop and audit in one transaction; events published after commit.
+- **SLA arithmetic:** business-time calculations over `TimeZoneInfo` handle daylight-saving gaps and repeats deliberately, exceptions and holidays, pausing and resuming with remaining time, new cycle on reopen; the monitor claims rows with `FOR UPDATE SKIP LOCKED` and the recorded events are deterministic.
+- **Queue and dashboard definitions:** one shared predicate set, merged sources excluded, keyset pagination with a unique tie-breaker on every sort (the SLA sort aside, BE-008); lists are projected in batches with no per-row queries; searches use trigram indexes and bounded pages; lookups are capped.
+- **Hangfire:** recurring jobs are idempotent and guarded with `DisableConcurrentExecution`; one-off send and sync jobs rely on atomic claims, so retries cannot double-send.
+- **Request Forms and Help Topics:** every referenced form, type, team, category and mailbox is validated against the department; optimistic versions on updates; audited.
+- **Knowledge maintenance (Refinement 10):** department-scoped, owner eligibility validated server-side, review dates compared in London time, version-checked, audited; the stored owner is never trusted for display.
+- **Time zones:** UK calendar logic is in the SLA calendar and in the Knowledge overdue check; the container image is a Debian-based ASP.NET image (time zone data not verified at runtime, see 17.6).
+
+## 17.6 Could not be verified
+
+- Query plans and performance on realistic volumes (no data, no `EXPLAIN` run; the scale-test rule applies).
+- The behaviour of earlier data migrations against production-shaped data; only the list and the two newest migrations were read, and the newest two were exercised up/down/up earlier in this project.
+- Time zone database availability in the production container (`Europe/London` lookups would throw if it were missing).
+- Whether the migration role may create the `pg_trgm` extension in the target database (`Phase4Productivity` runs `CREATE EXTENSION IF NOT EXISTS`).
+- Runtime reproduction of BE-001, BE-003, BE-007 and BE-008; all rest on the code paths cited. No data was changed.
+- The Graph-dependent parts of the mail/ticket integration (see section 16.9).
+
+## 17.7 Notes on earlier findings with a backend consequence
+
+- **QA-004 (concurrency coverage):** the two decisions it asks for are answered technically here: portal and agent message posts are not idempotent (BE-003); bulk is last-write-wins on the fields it sets (BE-010).
+- **SEC-003 (abuse controls):** portal create and reply have no per-account limit, and participants have no limit (BE-001); both belong in the same gate.
+- **SRE-005:** the missing outbox age and failure signals are the operational side of BE-005.
+- **UX-016 / UX-003:** the client-side keys and the Knowledge publish retry have no backend defect; the server rejects stale versions correctly.
