@@ -17,7 +17,7 @@ The session limit interrupted the review. Only four of the ten specialist review
 | Backend / Domain Engineer | **Completed later (section 17)** | BE |
 | Microsoft 365 / Messaging Engineer | **Completed later (section 16)** | MSG |
 | Security / Privacy Engineer | **Completed later (section 15)** | SEC |
-| Data / Reporting Engineer | **Did not complete** (rate-limited) | DATA |
+| Data / Reporting Engineer | **Completed later (section 20)** | DATA |
 
 Completed specialists also returned their findings as text (the findings files in the scratchpad were not written, because subagents were refused file writes). All of their detail below is taken from those handbacks. Confidence is quoted where the specialist stated it; "not stated" means the handback did not give one. Every completed review was static and sampled, not exhaustive; their stated limits are in section 14.
 
@@ -28,7 +28,7 @@ Completed specialists also returned their findings as text (the findings files i
 - **Backend / Domain (now reviewed, see section 17, which supersedes this bullet):** concurrency, data integrity, constraints, indexes, Hangfire job idempotency, SLA job correctness, migrations.
 - **Architecture (now reviewed, see section 18, which supersedes this bullet):** module boundaries, outbox/transaction design, SignalR boundary, ADR gaps.
 - **ITSM product (now reviewed, see section 19, which supersedes this bullet):** ticket lifecycle semantics, queue/assignment clarity, SLA semantics as users see them, requester language, admin discoverability.
-- **Data / Reporting:** dashboard and SLA metric semantics, history capture for future reports.
+- **Data / Reporting (now reviewed, see section 20, which supersedes this bullet):** dashboard and SLA metric semantics, history capture for future reports.
 
 Recommendation: re-run these six after the session limit resets (not done here, per instruction).
 
@@ -1021,3 +1021,137 @@ Production blockers from this review: **0** (ITSM-003 should be settled before t
 - Real email behaviour (Graph, threading, bounces): see section 16; nothing here depends on it except ITSM-003, which depends only on the stored mailbox.
 - Requester comprehension of the portal wording (ITSM-004); that needs a few real users.
 - Volumes: whether the queues and dashboard stay usable with thousands of open tickets.
+
+
+---
+
+# 20. Data / Reporting review (added after the ITSM section)
+
+Specialist: Data / Reporting Engineer (AGENTS.md section 15). Baseline: commit `081f660`. Method: single agent, read-only, scoped to reporting and data semantics. I read the dashboard and the queue-count code, the shared predicates, the SLA engine's stored facts, the audit stream and its constraints, the ticket, message and mail state columns, and every code path that changes a ticket's status or SLA, to see which facts exist today, which are overwritten, and which a truthful report could be built on. I did not design reports, run queries or touch data. Findings from the other reviews are cross-referenced, not repeated.
+
+Locked rules applied: the dashboard answers "what needs attention now" and reports will answer "what changed over time"; created, resolved and current-state counts stay separate; reopened volume is separate; first-response and resolution attainment are reported separately; ageing and backlog trends must be truthful; UK-facing date boundaries are Europe/London; no history is fabricated from current state; no per-person figures.
+
+**Result in one line:** the product captures far more history than it shows. Messages are immutable and timestamped, every status, priority, team, assignee, type and merge change is written to an append-only audit stream with previous and next values, and every SLA transition is stored as an event with its cycle. A truthful historical report can be built from those without invented snapshots. What stands in the way is not missing capture but a handful of definitions that are wrong or undecided today (the headline figures agents see already disagree), and one dependency: the audit stream is the report's source of truth, yet it is also the place the undecided retention policy (D-09) would have to touch.
+
+| Severity | Count |
+|---|---|
+| Critical | 0 |
+| High | 0 |
+| Medium | 3 |
+| Low | 6 |
+| Polish | 0 |
+| **Total** | **9** |
+
+Production blockers: **0**. Decisions required: **4** (DATA-001, DATA-002, DATA-003, DATA-005).
+
+## 20.1 What can already support truthful reports
+
+| Fact | Where it is kept | Quality |
+|---|---|---|
+| Ticket created time, source (agent, email, portal), department, requester, mailbox, request form | `tickets` columns, immutable | Complete |
+| Status, priority, team, assignee, type, subject over time | audit stream (`ticket.created`, `ticket.status_changed`, `…priority…`, `…team…`, `…assignee…`, `…type…`) with previous and next, time and provenance | Complete: all seven status-changing code paths (agent update, reply with status, bulk, macro, automation, inbound reopen, portal reopen) write an event |
+| Initial values | `ticket.created` event (agent, portal) and the ticket row; for email the event omits the type, but the initial type is the previous value of the first type change, or the current type if it never changed | Reconstructable (DATA-004) |
+| First human response | first agent public message: `messages` are append-only with created time and author type; acknowledgements are not ticket messages | Complete for every ticket, with or without an SLA |
+| Who spoke last, response backlog over time | latest public message per ticket at any past time | Complete (see ITSM-001) |
+| Resolution, reopen | audit status events (reason `requester_reply` for reopen by mail or portal), plus SLA `Reopened` event with the previous met time and cycle number | Complete; the `resolved_at` and `closed_at` columns are current values only (DATA-006) |
+| SLA applied, warned, breached, met (late or on time), paused, resumed, stopped on merge | `sla_events` with clock, cycle, time and detail; the policy and calendar are frozen in the ticket's snapshot | Complete for tickets that matched a policy; none for tickets that did not |
+| Merge | `merged_into_ticket_id`, `merged_at`, `merged_by`, audit `merged_into` and `merged_in` | Complete |
+| Outbound mail outcomes | mail audit events (sent, failed, uncertain, reconciled, delivery failure reported) plus the mail row's current state, attempts and queue time | Complete as events; the row holds the current state only |
+| Inbound mail volume and ignored reasons | `mail.messages` rows with state, ignore reason and time | Complete |
+| Automation | `automation_executions` with trigger, outcome and timing | Complete |
+
+Nothing is deleted anywhere in the ticket domain today (no ticket, message or event deletion exists), so reports will not meet missing rows until a retention policy is applied.
+
+## 20.2 Assessment of the findings that affect reporting
+
+| Finding | Effect on reporting | Conclusion |
+|---|---|---|
+| BE-006 SLA chosen at creation | Attainment is measured only for tickets that matched a policy at creation; email tickets routed or classified later often match none or the default | Attainment must always be shown with coverage ("N of M tickets had an SLA") and never as a headline percentage of all tickets. The semantics decision (re-evaluate or document) should come before reports, because re-evaluation changes what the stored events mean. |
+| BE-007 first-response breach after resolution | Breach events can be recorded after the ticket is resolved or closed, and would count as misses | The raw events are truthful but their meaning is undecided. A report can already tell them apart by comparing the event time with the status history, but this should be decided once, at the source, not re-derived in every report. |
+| BE-008 SLA sort | None (a sort option, not a metric) | No reporting impact. |
+| ITSM-001 answered versus needs response | "Needs a response" can be derived exactly from the message stream, now or historically | Data is sufficient; the definition just needs deciding and sharing with the queue. |
+| Merged tickets | The merge flag is separate from status, so a merged source keeps its old status (often Open) | Every count must go through the shared definition or exclude merged sources explicitly; a plain status count over-counts (DATA-005). |
+| Failed and uncertain mail | "Uncertain" and "bounced" are a failure code in text, not states (ARC-001) | Delivery-outcome reports are possible from the mail audit events, but should wait until those states are explicit, or they will break with that change. |
+
+## 20.3 Medium
+
+### DATA-001: The sidebar queue counts do not use the same definitions as the queue list or the dashboard
+- **Specialist / category:** Data / Reporting. **Severity:** Medium. **Confidence:** High (code).
+- **Evidence:** `QueueCountsAsync` (`TicketQueryService.cs:311-333`) counts tickets with status **Open only** for My, Team, Unassigned, All and Following; the queue list's default is Open **and** Pending (`QueuePane`/`parseFilters`), and the dashboard's backlog is Open and Pending. The two SLA badges count `ticket_sla` rows whose deadline has passed or is approaching with **no condition on the ticket's status or merge flag**, whereas the queue's SLA filters and the dashboard use the backlog (Open and Pending, not merged). A resolved or closed ticket whose first-response clock never stopped (BE-007) is counted in the badge and absent from the list and the dashboard. The existing dashboard test proves the dashboard equals the queue filters; there is no test for the sidebar counts.
+- **Impact:** an agent sees "SLA breached 12" in the sidebar, opens it, finds fewer rows, and the dashboard shows a third number. The same happens with "My queue 5" against a list of 8. The numbers that agents look at first are the ones that disagree, and a later report would be a fourth source.
+- **Smallest recommended fix:** make the badges use the same predicates as the list and the dashboard (`QueuePredicates`), and decide whether Pending counts as open work in the badges. Add one test that compares each badge with the list it opens.
+- **Decision required:** Yes: whether Pending tickets belong in the sidebar counts (Open only is a legitimate "needs us" reading, but then the list's default and the dashboard should say so). The SLA-badge inconsistency is a plain bug. **Production blocker:** No.
+- **Related:** BE-007, ARC-005, ITSM-001.
+
+### DATA-002: "Awaiting first response" is silently an SLA figure
+- **Category:** Reporting. **Severity:** Medium. **Confidence:** High.
+- **Evidence:** `QueuePredicates.AwaitingFirstResponse` is true only when the ticket's SLA row has a first-response target that is not yet met (`QueuePredicates.cs:29-30`); the dashboard and the queue filter use it, and the label says nothing about SLA.
+- **Impact:** in a department with no SLA policy, or for tickets that matched no policy or a policy without a first-response target (BE-006), the figure is zero however many tickets have never been answered by a person. An administrator or lead reads "0 awaiting first response" as "everything is answered". The same tickets would still be unanswered by the message stream.
+- **Smallest recommended fix:** define the figure from the message stream (no public agent message yet), independent of SLA configuration, and keep the SLA-specific view under its own name; or rename the existing one "SLA first response pending". Both the queue filter and the dashboard use one predicate, so one change covers both.
+- **Decision required:** Yes (which definition the label should mean). **Production blocker:** No.
+- **Related:** BE-006, ITSM-001.
+
+### DATA-003: The audit stream is both the source of truth for history and the place retention would have to change
+- **Category:** Reporting / Privacy. **Severity:** Medium. **Confidence:** High for the mechanism; the policy itself is open (D-09).
+- **Evidence:** `audit.audit_events` is append-only by database triggers that reject update, delete and truncate (`AuditDbContext` migration `Initial`). Ticket events carry the lifecycle facts reports need (content-free ids and enumerations) but also personal data: the actor's display name on every event and the full old and new **subject text** on subject changes. D-09 (retention, export, anonymisation, legal hold) is unresolved; no purge exists, and growth is unmanaged (SRE-011).
+- **Impact:** any future erasure or anonymisation will collide with the triggers, and if audit rows are deleted or rewritten to meet it, every historical report built on them changes or loses periods without warning. Equally, if reports read the stream with its personal data, a report extract inherits that data. Individual-level facts (actor ids) also exist in the same rows, which a report must never group by.
+- **Smallest recommended fix:** before building reports, decide which facts are retained for reporting (content-free lifecycle facts: ticket, department, kind, previous and next values, time) separately from personal data (actor names, subject text), and state how anonymisation will treat the second group while keeping the first. Do not add a data warehouse; a view or a small content-free event table filled by the same audit write is enough if separation is needed.
+- **Decision required:** Yes (belongs with D-09). **Production blocker:** No (the retention policy itself is already a listed gate).
+- **Related:** SRE-011, D-09, MSG-011.
+
+## 20.4 Low
+
+### DATA-004: The three ticket-creation audit events have different shapes
+- **Confidence:** High. **Evidence:** the agent event holds status, priority, team, assignee and type (no source); the portal event holds status, priority, team, source, form and type (no assignee); the email event holds status, priority, team, assignee, source and mailbox (no type) (`TicketService.cs:180-189`, `PortalRequestService.cs:404`, `MailBridge.cs:185-188`). **Impact:** a report that replays history must special-case each source; the initial type of an email ticket is only recoverable indirectly. **Fix:** one common payload for all three (source, mailbox, form, type, team, assignee, status, priority). **Decision:** No. **Blocker:** No.
+
+### DATA-005: A merged ticket keeps its status and is easy to count by mistake
+- **Confidence:** High. **Evidence:** merging sets only the merge columns; the source stays Open, Pending, Resolved or Closed (`TicketMerge.cs`). The shared backlog predicate excludes merged tickets, but the requester profile's "Total" counts them (`RequesterHistoryService.cs:44-56`), and four other places restate the open-work rule (ARC-005). **Impact:** a duplicate that was merged away would count as a created ticket, an open ticket or a resolved ticket in any report that does not exclude it, and as demand twice. **Fix:** one shared definition for reports ("counted tickets"), and a rule for created counts. **Decision required:** Yes: are merged duplicates counted in "created during the period" (they were raised) or excluded (they are not separate demand)? Either is defensible, it must be stated once. **Blocker:** No. **Related:** BE-002, ARC-005.
+
+### DATA-006: Lifecycle columns hold the current value only
+- **Confidence:** High. **Evidence:** `Ticket.ApplyStatus` clears `resolved_at` and `closed_at` on reopen and resets `resolved_at` when a closed ticket becomes resolved; `ticket_sla` holds only the current resolution cycle (earlier cycles are in `sla_events`); the requester's name and address are rewritten by later mail and portal use. **Impact:** "resolved during the period" taken from the column misses tickets that were resolved and later reopened, and counts a re-resolved ticket at its last resolution. Counting reopens needs the events. **Fix:** document that the audit and SLA events are the sources for history and the columns are for the current state only. **Decision:** No. **Blocker:** No. **Related:** BE-014.
+
+### DATA-007: Two ideas of "about to breach", and an age that mixes waiting on us with waiting on the requester
+- **Confidence:** High. **Evidence:** the SLA "approaching" state uses each policy's own warning lead in minutes (`SlaEngine.RecordDue`); the dashboard's and the queue's "due soon" use a fixed four hours of wall-clock time (`QueuePredicates.DueSoonWindow`). The dashboard's age buckets and "oldest" use the ticket's creation time for Open and Pending alike. **Impact:** the same ticket can be "approaching" in one place and not "due soon" in another, and a ticket waiting a week for the requester ages like one nobody has touched. Truthful, but unlabelled. **Fix:** label the two concepts, and when age trends are built, split them by status. **Decision:** No. **Blocker:** No.
+
+### DATA-008: Some facts are not captured at all and cannot be rebuilt later
+- **Confidence:** High. **Evidence:** mailbox synchronisation outcomes are kept as the latest state only (last sync time, current error, consecutive failures are overwritten); article views are not recorded and an article's helpful or not-helpful vote is the latest answer per person; nothing records why a ticket received no SLA. **Impact:** history of mailbox outages, Knowledge usage over time and SLA coverage reasons cannot be produced after the fact. None of these is needed for ticket reports; they matter only if such reports are wanted. **Fix:** decide now whether any of them is wanted, because capture cannot be added retroactively. **Decision:** No. **Blocker:** No.
+
+### DATA-009: One person can be several requesters
+- **Confidence:** High. **Evidence:** requesters are per department and per address; only a linked account joins rows (`RequesterPeople`); unlinked senders group by address among themselves. **Impact:** "distinct requesters" counts are approximate (one person using two addresses counts twice, a linked account's many rows count once), and "repeat requesters" cannot be exact. **Fix:** label such counts as approximate, or restrict them to linked accounts. **Decision:** No. **Blocker:** No. **Related:** requester identity decisions.
+
+## 20.5 Questions answered
+
+- **Dashboard metric definitions and queue consistency:** dashboard and queue filters share one predicate set and are tested to agree; the sidebar badges do not (DATA-001); "awaiting first response" depends on SLA configuration (DATA-002).
+- **First-response and resolution semantics:** first response is a human public reply (acknowledgements and notes do not count); resolution is Resolved or Closed with a new cycle on reopen; both are separate clocks with separate events. The undecided parts are BE-007 and BE-006.
+- **Reopened tickets:** recorded as events with a reason and an SLA cycle; the columns are overwritten (DATA-006). Reopened volume must be counted from events, separately from created and resolved.
+- **Created, resolved and current-state counts:** all three are derivable and distinct, as long as merged sources are handled (DATA-005) and the history comes from events.
+- **Backlog and ageing, truthfully over time:** exactly reconstructable by replaying the status, merge and creation events; a daily snapshot is not needed and must not be invented from current state. Age trends should separate Open from Pending (DATA-007).
+- **Team, source and type breakdowns:** source is immutable; team and type at a point in time come from the events, not the current column; names are current names (a renamed team shows its new name).
+- **Failed and uncertain delivery metrics:** possible from mail audit events; wait for explicit uncertain and bounced states (ARC-001). Dashboard figures count tickets with a currently failed message, which is correct for "now".
+- **Mailbox health:** current state only; no history (DATA-008).
+- **Merge effects:** DATA-005; also SLA of a merged source is stopped and marked, so it falls out of attainment denominators as long as the report excludes `Stopped (merged)`.
+- **Requester identity effects:** DATA-009.
+- **Time zones and date boundaries:** every instant is stored as an absolute time; the dashboard uses none; SLA calendars carry their own zone and handle clock changes. Period boundaries for reports (day, week, month) must be computed in Europe/London at query time; no reporting time-zone setting exists yet and none is needed beyond that rule.
+- **Pagination and filter accuracy:** lists use keyset paging on mutable keys (a ticket updated between pages can move), which is acceptable for work queues but wrong for reports; reports must aggregate in the database, not by paging lists.
+- **Can existing data support truthful future reports without fabricated snapshots?** Yes, for ticket volume, backlog, ageing, source, team, type, first response, resolution, reopen, SLA attainment (with coverage) and delivery outcomes. The conditions are the decisions below and the retention approach (DATA-003).
+- **Individual measures:** the stream records actor ids on every event. The reports must not use them; no report should offer an actor dimension.
+
+## 20.6 Data gaps and decisions to settle before Historical Reports
+
+1. **Retention and audit separation** (DATA-003, D-09).
+2. **First-response clock after resolution** (BE-007) and **SLA selection** (BE-006): decide, then freeze, because they change the meaning of stored events.
+3. **Merged duplicates in counts** (DATA-005).
+4. **One definition of "counted ticket", "open work" and "awaiting first response"** shared by the sidebar, the list, the dashboard and reports (DATA-001, DATA-002, ARC-005).
+5. **Explicit uncertain and bounced delivery states** (ARC-001) before delivery-outcome reports.
+6. **One creation-event payload** (DATA-004), a minor tidy that makes replay simpler.
+7. **Whether any uncaptured history is wanted** (DATA-008), because it cannot be added retroactively.
+
+Nothing here requires a new data store, a warehouse, or stored snapshots.
+
+## 20.7 Could not be verified
+
+- No query was run, so the claim that history can be rebuilt exactly from events rests on reading every status-changing code path; unusual historical data from earlier phases (before an event type existed) was not examined.
+- Performance of replaying events at scale, and the audit table's growth, were not measured (SRE-011).
+- Whether audit rows exist for tickets created before each event type was introduced was not checked; a database check on the real data should precede any report.
+- The exact content of the DEMO department's SLA and automation set-up (it has no automation rules), so BE-006's effect on real coverage is reasoned, not measured.
+- The behaviour of the sidebar badges at runtime was not exercised; DATA-001 rests on the code.
