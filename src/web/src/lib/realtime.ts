@@ -103,12 +103,15 @@ export function useRealtime(enabled: boolean, myUserId: string) {
         connection.on('ticketChanged', (change: TicketChange) => applyTicketChange(qc, change, myUserId))
         // Requester portal: a reference and a coarse kind only; the portal re-reads through its own authorised API.
         connection.on('requestChanged', () => void qc.invalidateQueries({ queryKey: ['portal'] }))
+        // An empty prompt: the notification list is re-read through the authorised REST API (and polling covers a missed prompt).
+        connection.on('notificationsChanged', () => void qc.invalidateQueries({ queryKey: ['notifications'] }))
         connection.onreconnecting(() => setStatus('reconnecting'))
         connection.onreconnected(() => {
           setStatus('live')
           // Anything missed while disconnected is reconciled through REST.
           void qc.invalidateQueries({ queryKey: ['tickets'] })
           void qc.invalidateQueries({ queryKey: ['ticket'] })
+          void qc.invalidateQueries({ queryKey: ['notifications'] })
         })
         connection.onclose(() => {
           if (stopped) return

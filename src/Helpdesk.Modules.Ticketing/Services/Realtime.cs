@@ -52,12 +52,39 @@ internal static class HubGroups
 
     /// <summary>The requester portal group of one Requester: only requester-visible events are ever sent to it.</summary>
     public static string Requester(Guid requesterId) => "r:" + requesterId.ToString("N");
+
+    /// <summary>One user's own connections: only an empty "notifications changed" prompt is ever sent here.</summary>
+    public static string User(Guid userId) => "u:" + userId.ToString("N");
 }
 
 internal sealed partial class TicketEventPublisher(IHubContext<TicketHub> hub, IServiceScopeFactory scopes, TimeProvider clock, ILogger<TicketEventPublisher> log) : ITicketEvents
 {
     public async Task PublishAsync(Guid departmentId, Guid ticketId, string reference, string kind, Guid? actorUserId, CancellationToken cancellationToken = default)
     {
+        // Durable notifications first, independent of the hub: if SignalR is down the rows still exist and the client finds them by polling.
+        IReadOnlyCollection<Guid> notified = [];
+        try
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            notified = await scope.ServiceProvider.GetRequiredService<NotificationRecorder>().RecordAsync(departmentId, ticketId, kind, actorUserId, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            NotificationFailed(log, ex.GetType().Name);
+        }
+
+        try
+        {
+            foreach (var user in notified)
+            {
+                await hub.Clients.Group(HubGroups.User(user)).SendAsync("notificationsChanged", cancellationToken);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            PublishFailed(log, ex.GetType().Name);
+        }
+
         try
         {
             var message = new TicketChangedMessage(ticketId, departmentId, reference, kind, actorUserId, clock.GetUtcNow());
@@ -99,6 +126,9 @@ internal sealed partial class TicketEventPublisher(IHubContext<TicketHub> hub, I
             await hub.Clients.Group(HubGroups.Requester(id)).SendAsync("requestChanged", new PortalRequestChanged(reference, portalKind, clock.GetUtcNow()), ct);
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Recording notifications failed ({Error}); the ticket change itself is unaffected")]
+    private static partial void NotificationFailed(ILogger logger, string error);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Realtime publish failed ({Error}); clients reconcile through polling")]
     private static partial void PublishFailed(ILogger logger, string error);
@@ -187,7 +217,7 @@ internal sealed partial class HubAccess(IHubContext<TicketHub> hub, IServiceScop
             var requesterIds = await scope.ServiceProvider.GetRequiredService<Persistence.TicketingDbContext>().RequesterLinks.AsNoTracking()
                 .Where(l => l.UserId == connection.UserId).Select(l => l.RequesterId).ToListAsync(ct);
             var wanted = new HashSet<string>(
-                readers.Select(HubGroups.Department).Concat(noteReaders.Intersect(readers).Select(HubGroups.Notes)).Concat(requesterIds.Select(HubGroups.Requester)),
+                readers.Select(HubGroups.Department).Append(HubGroups.User(connection.UserId)).Concat(noteReaders.Intersect(readers).Select(HubGroups.Notes)).Concat(requesterIds.Select(HubGroups.Requester)),
                 StringComparer.Ordinal);
 
             await _gate.WaitAsync(ct);

@@ -452,3 +452,34 @@ internal sealed class TicketLink
 
     public DateTimeOffset CreatedAt { get; set; }
 }
+
+/// <summary>
+/// A durable in-app notification: ids and a safe type only (never message text). One UNREAD row per user and ticket (further events update it). It points at a
+/// ticket and grants nothing: reading it back joins the ticket through the caller's own department access. Retention is pending the organisational policy.
+/// </summary>
+internal sealed class Notification
+{
+    public Guid Id { get; set; }
+
+    public Guid UserId { get; set; }
+
+    public Guid DepartmentId { get; set; }
+
+    public Guid TicketId { get; set; }
+
+    public string Type { get; set; } = "";
+
+    public DateTimeOffset CreatedAt { get; set; }
+
+    public DateTimeOffset? ReadAt { get; set; }
+}
+
+/// <summary>The assignee as of the last assignment event processed for notifications, so only a real change of assignee notifies ("assigned to me").</summary>
+internal sealed class TicketNotifyState
+{
+    public Guid TicketId { get; set; }
+
+    public Guid DepartmentId { get; set; }
+
+    public Guid? AssigneeUserId { get; set; }
+}

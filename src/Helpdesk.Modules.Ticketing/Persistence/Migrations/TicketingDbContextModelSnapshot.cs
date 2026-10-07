@@ -616,6 +616,55 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.Notification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("department_id");
+
+                    b.Property<DateTimeOffset?>("ReadAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("read_at");
+
+                    b.Property<Guid>("TicketId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ticket_id");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasColumnName("type");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "CreatedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_notifications_user_recent");
+
+                    b.HasIndex("UserId", "TicketId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_notifications_unread_user_ticket")
+                        .HasFilter("read_at IS NULL");
+
+                    b.ToTable("notifications", "ticketing", t =>
+                        {
+                            t.HasCheckConstraint("ck_notifications_type", "type IN ('assigned','requester_reply','followed_update')");
+                        });
+                });
+
             modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.RequestForm", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1494,6 +1543,26 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_ticket_links_type", "type IN ('Related','DuplicateOf','ParentOf')");
                         });
+                });
+
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.TicketNotifyState", b =>
+                {
+                    b.Property<Guid>("TicketId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("ticket_id");
+
+                    b.Property<Guid?>("AssigneeUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("assignee_user_id");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("department_id");
+
+                    b.HasKey("TicketId");
+
+                    b.ToTable("ticket_notify_state", "ticketing");
                 });
 
             modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.TicketParticipant", b =>

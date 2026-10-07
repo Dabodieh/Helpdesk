@@ -13,6 +13,7 @@ import { useQueueCounts } from '../queries'
 import { endSession } from '../queryClient'
 import { Icon } from './icons'
 import NewTicketDialog from './NewTicketDialog'
+import NotificationBell from './NotificationBell'
 import ShortcutHelp from './ShortcutHelp'
 import { ShellContext } from './ShellContext'
 import UserMenu from './UserMenu'
@@ -85,6 +86,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <Icon name="plus" /> New ticket
             </button>
           )}
+          {hasTickets && <NotificationBell />}
           <nav aria-label="Main">
             {hasTickets && (
               <>

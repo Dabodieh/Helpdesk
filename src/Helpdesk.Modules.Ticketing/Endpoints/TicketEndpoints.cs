@@ -51,6 +51,22 @@ internal static class TicketEndpoints
 
     private static void MapQueues(IEndpointRouteBuilder app)
     {
+        // The caller's own notifications. Authorised by the service through the department scope: a notification is a pointer and never grants access.
+        app.MapGet("/api/notifications", async (int? limit, NotificationService service, CancellationToken ct) => TypedResults.Ok(await service.ListAsync(limit, ct)))
+            .RequireAuthenticatedOnly().WithTags("Notifications");
+        app.MapPost("/api/notifications/{id:guid}/read", async (Guid id, NotificationService service, CancellationToken ct) =>
+            {
+                await service.MarkReadAsync(id, ct);
+                return TypedResults.NoContent();
+            })
+            .RequireAuthenticatedOnly().WithTags("Notifications");
+        app.MapPost("/api/notifications/read-all", async (NotificationService service, CancellationToken ct) =>
+            {
+                await service.MarkAllReadAsync(ct);
+                return TypedResults.NoContent();
+            })
+            .RequireAuthenticatedOnly().WithTags("Notifications");
+
         // Requester history: scoped by the department filter of the queries themselves, like the queues; an unreadable requester is a 404.
         app.MapGet("/api/requesters/{requesterId:guid}", async (Guid requesterId, RequesterHistoryService history, CancellationToken ct) =>
                 TypedResults.Ok(await history.GetAsync(requesterId, ct)))

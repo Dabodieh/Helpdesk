@@ -6,6 +6,10 @@ namespace Helpdesk.Modules.Ticketing.Persistence;
 /// <summary>Phase 6 model: requester identity links, request forms, custom fields and their ticket values.</summary>
 internal sealed partial class TicketingDbContext
 {
+    public DbSet<Notification> Notifications => Set<Notification>();
+
+    public DbSet<TicketNotifyState> TicketNotifyStates => Set<TicketNotifyState>();
+
     public DbSet<RequesterLink> RequesterLinks => Set<RequesterLink>();
 
     public DbSet<RequestForm> RequestForms => Set<RequestForm>();
@@ -24,6 +28,31 @@ internal sealed partial class TicketingDbContext
 
     private void ConfigurePortal(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<Notification>(e =>
+        {
+            e.ToTable("notifications", t => t.HasCheckConstraint("ck_notifications_type", "type IN ('assigned','requester_reply','followed_update')"));
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            e.Property(x => x.UserId).HasColumnName("user_id");
+            e.Property(x => x.DepartmentId).HasColumnName("department_id");
+            e.Property(x => x.TicketId).HasColumnName("ticket_id");
+            e.Property(x => x.Type).HasColumnName("type").HasMaxLength(24);
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.ReadAt).HasColumnName("read_at");
+            // One unread notification per user and ticket (the dedupe key and the upsert target); recent-per-user for the list.
+            e.HasIndex(x => new { x.UserId, x.TicketId }).IsUnique().HasFilter("read_at IS NULL").HasDatabaseName("ux_notifications_unread_user_ticket");
+            e.HasIndex(x => new { x.UserId, x.CreatedAt }).IsDescending(false, true).HasDatabaseName("ix_notifications_user_recent");
+        });
+
+        modelBuilder.Entity<TicketNotifyState>(e =>
+        {
+            e.ToTable("ticket_notify_state");
+            e.HasKey(x => x.TicketId);
+            e.Property(x => x.TicketId).HasColumnName("ticket_id");
+            e.Property(x => x.DepartmentId).HasColumnName("department_id");
+            e.Property(x => x.AssigneeUserId).HasColumnName("assignee_user_id");
+        });
+
         modelBuilder.Entity<RequesterLink>(e =>
         {
             e.ToTable("requester_links");
