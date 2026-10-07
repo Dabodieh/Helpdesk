@@ -23,7 +23,9 @@ public static class TicketingModule
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.AddModuleDbContext<TicketingDbContext>(TicketingDbContext.Schema, "ticketing", MigrationOrder);
+        services.AddModuleDbContext<TicketingDbContext>(
+            TicketingDbContext.Schema, "ticketing", MigrationOrder,
+            (sp, options) => options.AddInterceptors(new NotificationOutboxInterceptor(sp)));
         services.AddScoped<IDepartmentScope, DepartmentScope>();
 
         services.AddScoped<TicketingAudit>();
@@ -66,6 +68,8 @@ public static class TicketingModule
         services.AddScoped<RequesterIdentityAdminService>();
         services.AddScoped<DepartmentDashboardService>();
         services.AddScoped<NotificationRecorder>();
+        services.AddScoped<NotificationOutboxDrainer>();
+        services.AddScoped<INotificationOutbox>(sp => sp.GetRequiredService<NotificationOutboxDrainer>());
         services.AddScoped<NotificationService>();
         services.AddScoped<Helpdesk.Modules.Knowledge.Contracts.IRequesterAudience, RequesterAudience>();
         services.AddScoped<PortalFormAccess>();

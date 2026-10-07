@@ -10,6 +10,8 @@ internal sealed partial class TicketingDbContext
 
     public DbSet<TicketNotifyState> TicketNotifyStates => Set<TicketNotifyState>();
 
+    public DbSet<Services.NotificationOutboxItem> NotificationOutbox => Set<Services.NotificationOutboxItem>();
+
     public DbSet<RequesterLink> RequesterLinks => Set<RequesterLink>();
 
     public DbSet<RequestForm> RequestForms => Set<RequestForm>();
@@ -42,6 +44,20 @@ internal sealed partial class TicketingDbContext
             // One unread notification per user and ticket (the dedupe key and the upsert target); recent-per-user for the list.
             e.HasIndex(x => new { x.UserId, x.TicketId }).IsUnique().HasFilter("read_at IS NULL").HasDatabaseName("ux_notifications_unread_user_ticket");
             e.HasIndex(x => new { x.UserId, x.CreatedAt }).IsDescending(false, true).HasDatabaseName("ix_notifications_user_recent");
+        });
+
+        modelBuilder.Entity<Services.NotificationOutboxItem>(e =>
+        {
+            e.ToTable("notification_outbox");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            e.Property(x => x.DepartmentId).HasColumnName("department_id");
+            e.Property(x => x.TicketId).HasColumnName("ticket_id");
+            e.Property(x => x.Kind).HasColumnName("kind").HasMaxLength(16);
+            e.Property(x => x.ActorUserId).HasColumnName("actor_user_id");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.ProcessedAt).HasColumnName("processed_at");
+            e.HasIndex(x => x.CreatedAt).HasFilter("processed_at IS NULL").HasDatabaseName("ix_notification_outbox_pending");
         });
 
         modelBuilder.Entity<TicketNotifyState>(e =>

@@ -25,6 +25,7 @@ internal static class HangfireSetup
         services.AddHangfireServer(o => o.WorkerCount = 4);
         services.AddScoped<MailJobs>();
         services.AddScoped<SlaJobs>();
+        services.AddScoped<NotificationJobs>();
         services.AddSingleton<IMailJobScheduler, HangfireMailJobScheduler>();
         services.AddHostedService<RecurringJobsRegistration>();
         return services;
@@ -67,6 +68,7 @@ internal sealed class RecurringJobsRegistration(IRecurringJobManager recurring) 
         recurring.AddOrUpdate<MailJobs>("mail-dispatch", j => j.Dispatch(CancellationToken.None), "* * * * *");
         recurring.AddOrUpdate<MailJobs>("mail-subscriptions", j => j.MaintainSubscriptions(CancellationToken.None), "0 */6 * * *");
         recurring.AddOrUpdate<SlaJobs>("sla-monitor", j => j.Monitor(CancellationToken.None), "* * * * *");
+        recurring.AddOrUpdate<NotificationJobs>("notification-outbox", j => j.Drain(CancellationToken.None), "* * * * *");
         return Task.CompletedTask;
     }
 

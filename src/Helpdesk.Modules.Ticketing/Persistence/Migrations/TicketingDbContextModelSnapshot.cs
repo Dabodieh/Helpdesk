@@ -1816,6 +1816,47 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                     b.ToTable("ticket_type_fields", "ticketing");
                 });
 
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Services.NotificationOutboxItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("ActorUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_user_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("department_id");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("kind");
+
+                    b.Property<DateTimeOffset?>("ProcessedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("processed_at");
+
+                    b.Property<Guid>("TicketId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ticket_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("ix_notification_outbox_pending")
+                        .HasFilter("processed_at IS NULL");
+
+                    b.ToTable("notification_outbox", "ticketing");
+                });
+
             modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.AutomationExecution", b =>
                 {
                     b.HasOne("Helpdesk.Modules.Ticketing.Domain.AutomationRule", null)

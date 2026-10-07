@@ -4,6 +4,10 @@ using System.Text.Json;
 using Helpdesk.Host.Tests.Infrastructure;
 using Helpdesk.Host.Tests.Mail;
 using Helpdesk.Host.Tests.Portal;
+using Helpdesk.Modules.Ticketing.Contracts;
+using Helpdesk.Modules.Ticketing.Persistence;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Helpdesk.Host.Tests.Ticketing;
 
@@ -130,5 +134,65 @@ public sealed class NotificationTests(HelpdeskFixture fixture) : IClassFixture<H
         // A notification of someone else is simply not found.
         var foreign = await fixture.ScalarAsync<Guid>("SELECT id FROM ticketing.notifications WHERE user_id = @u LIMIT 1", TicketKit.P("u", s.D.Agent.Id));
         (await other.Agent.Client.PostAsync($"/api/notifications/{foreign}/read")).Expect(HttpStatusCode.NotFound);
+    }
+
+    private Task DrainAsync() => fixture.WithScopeAsync(sp => sp.GetRequiredService<INotificationOutbox>().DrainAsync(CancellationToken.None));
+
+    private Task ChangeAssigneeInProcessAsync(Guid ticketId, Guid assignee, bool rollback) =>
+        fixture.WithScopeAsync(async sp =>
+        {
+            // Straight through EF, no API and no published event: exactly what a crash right after the commit would leave behind.
+            var db = sp.GetRequiredService<TicketingDbContext>();
+            await using var tx = await db.Database.BeginTransactionAsync();
+            var ticket = await db.Tickets.IgnoreQueryFilters().SingleAsync(t => t.Id == ticketId);
+            ticket.AssigneeUserId = assignee;
+            await db.SaveChangesAsync();
+            if (rollback)
+            {
+                await tx.RollbackAsync();
+            }
+            else
+            {
+                await tx.CommitAsync();
+            }
+        });
+
+    [Fact]
+    public async Task The_notification_intent_commits_with_the_change_so_a_crash_before_any_event_loses_nothing()
+    {
+        var s = await StartAsync();
+        var outboxRows = () => fixture.CountAsync("SELECT count(*) FROM ticketing.notification_outbox WHERE ticket_id = @t AND kind = 'assignment'", TicketKit.P("t", s.Ticket.Id));
+
+        // A change that rolls back leaves no intent behind (the row lives and dies with the change).
+        await ChangeAssigneeInProcessAsync(s.Ticket.Id, s.D.Agent.Id, rollback: true);
+        Assert.Equal(0, await outboxRows());
+
+        // A committed change always carries its intent, even though nothing published an event and nothing drained it yet.
+        await ChangeAssigneeInProcessAsync(s.Ticket.Id, s.D.Agent.Id, rollback: false);
+        Assert.Equal(1, await outboxRows());
+        Assert.Equal(1, await fixture.CountAsync("SELECT count(*) FROM ticketing.notification_outbox WHERE ticket_id = @t AND processed_at IS NULL", TicketKit.P("t", s.Ticket.Id)));
+        Assert.Equal(0, Unread(await ListAsync(s.D.Agent)));
+
+        // The recurring drain turns it into the notification.
+        await DrainAsync();
+        Assert.Equal(["assigned"], Types(await ListAsync(s.D.Agent)));
+        Assert.Equal(0, await fixture.CountAsync("SELECT count(*) FROM ticketing.notification_outbox WHERE ticket_id = @t AND processed_at IS NULL", TicketKit.P("t", s.Ticket.Id)));
+    }
+
+    [Fact]
+    public async Task Replaying_or_racing_the_drain_never_duplicates_a_notification()
+    {
+        var s = await StartAsync();
+        await ChangeAssigneeInProcessAsync(s.Ticket.Id, s.D.Agent.Id, rollback: false);
+
+        await Task.WhenAll(DrainAsync(), DrainAsync(), DrainAsync()); // concurrent workers: one claims, the others skip
+        Assert.Equal(1, await fixture.CountAsync("SELECT count(*) FROM ticketing.notifications WHERE user_id = @u AND ticket_id = @t", TicketKit.P("u", s.D.Agent.Id), TicketKit.P("t", s.Ticket.Id)));
+
+        // Replay the same durable event (as if it had been re-delivered): the unread notification is only refreshed, never copied.
+        await fixture.ExecuteAsync("UPDATE ticketing.notification_outbox SET processed_at = NULL WHERE ticket_id = @t", TicketKit.P("t", s.Ticket.Id));
+        await DrainAsync();
+        await DrainAsync();
+        Assert.Equal(1, await fixture.CountAsync("SELECT count(*) FROM ticketing.notifications WHERE user_id = @u AND ticket_id = @t", TicketKit.P("u", s.D.Agent.Id), TicketKit.P("t", s.Ticket.Id)));
+        Assert.Equal(1, Unread(await ListAsync(s.D.Agent)));
     }
 }

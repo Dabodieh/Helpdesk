@@ -61,28 +61,16 @@ internal sealed partial class TicketEventPublisher(IHubContext<TicketHub> hub, I
 {
     public async Task PublishAsync(Guid departmentId, Guid ticketId, string reference, string kind, Guid? actorUserId, CancellationToken cancellationToken = default)
     {
-        // Durable notifications first, independent of the hub: if SignalR is down the rows still exist and the client finds them by polling.
-        IReadOnlyCollection<Guid> notified = [];
+        // Notifications were committed with the change itself (NotificationOutbox); this is only the fast path that drains them now. The recurring job drains
+        // whatever a crash left behind, so nothing here is required for durability.
         try
         {
             await using var scope = scopes.CreateAsyncScope();
-            notified = await scope.ServiceProvider.GetRequiredService<NotificationRecorder>().RecordAsync(departmentId, ticketId, kind, actorUserId, cancellationToken);
+            await scope.ServiceProvider.GetRequiredService<NotificationOutboxDrainer>().DrainAsync(cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             NotificationFailed(log, ex.GetType().Name);
-        }
-
-        try
-        {
-            foreach (var user in notified)
-            {
-                await hub.Clients.Group(HubGroups.User(user)).SendAsync("notificationsChanged", cancellationToken);
-            }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            PublishFailed(log, ex.GetType().Name);
         }
 
         try
@@ -127,7 +115,7 @@ internal sealed partial class TicketEventPublisher(IHubContext<TicketHub> hub, I
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Recording notifications failed ({Error}); the ticket change itself is unaffected")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Draining notifications failed ({Error}); the recurring job retries")]
     private static partial void NotificationFailed(ILogger logger, string error);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Realtime publish failed ({Error}); clients reconcile through polling")]

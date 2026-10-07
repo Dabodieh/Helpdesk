@@ -13,13 +13,17 @@ public static class ModuleDbContextExtensions
     /// Registers a module DbContext against the shared PostgreSQL database with its own schema, its own migrations history
     /// table inside that schema, and the module's migration step for the <c>migrate</c> command.
     /// </summary>
-    public static IServiceCollection AddModuleDbContext<TContext>(this IServiceCollection services, string schema, string moduleName, int migrationOrder)
+    public static IServiceCollection AddModuleDbContext<TContext>(
+        this IServiceCollection services, string schema, string moduleName, int migrationOrder, Action<IServiceProvider, DbContextOptionsBuilder>? configure = null)
         where TContext : DbContext
     {
         services.AddDbContext<TContext>((sp, options) =>
+        {
             options.UseNpgsql(
                 sp.GetRequiredService<IOptions<DatabaseOptions>>().Value.ConnectionString,
-                npgsql => npgsql.MigrationsHistoryTable(MigrationsHistoryTable, schema)));
+                npgsql => npgsql.MigrationsHistoryTable(MigrationsHistoryTable, schema));
+            configure?.Invoke(sp, options);
+        });
         services.AddSingleton<IModuleMigration>(sp => new DbContextModuleMigration<TContext>(
             sp.GetRequiredService<IServiceScopeFactory>(), moduleName, migrationOrder));
         services.TryAddSingleton<ModuleMigrationRunner>();
