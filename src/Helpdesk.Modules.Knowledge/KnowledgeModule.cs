@@ -20,6 +20,7 @@ public static class KnowledgeModule
         services.AddScoped<KnowledgeAudit>();
         services.AddScoped<KnowledgeAdminService>();
         services.AddScoped<KnowledgePortalService>();
+        services.AddScoped<Contracts.IReplyLinkArticles, ReplyLinkArticles>();
         return services;
     }
 

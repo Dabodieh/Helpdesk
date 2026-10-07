@@ -94,6 +94,10 @@ namespace Helpdesk.Modules.Knowledge.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("draft_updated_by");
 
+                    b.Property<Guid?>("OwnerUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_user_id");
+
                     b.Property<DateTimeOffset?>("PublishedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("published_at");
@@ -115,6 +119,10 @@ namespace Helpdesk.Modules.Knowledge.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasColumnName("published_title");
+
+                    b.Property<DateOnly?>("ReviewOn")
+                        .HasColumnType("date")
+                        .HasColumnName("review_on");
 
                     b.Property<NpgsqlTsVector>("SearchVector")
                         .IsRequired()

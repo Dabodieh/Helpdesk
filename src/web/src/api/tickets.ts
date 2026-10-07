@@ -133,3 +133,8 @@ export type BulkChange = {
 
 export const bulkUpdate = (ticketIds: string[], change: BulkChange) =>
   api('POST', '/api/tickets/bulk', { body: { ticketIds, ...change }, schema: bulkResultSchema })
+
+/** Knowledge articles this ticket's requester can open (published, their audience, this department only); empty when the requester has no linked account. */
+export const articleLinkSchema = z.object({ slug: z.string(), title: z.string(), category: z.string().nullish(), path: z.string() })
+export type ArticleLink = z.infer<typeof articleLinkSchema>
+export const searchArticleLinks = (ticket: string, q: string) => api('GET', `${tk(ticket)}/article-links?q=${encodeURIComponent(q)}`, { schema: z.array(articleLinkSchema) })

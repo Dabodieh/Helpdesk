@@ -64,6 +64,8 @@ internal sealed class KnowledgeDbContext(DbContextOptions<KnowledgeDbContext> op
             e.Property(x => x.PublishedAt).HasColumnName("published_at");
             e.Property(x => x.PublishedByUserId).HasColumnName("published_by");
             e.Property(x => x.AuthorUserId).HasColumnName("author_user_id");
+            e.Property(x => x.OwnerUserId).HasColumnName("owner_user_id");
+            e.Property(x => x.ReviewOn).HasColumnName("review_on");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
             e.Property(x => x.Version).HasColumnName("xmin").HasColumnType("xid").IsRowVersion();

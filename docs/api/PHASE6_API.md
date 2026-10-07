@@ -16,6 +16,8 @@ All portal endpoints require authentication and are scoped to the caller's reque
 ## Administration (department scoped)
 - `/api/departments/{d}/request-forms` (`department.forms.manage`): list, create, patch, order (forms carry `audience` = `AllEmployees`|`Selected` and `audienceUsers`; write `audience` and `audienceUserIds` (replaces the list; omit to leave it); a new form defaults to `Selected` with nobody; changes are audited as `request_form.audience_changed`); `/{formId}/fields` create, patch, order.
 - `/api/departments/{d}/knowledge/categories|articles` (`department.knowledge.manage`): list, create, patch, order; articles `publish`, `archive`. Updates carry the `version` for optimistic concurrency.
+- Maintenance (same permission): `GET .../knowledge/owners` (members who can manage knowledge), `PUT .../knowledge/articles/{id}/maintenance` `{ownerUserId, reviewOn (yyyy-MM-dd), version}` replaces owner and review date (null clears), and `GET .../knowledge/articles?review=overdue|unowned`. Audited as `knowledge.article_maintenance_updated`.
+- Reply links: `GET /api/tickets/{ref}/article-links?q=` (`tickets.reply` on the ticket department; see TICKETING.md).
 
 ## Realtime
 Hub group `r:{requesterId}`; event `requestChanged {reference, kind: reply|status|attachment, at}`.

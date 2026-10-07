@@ -185,6 +185,12 @@ internal static class TicketEndpoints
             .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsRead, Route)
             .WithTags("Tickets");
 
+        // The reply-link picker: Knowledge articles the ticket's linked requester can open (see ReplyLinkService); needs tickets.reply.
+        app.MapGet("/api/tickets/{ticket}/article-links", async (string ticket, string? q, ReplyLinkService links, CancellationToken ct) =>
+                TypedResults.Ok(await links.SearchAsync(ticket, q, ct)))
+            .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsRead, Route)
+            .WithTags("Tickets");
+
         // Baseline tickets.read; the service requires tickets.reply (Public) or tickets.note (Internal), plus tickets.update for `status`.
         app.MapPost("/api/tickets/{ticket}/messages", async (string ticket, PostMessageRequest body, TicketService tickets, CancellationToken ct) =>
             {

@@ -24,6 +24,10 @@ export const articleListItemSchema = z.object({
   hasUnpublishedChanges: z.boolean(),
   updatedAt: z.string(),
   publishedAt: z.string().nullish(),
+  ownerUserId: z.string().nullish(),
+  owner: z.string().nullish(),
+  reviewOn: z.string().nullish(),
+  reviewOverdue: z.boolean().default(false),
 })
 export type ArticleListItem = z.infer<typeof articleListItemSchema>
 
@@ -43,6 +47,10 @@ export const articleAdminSchema = z.object({
   helpful: z.number(),
   notHelpful: z.number(),
   version: z.string(),
+  ownerUserId: z.string().nullish(),
+  owner: z.string().nullish(),
+  reviewOn: z.string().nullish(),
+  reviewOverdue: z.boolean().default(false),
 })
 export type ArticleAdmin = z.infer<typeof articleAdminSchema>
 
@@ -55,11 +63,12 @@ export const updateCategory = (d: string, id: string, body: { name?: string; des
   api('PATCH', `${base(d)}/categories/${id}`, { body, schema: categoryAdminSchema })
 export const reorderCategories = (d: string, ids: string[]) => api('PUT', `${base(d)}/categories/order`, { body: { ids }, schema: z.array(categoryAdminSchema) })
 
-export const listArticles = (d: string, opts: { status?: string; q?: string; page?: number }) => {
+export const listArticles = (d: string, opts: { status?: string; q?: string; page?: number; review?: string }) => {
   const p = new URLSearchParams()
   if (opts.status) p.set('status', opts.status)
   if (opts.q) p.set('q', opts.q)
   if (opts.page) p.set('page', String(opts.page))
+  if (opts.review) p.set('review', opts.review)
   return api('GET', `${base(d)}/articles?${p.toString()}`, { schema: z.array(articleListItemSchema) })
 }
 export const getArticle = (d: string, id: string) => api('GET', `${base(d)}/articles/${id}`, { schema: articleAdminSchema })
@@ -67,3 +76,9 @@ export const createArticle = (d: string, body: ArticleInput) => api('POST', `${b
 export const saveDraft = (d: string, id: string, body: ArticleInput) => api('PATCH', `${base(d)}/articles/${id}`, { body, schema: articleAdminSchema })
 export const publishArticle = (d: string, id: string, version: string) => api('POST', `${base(d)}/articles/${id}/publish`, { body: { version }, schema: articleAdminSchema })
 export const archiveArticle = (d: string, id: string, version: string) => api('POST', `${base(d)}/articles/${id}/archive`, { body: { version }, schema: articleAdminSchema })
+
+/** People who can own the department articles (members who can manage its knowledge). */
+export const listOwners = (d: string) => api('GET', `${base(d)}/owners`, { schema: z.array(z.object({ id: z.string(), name: z.string() })) })
+/** Replaces both maintenance fields: null owner = unowned, null date = no review date (yyyy-MM-dd). */
+export const setMaintenance = (d: string, id: string, body: { ownerUserId: string | null; reviewOn: string | null; version: string }) =>
+  api('PUT', `${base(d)}/articles/${id}/maintenance`, { body, schema: articleAdminSchema })

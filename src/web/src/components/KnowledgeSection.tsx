@@ -8,9 +8,11 @@ import {
   getArticle,
   listArticles,
   listCategories,
+  listOwners,
   publishArticle,
   reorderCategories,
   saveDraft,
+  setMaintenance,
   updateCategory,
   type ArticleAdmin,
   type ArticleListItem,
@@ -148,6 +150,73 @@ function EditorForm({ department, article, categories, onClose, onChanged }: { d
   )
 }
 
+/** Owner and review date of one article. Saving a new date is how an article is marked as reviewed. */
+function MaintenanceDialog({ department, id, onClose }: { department: Department; id: string; onClose: () => void }) {
+  const qc = useQueryClient()
+  const article = useQuery({ queryKey: ['knowledge-article', department.id, id], queryFn: () => getArticle(department.id, id) })
+  const owners = useQuery({ queryKey: ['knowledge-owners', department.id], queryFn: () => listOwners(department.id) })
+  if (!article.data || !owners.data) {
+    return (
+      <Dialog title="Owner and review" onClose={onClose}>
+        {article.isError || owners.isError ? <ErrorNotice error={article.error ?? owners.error} /> : <Loading label="Loading" />}
+      </Dialog>
+    )
+  }
+  return <MaintenanceForm department={department} article={article.data} owners={owners.data} onClose={onClose} onSaved={() => qc.invalidateQueries({ queryKey: ['knowledge'] })} />
+}
+
+function MaintenanceForm({ department, article, owners, onClose, onSaved }: { department: Department; article: ArticleAdmin; owners: { id: string; name: string }[]; onClose: () => void; onSaved: () => Promise<unknown> }) {
+  const qc = useQueryClient()
+  const [owner, setOwner] = useState(article.ownerUserId ?? '')
+  const [reviewOn, setReviewOn] = useState(article.reviewOn ?? '')
+  const save = useMutation({
+    mutationFn: () => setMaintenance(department.id, article.id, { ownerUserId: owner || null, reviewOn: reviewOn || null, version: article.version }),
+    onSuccess: async (saved) => {
+      qc.setQueryData(['knowledge-article', department.id, saved.id], saved)
+      await onSaved()
+      onClose()
+    },
+  })
+  const server = fieldErrors(save.error)
+  return (
+    <Dialog title={`Owner and review: ${article.draft.title}`} onClose={onClose}>
+      <form
+        className="dialog-form"
+        aria-label="Owner and review"
+        onSubmit={(e) => {
+          e.preventDefault()
+          save.mutate()
+        }}
+      >
+        <Field label="Owner" hint="Responsible for keeping the article correct. Only members who can manage knowledge in this department can own articles." error={server.owneruserid}>
+          {(p) => (
+            <select {...p} value={owner} onChange={(e) => setOwner(e.target.value)}>
+              <option value="">Unowned</option>
+              {owners.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
+        <Field label="Review by" hint="Optional. Published articles become overdue the day after this date. Saving a later date marks the article as reviewed." error={server.reviewon}>
+          {(p) => <input {...p} type="date" value={reviewOn} onChange={(e) => setReviewOn(e.target.value)} />}
+        </Field>
+        <ErrorNotice error={save.error} />
+        <div className="dialog-actions">
+          <button type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="primary" disabled={save.isPending}>
+            Save
+          </button>
+        </div>
+      </form>
+    </Dialog>
+  )
+}
+
 function CategoryDialog({ department, categories, onClose }: { department: Department; categories: CategoryAdmin[]; onClose: () => void }) {
   const qc = useQueryClient()
   const [name, setName] = useState('')
@@ -227,10 +296,12 @@ function CategoryDialog({ department, categories, onClose }: { department: Depar
 export default function KnowledgeSection({ department }: { department: Department }) {
   const [status, setStatus] = useState('')
   const [search, setSearch] = useState('')
+  const [review, setReview] = useState('')
+  const [maintaining, setMaintaining] = useState<string | null>(null)
   const [editing, setEditing] = useState<ArticleListItem | 'new' | null>(null)
   const [categoriesOpen, setCategoriesOpen] = useState(false)
   const categories = useQuery({ queryKey: ['knowledge-categories', department.id], queryFn: () => listCategories(department.id) })
-  const articles = useQuery({ queryKey: ['knowledge', 'articles', department.id, status, search], queryFn: () => listArticles(department.id, { status: status || undefined, q: search.trim() || undefined }) })
+  const articles = useQuery({ queryKey: ['knowledge', 'articles', department.id, status, search, review], queryFn: () => listArticles(department.id, { status: status || undefined, q: search.trim() || undefined, review: review || undefined }) })
   return (
     <section aria-labelledby="kb-h">
       <div className="section-head">
@@ -255,6 +326,14 @@ export default function KnowledgeSection({ department }: { department: Departmen
             <option>Archived</option>
           </select>
         </label>
+        <label className="fsel">
+          <span>Maintenance</span>
+          <select value={review} onChange={(e) => setReview(e.target.value)}>
+            <option value="">All</option>
+            <option value="overdue">Overdue for review</option>
+            <option value="unowned">Unowned</option>
+          </select>
+        </label>
         <label className="fsel grow">
           <span>Search titles</span>
           <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -271,6 +350,8 @@ export default function KnowledgeSection({ department }: { department: Departmen
               <th scope="col">Title</th>
               <th scope="col">Status</th>
               <th scope="col">Category</th>
+              <th scope="col">Owner</th>
+              <th scope="col">Review by</th>
               <th scope="col">Updated</th>
               <th scope="col" />
             </tr>
@@ -285,10 +366,17 @@ export default function KnowledgeSection({ department }: { department: Departmen
                   {a.status} {a.hasUnpublishedChanges && <span className="badge">Unpublished edits</span>}
                 </td>
                 <td>{a.category ?? <span className="muted">None</span>}</td>
+                <td>{a.owner ?? <span className="badge">Unowned</span>}</td>
+                <td>
+                  {a.reviewOverdue ? <span className="badge">Overdue</span> : null} {a.reviewOn ?? (a.status === 'Published' ? <span className="muted">No review date</span> : null)}
+                </td>
                 <td>{formatDateTime(a.updatedAt)}</td>
                 <td className="row-actions">
                   <button type="button" onClick={() => setEditing(a)}>
                     Edit
+                  </button>
+                  <button type="button" onClick={() => setMaintaining(a.id)}>
+                    Owner &amp; review
                   </button>
                 </td>
               </tr>
@@ -297,6 +385,7 @@ export default function KnowledgeSection({ department }: { department: Departmen
         </table>
       )}
       {editing && <ArticleEditor department={department} id={editing === 'new' ? undefined : editing.id} categories={categories.data ?? []} onClose={() => setEditing(null)} />}
+      {maintaining && <MaintenanceDialog department={department} id={maintaining} onClose={() => setMaintaining(null)} />}
       {categoriesOpen && <CategoryDialog department={department} categories={categories.data ?? []} onClose={() => setCategoriesOpen(false)} />}
     </section>
   )

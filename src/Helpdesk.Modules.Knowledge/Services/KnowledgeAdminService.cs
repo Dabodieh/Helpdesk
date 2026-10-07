@@ -1,8 +1,11 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Helpdesk.Modules.Audit.Contracts;
+using Helpdesk.Modules.Identity.Contracts;
 using Helpdesk.Modules.Knowledge.Domain;
 using Helpdesk.Modules.Knowledge.Persistence;
+using Helpdesk.Modules.Organisation.Contracts;
+using Helpdesk.SharedKernel.Authorization;
 using Helpdesk.SharedKernel.Database;
 using Helpdesk.SharedKernel.Errors;
 using Helpdesk.SharedKernel.Security;
@@ -28,12 +31,19 @@ internal sealed record ArticleRequest(string? Title, string? Summary, string? Bo
 
 internal sealed record ArticleSlot(string Title, string Summary, string Body);
 
+/// <summary><c>OwnerUserId</c>/<c>Owner</c> are null when the article is unowned, including when the stored owner can no longer manage knowledge in the department.</summary>
 internal sealed record ArticleListItemDto(
-    Guid Id, string Slug, string Title, string Status, string Visibility, Guid? CategoryId, string? Category, bool HasUnpublishedChanges, DateTimeOffset UpdatedAt, DateTimeOffset? PublishedAt);
+    Guid Id, string Slug, string Title, string Status, string Visibility, Guid? CategoryId, string? Category, bool HasUnpublishedChanges, DateTimeOffset UpdatedAt, DateTimeOffset? PublishedAt,
+    Guid? OwnerUserId, string? Owner, DateOnly? ReviewOn, bool ReviewOverdue);
 
 internal sealed record ArticleAdminDto(
     Guid Id, Guid DepartmentId, string Slug, string Status, string Visibility, Guid? CategoryId, ArticleSlot Draft, DateTimeOffset DraftUpdatedAt, ArticleSlot? Published,
-    DateTimeOffset? PublishedAt, bool HasUnpublishedChanges, int Helpful, int NotHelpful, string Version);
+    DateTimeOffset? PublishedAt, bool HasUnpublishedChanges, int Helpful, int NotHelpful, string Version, Guid? OwnerUserId, string? Owner, DateOnly? ReviewOn, bool ReviewOverdue);
+
+/// <summary>Replaces both maintenance fields: <c>OwnerUserId</c> null = unowned, <c>ReviewOn</c> (yyyy-MM-dd) null = no review date.</summary>
+internal sealed record MaintenanceRequest(Guid? OwnerUserId, string? ReviewOn, string? Version);
+
+internal sealed record OwnerDto(Guid Id, string Name);
 
 internal sealed record IdsRequest(IReadOnlyList<Guid>? Ids);
 
@@ -43,7 +53,7 @@ internal sealed record VersionRequest(string? Version);
 /// Knowledge administration (permission department.knowledge.manage, enforced by the endpoint filter; every query also filters by the department).
 /// Editing writes the draft slot only; publishing is an explicit step that copies the draft to the published slot, so public content never changes half-edited.
 /// </summary>
-internal sealed partial class KnowledgeAdminService(KnowledgeDbContext db, KnowledgeAudit audit, ICurrentUser current, TimeProvider clock)
+internal sealed partial class KnowledgeAdminService(KnowledgeDbContext db, KnowledgeAudit audit, IOrganisationDirectory organisation, IUserDirectory users, ICurrentUser current, TimeProvider clock)
 {
     public const int MaxCategories = 50;
     public const int MaxBody = 50_000;
@@ -135,7 +145,7 @@ internal sealed partial class KnowledgeAdminService(KnowledgeDbContext db, Knowl
 
     // ----- articles -----
 
-    public async Task<IReadOnlyList<ArticleListItemDto>> ListArticlesAsync(Guid departmentId, string? status, Guid? categoryId, string? q, int? page, CancellationToken ct)
+    public async Task<IReadOnlyList<ArticleListItemDto>> ListArticlesAsync(Guid departmentId, string? status, Guid? categoryId, string? q, int? page, string? review, CancellationToken ct)
     {
         var query = db.Articles.AsNoTracking().Where(a => a.DepartmentId == departmentId);
         if (!string.IsNullOrWhiteSpace(status))
@@ -159,11 +169,95 @@ internal sealed partial class KnowledgeAdminService(KnowledgeDbContext db, Knowl
             query = query.Where(a => EF.Functions.ILike(a.DraftTitle, like, "\\") || EF.Functions.ILike(a.DraftSummary, like, "\\"));
         }
 
+        var eligible = await EligibleOwnersAsync(departmentId, ct);
+        var today = TodayInLondon();
+        if (!string.IsNullOrWhiteSpace(review))
+        {
+            switch (review)
+            {
+                case "overdue":
+                    query = query.Where(a => a.Status == ArticleStatuses.Published && a.ReviewOn != null && a.ReviewOn < today);
+                    break;
+                case "unowned": // no owner, or an owner who can no longer manage knowledge here; archived articles need no owner
+                    var ids = eligible.ToArray();
+                    query = query.Where(a => a.Status != ArticleStatuses.Archived && (a.OwnerUserId == null || !ids.Contains(a.OwnerUserId.Value)));
+                    break;
+                default:
+                    throw new RequestValidationException("review", "review must be overdue or unowned.");
+            }
+        }
+
         var skip = Math.Max(0, (page ?? 0)) * PageSize;
-        var rows = await query.OrderByDescending(a => a.UpdatedAt).ThenBy(a => a.Id).Skip(skip).Take(PageSize).ToListAsync(ct);
+        var ordered = review == "overdue" ? query.OrderBy(a => a.ReviewOn).ThenBy(a => a.Id) : query.OrderByDescending(a => a.UpdatedAt).ThenBy(a => a.Id);
+        var rows = await ordered.Skip(skip).Take(PageSize).ToListAsync(ct);
         var names = await db.Categories.AsNoTracking().Where(c => c.DepartmentId == departmentId).ToDictionaryAsync(c => c.Id, c => c.Name, ct);
-        return [.. rows.Select(a => new ArticleListItemDto(a.Id, a.Slug, a.DraftTitle, a.Status, a.Visibility, a.CategoryId, a.CategoryId is { } c ? names.GetValueOrDefault(c) : null, Unpublished(a), a.UpdatedAt, a.PublishedAt))];
+        var owners = await OwnerNamesAsync(rows.Select(a => a.OwnerUserId), eligible, ct);
+        return [.. rows.Select(a => new ArticleListItemDto(a.Id, a.Slug, a.DraftTitle, a.Status, a.Visibility, a.CategoryId, a.CategoryId is { } c ? names.GetValueOrDefault(c) : null, Unpublished(a), a.UpdatedAt, a.PublishedAt,
+            EffectiveOwner(a, owners), EffectiveOwner(a, owners) is { } o ? owners[o] : null, a.ReviewOn, IsOverdue(a, today)))];
     }
+
+    /// <summary>People who may own articles of the department: active members who can manage its knowledge.</summary>
+    public async Task<IReadOnlyList<OwnerDto>> ListOwnersAsync(Guid departmentId, CancellationToken ct)
+    {
+        var eligible = await EligibleOwnersAsync(departmentId, ct);
+        var names = await OwnerNamesAsync(eligible.Cast<Guid?>(), eligible, ct);
+        return [.. names.Select(n => new OwnerDto(n.Key, n.Value)).OrderBy(o => o.Name, StringComparer.OrdinalIgnoreCase)];
+    }
+
+    /// <summary>Sets who owns the article and its review date. Saving a new date is how an article is marked as reviewed.</summary>
+    public async Task<ArticleAdminDto> SetMaintenanceAsync(Guid departmentId, Guid id, MaintenanceRequest request, CancellationToken ct)
+    {
+        var errors = new Dictionary<string, string[]>();
+        var version = ParseVersion(errors, request.Version);
+        DateOnly? reviewOn = null;
+        if (!string.IsNullOrWhiteSpace(request.ReviewOn))
+        {
+            if (!DateOnly.TryParseExact(request.ReviewOn.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
+            {
+                errors["reviewOn"] = ["reviewOn must be a date in the form yyyy-MM-dd."];
+            }
+            else
+            {
+                reviewOn = parsed;
+            }
+        }
+
+        if (request.OwnerUserId is { } owner && !(await EligibleOwnersAsync(departmentId, ct)).Contains(owner))
+        {
+            errors["ownerUserId"] = ["Choose a member of this department who can manage its knowledge."];
+        }
+
+        ThrowIfAny(errors);
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var article = await db.Articles.SingleOrDefaultAsync(a => a.Id == id && a.DepartmentId == departmentId, ct) ?? throw new NotFoundException();
+        CheckVersion(article.Version, version, "article");
+        db.Entry(article).Property(a => a.Version).OriginalValue = version;
+        var previous = new { ownerUserId = article.OwnerUserId, reviewOn = article.ReviewOn };
+        article.OwnerUserId = request.OwnerUserId;
+        article.ReviewOn = reviewOn;
+        await SaveAsync("Conflict.", ct);
+        await audit.WriteAsync("knowledge.article_maintenance_updated", KnowledgeAudit.ArticleObject, article.Id, departmentId, new { previous, ownerUserId = article.OwnerUserId, reviewOn = article.ReviewOn }, ct);
+        await tx.CommitAsync(ct);
+        return await ToAdminAsync(article, ct);
+    }
+
+    private async Task<HashSet<Guid>> EligibleOwnersAsync(Guid departmentId, CancellationToken ct) =>
+        [.. await organisation.GetUserIdsWithPermissionAsync(departmentId, PermissionCodes.DepartmentKnowledgeManage, ct)];
+
+    private async Task<Dictionary<Guid, string>> OwnerNamesAsync(IEnumerable<Guid?> ownerIds, HashSet<Guid> eligible, CancellationToken ct)
+    {
+        var wanted = ownerIds.Where(i => i is { } v && eligible.Contains(v)).Select(i => i!.Value).Distinct().ToArray();
+        var found = await users.GetManyAsync(wanted, ct);
+        return found.Values.Where(u => u.IsActive).ToDictionary(u => u.Id, u => u.DisplayName);
+    }
+
+    /// <summary>The owner shown for an article: the stored owner while still eligible and active, otherwise none (unowned).</summary>
+    private static Guid? EffectiveOwner(KnowledgeArticle a, Dictionary<Guid, string> owners) => a.OwnerUserId is { } o && owners.ContainsKey(o) ? o : null;
+
+    /// <summary>Today's date in the UK (reviews are dates, so the day boundary is London's).</summary>
+    private DateOnly TodayInLondon() => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(clock.GetUtcNow(), TimeZoneInfo.FindSystemTimeZoneById("Europe/London")).DateTime);
+
+    private static bool IsOverdue(KnowledgeArticle a, DateOnly today) => a.Status == ArticleStatuses.Published && a.ReviewOn is { } d && d < today;
 
     public async Task<ArticleAdminDto> GetArticleAsync(Guid departmentId, Guid id, CancellationToken ct) =>
         await ToAdminAsync(await db.Articles.AsNoTracking().SingleOrDefaultAsync(a => a.Id == id && a.DepartmentId == departmentId, ct) ?? throw new NotFoundException(), ct);
@@ -191,6 +285,7 @@ internal sealed partial class KnowledgeAdminService(KnowledgeDbContext db, Knowl
             DraftUpdatedAt = now,
             DraftUpdatedByUserId = current.UserId,
             AuthorUserId = current.UserId,
+            OwnerUserId = current.UserId,
             CreatedAt = now,
             UpdatedAt = now,
         };
@@ -298,10 +393,13 @@ internal sealed partial class KnowledgeAdminService(KnowledgeDbContext db, Knowl
     private async Task<ArticleAdminDto> ToAdminAsync(KnowledgeArticle a, CancellationToken ct)
     {
         var votes = await db.Feedback.AsNoTracking().Where(f => f.ArticleId == a.Id).GroupBy(f => f.Helpful).Select(g => new { g.Key, N = g.Count() }).ToListAsync(ct);
+        var owners = await OwnerNamesAsync([a.OwnerUserId], await EligibleOwnersAsync(a.DepartmentId, ct), ct);
+        var owner = EffectiveOwner(a, owners);
         return new ArticleAdminDto(
             a.Id, a.DepartmentId, a.Slug, a.Status, a.Visibility, a.CategoryId, new ArticleSlot(a.DraftTitle, a.DraftSummary, a.DraftBody), a.DraftUpdatedAt,
             a.PublishedTitle is null ? null : new ArticleSlot(a.PublishedTitle, a.PublishedSummary ?? "", a.PublishedBody ?? ""), a.PublishedAt, Unpublished(a),
-            votes.FirstOrDefault(v => v.Key)?.N ?? 0, votes.FirstOrDefault(v => !v.Key)?.N ?? 0, ConcurrencyVersion.ToToken(a.Version));
+            votes.FirstOrDefault(v => v.Key)?.N ?? 0, votes.FirstOrDefault(v => !v.Key)?.N ?? 0, ConcurrencyVersion.ToToken(a.Version),
+            owner, owner is { } o ? owners[o] : null, a.ReviewOn, IsOverdue(a, TodayInLondon()));
     }
 
     private static ArticleSlot? ValidateSlot(Dictionary<string, string[]> errors, ArticleRequest r, bool creating)

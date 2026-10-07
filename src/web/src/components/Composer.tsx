@@ -7,6 +7,7 @@ import { STATUSES, type TicketDetail } from '../api/ticketSchemas'
 import { useMe } from '../auth'
 import { useApplyTicket } from '../hooks/useApplyTicket'
 import { getDraft, setDraft } from '../lib/drafts'
+import ArticleLinkPicker from './ArticleLinkPicker'
 import CannedPicker from './CannedPicker'
 import { Icon } from './icons'
 import ProblemBanner from './ProblemBanner'
@@ -189,6 +190,7 @@ ${draft}` : draft
         {closed && canReply && <span className="muted small">Public replies need the ticket reopened first.</span>}
         <span className="grow" />
         <CannedPicker departmentId={ticket.departmentId} onPick={insertText} />
+        {!internal && canReply && <ArticleLinkPicker ticketId={ticket.id} onPick={insertText} />}
       </div>
       {internal ? (
         <p className="mode-banner internal-banner" role="note">

@@ -36,8 +36,8 @@ internal static class KnowledgeEndpoints
         admin.MapPut("categories/order", async (Guid departmentId, IdsRequest body, KnowledgeAdminService s, CancellationToken ct) => TypedResults.Ok(await s.ReorderCategoriesAsync(departmentId, body, ct)))
             .RequirePermission(PermissionCodes.DepartmentKnowledgeManage);
 
-        admin.MapGet("articles", async (Guid departmentId, string? status, Guid? categoryId, string? q, int? page, KnowledgeAdminService s, CancellationToken ct) =>
-                TypedResults.Ok(await s.ListArticlesAsync(departmentId, status, categoryId, q, page, ct)))
+        admin.MapGet("articles", async (Guid departmentId, string? status, Guid? categoryId, string? q, int? page, string? review, KnowledgeAdminService s, CancellationToken ct) =>
+                TypedResults.Ok(await s.ListArticlesAsync(departmentId, status, categoryId, q, page, review, ct)))
             .RequirePermission(PermissionCodes.DepartmentKnowledgeManage);
         admin.MapPost("articles", async (Guid departmentId, ArticleRequest body, KnowledgeAdminService s, CancellationToken ct) =>
             {
@@ -48,6 +48,10 @@ internal static class KnowledgeEndpoints
         admin.MapGet("articles/{id:guid}", async (Guid departmentId, Guid id, KnowledgeAdminService s, CancellationToken ct) => TypedResults.Ok(await s.GetArticleAsync(departmentId, id, ct)))
             .RequirePermission(PermissionCodes.DepartmentKnowledgeManage);
         admin.MapPatch("articles/{id:guid}", async (Guid departmentId, Guid id, ArticleRequest body, KnowledgeAdminService s, CancellationToken ct) => TypedResults.Ok(await s.SaveDraftAsync(departmentId, id, body, ct)))
+            .RequirePermission(PermissionCodes.DepartmentKnowledgeManage);
+        admin.MapGet("owners", async (Guid departmentId, KnowledgeAdminService s, CancellationToken ct) => TypedResults.Ok(await s.ListOwnersAsync(departmentId, ct)))
+            .RequirePermission(PermissionCodes.DepartmentKnowledgeManage);
+        admin.MapPut("articles/{id:guid}/maintenance", async (Guid departmentId, Guid id, MaintenanceRequest body, KnowledgeAdminService s, CancellationToken ct) => TypedResults.Ok(await s.SetMaintenanceAsync(departmentId, id, body, ct)))
             .RequirePermission(PermissionCodes.DepartmentKnowledgeManage);
         admin.MapPost("articles/{id:guid}/publish", async (Guid departmentId, Guid id, VersionRequest body, KnowledgeAdminService s, CancellationToken ct) => TypedResults.Ok(await s.PublishAsync(departmentId, id, body, ct)))
             .RequirePermission(PermissionCodes.DepartmentKnowledgeManage);

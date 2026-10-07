@@ -33,11 +33,15 @@ internal sealed class KnowledgePortalService(KnowledgeDbContext db, IRequesterAu
     private async Task<IQueryable<KnowledgeArticle>> VisibleAsync(CancellationToken ct)
     {
         var requesterDepartments = (await audience.GetRequesterDepartmentIdsAsync(current.UserId, ct)).ToArray();
-        return db.Articles.AsNoTracking().Where(a =>
+        return Visible(db, requesterDepartments);
+    }
+
+    /// <summary>The one definition of "a requester can open this article": Published, in an active category, and in the requester's audience (Everyone, or Requesters of the article's department).</summary>
+    internal static IQueryable<KnowledgeArticle> Visible(KnowledgeDbContext db, Guid[] requesterDepartments) =>
+        db.Articles.AsNoTracking().Where(a =>
             a.Status == ArticleStatuses.Published
             && (a.Visibility == ArticleVisibility.Everyone || requesterDepartments.Contains(a.DepartmentId))
             && (a.CategoryId == null || db.Categories.Any(c => c.Id == a.CategoryId && c.IsActive)));
-    }
 
     public async Task<IReadOnlyList<KnowledgeCategoryDto>> CategoriesAsync(CancellationToken ct)
     {

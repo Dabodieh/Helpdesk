@@ -84,6 +84,12 @@ internal sealed class KnowledgeArticle
 
     public Guid AuthorUserId { get; set; }
 
+    /// <summary>Who is responsible for keeping the article correct. Only meaningful while that person can still manage knowledge in the department; otherwise the article reads as unowned.</summary>
+    public Guid? OwnerUserId { get; set; }
+
+    /// <summary>Optional date by which the article should next be reviewed (set by hand; nothing sets it automatically).</summary>
+    public DateOnly? ReviewOn { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset UpdatedAt { get; set; }
