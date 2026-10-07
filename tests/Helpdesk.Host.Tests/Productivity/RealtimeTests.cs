@@ -47,7 +47,7 @@ public sealed class RealtimeTests(HelpdeskFixture fixture) : IClassFixture<Helpd
     private static List<string> Pairs(HttpResponseMessage response) =>
         response.Headers.TryGetValues("Set-Cookie", out var values) ? [.. values.Select(v => v.Split(';')[0])] : [];
 
-    private async Task<(HubConnection Connection, List<JsonElement> Events)> ConnectAsync(TestUser user, bool authenticated = true)
+    private async Task<(HubConnection Connection, List<JsonElement> Events)> ConnectAsync(TestUser user, bool authenticated = true, string eventName = "ticketChanged")
     {
         var session = authenticated ? await SessionAsync(user.Subject) : new Session("", "");
         var events = new List<JsonElement>();
@@ -63,7 +63,7 @@ public sealed class RealtimeTests(HelpdeskFixture fixture) : IClassFixture<Helpd
                 }
             })
             .Build();
-        connection.On<JsonElement>("ticketChanged", e =>
+        connection.On<JsonElement>(eventName, e =>
         {
             lock (events)
             {
@@ -496,5 +496,150 @@ public sealed class RealtimeTests(HelpdeskFixture fixture) : IClassFixture<Helpd
         Assert.True(await WaitForAsync(agentEvents, e => e.GetProperty("kind").GetString() == "sla" && e.GetProperty("ticketId").GetGuid() != ticket.Id));
         Assert.True(await StaysSilentAsync(removedAfter), "a removed member received an event after reconnecting");
         Assert.NotNull(removedBefore);
+    }
+
+    // ----- presence (ephemeral, advisory) -----
+
+    private static JsonElement? LastPresence(List<JsonElement> events, Guid ticketId)
+    {
+        lock (events)
+        {
+            var last = events.LastOrDefault(e => e.GetProperty("ticketId").GetGuid() == ticketId);
+            return last.ValueKind == JsonValueKind.Object ? last : null;
+        }
+    }
+
+    private static async Task<bool> PresenceAsync(List<JsonElement> events, Guid ticketId, Func<JsonElement, bool> users, int milliseconds = 6000)
+    {
+        var until = DateTime.UtcNow.AddMilliseconds(milliseconds);
+        while (DateTime.UtcNow < until)
+        {
+            if (LastPresence(events, ticketId) is { } last && users(last.GetProperty("users")))
+            {
+                return true;
+            }
+
+            await Task.Delay(50);
+        }
+
+        return false;
+    }
+
+    private static bool Sees(JsonElement users, Guid userId, string state) => users.EnumerateArray().Any(u => u.GetProperty("userId").GetGuid() == userId && u.GetProperty("state").GetString() == state);
+
+    private static bool Empty(JsonElement users) => users.GetArrayLength() == 0;
+
+    private async Task<(Dept D, Guid TicketId)> PresenceTicketAsync()
+    {
+        var d = await fixture.NewDeptAsync();
+        var ticket = await d.Agent.CreateTicketAsync(d.Department, new { subject = "Presence", description = "plain", requester = new { email = $"r{Unique.Id()}@customer.test" } });
+        return (d, ticket.Id);
+    }
+
+    [Fact]
+    public async Task Two_authorised_agents_see_each_other_viewing_and_composing_but_never_themselves_and_the_payload_has_no_content()
+    {
+        var (d, id) = await PresenceTicketAsync();
+        var (a, aSeen) = await ConnectAsync(d.Agent, eventName: "presence");
+        var (b, bSeen) = await ConnectAsync(d.Lead, eventName: "presence");
+
+        await a.InvokeAsync("SetPresence", id, "viewing");
+        await b.InvokeAsync("SetPresence", id, "viewing");
+        Assert.True(await PresenceAsync(aSeen, id, u => Sees(u, d.Lead.Id, "viewing")));
+        Assert.True(await PresenceAsync(bSeen, id, u => Sees(u, d.Agent.Id, "viewing")));
+        Assert.DoesNotContain(LastPresence(aSeen, id)!.Value.GetProperty("users").EnumerateArray(), u => u.GetProperty("userId").GetGuid() == d.Agent.Id); // own presence is not echoed
+
+        await b.InvokeAsync("SetPresence", id, "reply");
+        Assert.True(await PresenceAsync(aSeen, id, u => Sees(u, d.Lead.Id, "reply")));
+        await b.InvokeAsync("SetPresence", id, "note");
+        Assert.True(await PresenceAsync(aSeen, id, u => Sees(u, d.Lead.Id, "note"))); // an agent who may read notes sees note composing
+
+        // Only ids, a name and a state ever travel: no draft, keystroke or ticket content.
+        var payload = LastPresence(aSeen, id)!.Value;
+        Assert.Equal(["ticketId", "users"], payload.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal).ToArray());
+        Assert.All(payload.GetProperty("users").EnumerateArray(), u => Assert.Equal(["displayName", "state", "userId"], u.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal).ToArray()));
+        Assert.DoesNotContain("Presence", payload.GetRawText(), StringComparison.Ordinal); // the ticket subject
+    }
+
+    [Fact]
+    public async Task Note_composing_is_shown_as_plain_viewing_to_someone_who_cannot_read_notes()
+    {
+        Helpdesk.Modules.Organisation.Authorization.RoleCatalogue.RegisterTestRole(RestrictedRole,
+            ["department.read", "tickets.read", "tickets.create", "tickets.reply", "tickets.update"]);
+        await fixture.ExecuteAsync("ALTER TABLE organisation.department_memberships DROP CONSTRAINT IF EXISTS ck_department_memberships_role");
+        await fixture.ExecuteAsync($"ALTER TABLE organisation.department_memberships ADD CONSTRAINT ck_department_memberships_role CHECK (role IN ('DepartmentAdmin','TeamLead','Agent','Viewer','{RestrictedRole}'))");
+        var (d, id) = await PresenceTicketAsync();
+        var restricted = await fixture.NewMemberAsync(d.Department, RestrictedRole);
+        var (agent, agentSeen) = await ConnectAsync(d.Agent, eventName: "presence");
+        var (rest, restSeen) = await ConnectAsync(restricted, eventName: "presence");
+
+        await rest.InvokeAsync("SetPresence", id, "viewing");
+        await agent.InvokeAsync("SetPresence", id, "note");
+        Assert.True(await PresenceAsync(restSeen, id, u => Sees(u, d.Agent.Id, "viewing")));
+        Assert.False(await PresenceAsync(restSeen, id, u => Sees(u, d.Agent.Id, "note"), milliseconds: 600));
+
+        // The restricted member cannot even declare note composing: it is recorded (and shown) as viewing.
+        await rest.InvokeAsync("SetPresence", id, "note");
+        Assert.True(await PresenceAsync(agentSeen, id, u => Sees(u, restricted.Id, "viewing")));
+        Assert.False(await PresenceAsync(agentSeen, id, u => Sees(u, restricted.Id, "note"), milliseconds: 600));
+    }
+
+    [Fact]
+    public async Task Presence_expires_without_a_heartbeat_and_disappears_on_disconnect_or_lost_access()
+    {
+        var (d, id) = await PresenceTicketAsync();
+        var (a, aSeen) = await ConnectAsync(d.Agent, eventName: "presence");
+        var (b, _) = await ConnectAsync(d.Lead, eventName: "presence");
+        var (c, _) = await ConnectAsync(d.Admin, eventName: "presence");
+        await b.InvokeAsync("SetPresence", id, "viewing");
+        await c.InvokeAsync("SetPresence", id, "reply");
+        var declared = DateTimeOffset.UtcNow;
+        await Task.Delay(1500);
+        await a.InvokeAsync("SetPresence", id, "viewing"); // A keeps heartbeating; B and C went quiet
+        Assert.True(await PresenceAsync(aSeen, id, u => u.GetArrayLength() == 2));
+
+        // Stale: B and C last spoke before the expiry window ended, A did not; the sweep removes only them.
+        var presence = fixture.Factory.Services.GetRequiredService<Helpdesk.Modules.Ticketing.Services.PresenceService>();
+        Assert.Equal(2, await presence.SweepAsync(declared + Helpdesk.Modules.Ticketing.Services.PresenceService.Expiry + TimeSpan.FromMilliseconds(700)));
+        Assert.True(await PresenceAsync(aSeen, id, Empty));
+
+        // Disconnect cleans up at once.
+        await b.InvokeAsync("SetPresence", id, "viewing");
+        Assert.True(await PresenceAsync(aSeen, id, u => Sees(u, d.Lead.Id, "viewing")));
+        await b.StopAsync();
+        Assert.True(await PresenceAsync(aSeen, id, Empty));
+
+        // Lost access: the member is removed from the department and stops being observable immediately.
+        var leaver = await fixture.NewMemberAsync(d.Department, "Agent");
+        var (l, _) = await ConnectAsync(leaver, eventName: "presence");
+        await l.InvokeAsync("SetPresence", id, "reply");
+        Assert.True(await PresenceAsync(aSeen, id, u => Sees(u, leaver.Id, "reply")));
+        var admin = await fixture.PlatformAdminAsync();
+        (await admin.Client.DeleteAsync($"{d.Department.Url}/members/{leaver.Id}")).Expect(HttpStatusCode.NoContent);
+        Assert.True(await PresenceAsync(aSeen, id, Empty));
+    }
+
+    [Fact]
+    public async Task Other_departments_and_requesters_can_neither_declare_nor_observe_presence()
+    {
+        var (d, id) = await PresenceTicketAsync();
+        var other = await fixture.NewDeptAsync();
+        var presence = fixture.Factory.Services.GetRequiredService<Helpdesk.Modules.Ticketing.Services.PresenceService>();
+        var (a, aSeen) = await ConnectAsync(d.Agent, eventName: "presence");
+        var (foreign, foreignSeen) = await ConnectAsync(other.Agent, eventName: "presence");
+        var requester = await fixture.NewUserAsync("requester");
+        var (asRequester, requesterSeen) = await ConnectAsync(requester, eventName: "presence");
+        var before = presence.EntryCount;
+
+        await foreign.InvokeAsync("SetPresence", id, "viewing"); // not a member of this department: dropped silently
+        await asRequester.InvokeAsync("SetPresence", id, "reply"); // no membership at all
+        await foreign.InvokeAsync("SetPresence", Guid.NewGuid(), "viewing"); // unknown ticket: indistinguishable
+        Assert.Equal(before, presence.EntryCount);
+
+        await a.InvokeAsync("SetPresence", id, "viewing");
+        await Task.Delay(400);
+        Assert.Empty(foreignSeen);
+        Assert.Empty(requesterSeen);
+        Assert.DoesNotContain(aSeen, e => e.GetProperty("users").GetArrayLength() > 0);
     }
 }

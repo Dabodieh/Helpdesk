@@ -24,11 +24,14 @@ export default function Composer({
   routeRef,
   handleRef,
   onReload,
+  onComposing,
 }: {
   ticket: TicketDetail
   routeRef: string
   handleRef: RefObject<ComposerHandle | null>
   onReload: () => void
+  /** Reports only THAT a reply / internal note is being written (never the text), for the advisory presence line. */
+  onComposing?: (state: 'reply' | 'note' | null) => void
 }) {
   const me = useMe()
   const apply = useApplyTicket(routeRef)
@@ -50,6 +53,18 @@ export default function Composer({
 
   // A closed ticket cannot take public replies: fall back to a note.
   const effectiveMode: ComposerMode = mode === 'Public' && publicBlocked && canNote ? 'Internal' : mode
+
+  // Collision hint (not a lock, not a version check: the server still validates every change): remember the ticket's visible activity stamp when writing starts and
+  // warn, without touching the draft, if it moved while the agent was writing.
+  const writing = text.trim().length > 0
+  const [startedAt, setStartedAt] = useState<string | null>(null)
+  if (writing && startedAt === null) setStartedAt(ticket.updatedAt)
+  if (!writing && startedAt !== null) setStartedAt(null)
+  useEffect(() => {
+    onComposing?.(writing ? (effectiveMode === 'Internal' ? 'note' : 'reply') : null)
+    return () => onComposing?.(null)
+  }, [writing, effectiveMode, onComposing])
+  const moved = effectiveMode === 'Public' && startedAt !== null && startedAt !== ticket.updatedAt
 
   // "@ab" just before the caret: look colleagues up (internal notes only; the server returns only people who can read internal notes here).
   const trigger = effectiveMode === 'Internal' ? /(^|\s)@([^\s@]{2,})$/.exec(text.slice(0, caret)) : null
@@ -227,6 +242,14 @@ ${draft}` : draft
             ))
           )}
         </div>
+      )}
+      {moved && (
+        <p className="notice info small" role="status">
+          This ticket has new activity since you started writing. Check the conversation before you send; your draft is kept.{' '}
+          <button type="button" className="linklike" onClick={() => setStartedAt(ticket.updatedAt)}>
+            Dismiss
+          </button>
+        </p>
       )}
       <ProblemBanner error={send.error} onReload={onReload} onDismiss={() => send.reset()} />
       <div className="composer-actions">

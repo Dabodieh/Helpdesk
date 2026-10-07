@@ -3317,3 +3317,18 @@ table.compact th {
 .mention-picker button {
   border-radius: 999px;
 }
+
+/* Presence: one quiet line above the composer */
+.presence {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.2rem 1.1rem 0;
+}
+.presence-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: none;
+}

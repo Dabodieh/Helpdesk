@@ -1,6 +1,6 @@
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { HubConnectionBuilder, HubConnectionState, LogLevel, type HubConnection } from '@microsoft/signalr'
-import { useEffect, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { csrfHeaders } from '../api/http'
 
 /**
@@ -67,6 +67,75 @@ export function applyTicketChange(qc: QueryClient, change: TicketChange, myUserI
   }
 }
 
+// ----- presence: ephemeral and advisory ("who else is on this ticket"). A state only: never text, keystrokes or history. -----
+
+export type PresenceState = 'viewing' | 'reply' | 'note'
+export type PresenceUser = { userId: string; displayName: string; state: PresenceState }
+
+/** The server expires an entry after 60 s without a heartbeat. */
+export const PRESENCE_HEARTBEAT_MS = 20_000
+
+let hub: HubConnection | null = null
+let presence: Record<string, PresenceUser[]> = {}
+let declared: { ticketId: string; state: PresenceState } | null = null
+const presenceListeners = new Set<() => void>()
+
+function emitPresence() {
+  presenceListeners.forEach((l) => l())
+}
+
+function send(ticketId: string, state: PresenceState | null) {
+  if (hub?.state !== HubConnectionState.Connected) return
+  hub.invoke('SetPresence', ticketId, state).catch(() => undefined) // advisory: a failed heartbeat is simply retried by the next one
+}
+
+/** Applied from the hub; exported for tests. */
+export function applyPresence(message: { ticketId: string; users: PresenceUser[] }) {
+  presence = { ...presence, [message.ticketId]: message.users }
+  emitPresence()
+}
+
+/** The OTHER people on this ticket (the server never echoes the caller and already hides what the caller may not know). */
+export function usePresence(ticketId: string | undefined): PresenceUser[] {
+  return useSyncExternalStore(
+    (l) => {
+      presenceListeners.add(l)
+      return () => presenceListeners.delete(l)
+    },
+    () => (ticketId ? (presence[ticketId] ?? EMPTY) : EMPTY),
+  )
+}
+const EMPTY: PresenceUser[] = []
+
+/** Tells the server what this tab is doing on the ticket (heartbeat every 20 s while it stays true); null or unmount leaves. Safe without a live connection. */
+export function useReportPresence(ticketId: string | undefined, state: PresenceState | null) {
+  const last = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (!ticketId || !state) {
+      if (declared) {
+        send(declared.ticketId, null)
+        declared = null
+      }
+      last.current = undefined
+      return
+    }
+    declared = { ticketId, state }
+    last.current = ticketId
+    send(ticketId, state)
+    const timer = setInterval(() => send(ticketId, state), PRESENCE_HEARTBEAT_MS)
+    return () => clearInterval(timer)
+  }, [ticketId, state])
+  useEffect(
+    () => () => {
+      if (declared && declared.ticketId === last.current) {
+        send(declared.ticketId, null)
+        declared = null
+      }
+    },
+    [],
+  )
+}
+
 export type ConnectionFactory = () => Promise<HubConnection>
 
 let factory: ConnectionFactory | null =
@@ -100,7 +169,9 @@ export function useRealtime(enabled: boolean, myUserId: string) {
       setStatus('connecting')
       try {
         connection = await make()
+        hub = connection
         connection.on('ticketChanged', (change: TicketChange) => applyTicketChange(qc, change, myUserId))
+        connection.on('presence', applyPresence)
         // Requester portal: a reference and a coarse kind only; the portal re-reads through its own authorised API.
         connection.on('requestChanged', () => void qc.invalidateQueries({ queryKey: ['portal'] }))
         // An empty prompt: the notification list is re-read through the authorised REST API (and polling covers a missed prompt).
@@ -112,6 +183,7 @@ export function useRealtime(enabled: boolean, myUserId: string) {
           void qc.invalidateQueries({ queryKey: ['tickets'] })
           void qc.invalidateQueries({ queryKey: ['ticket'] })
           void qc.invalidateQueries({ queryKey: ['notifications'] })
+          if (declared) send(declared.ticketId, declared.state) // the server forgot this connection: say again what we are doing
         })
         connection.onclose(() => {
           if (stopped) return
@@ -119,7 +191,10 @@ export function useRealtime(enabled: boolean, myUserId: string) {
           retry = setTimeout(() => void start(), 15_000)
         })
         await connection.start()
-        if (connection.state === HubConnectionState.Connected) setStatus('live')
+        if (connection.state === HubConnectionState.Connected) {
+          setStatus('live')
+          if (declared) send(declared.ticketId, declared.state)
+        }
       } catch {
         if (stopped) return
         setStatus('offline')
@@ -131,6 +206,8 @@ export function useRealtime(enabled: boolean, myUserId: string) {
       stopped = true
       if (retry) clearTimeout(retry)
       void connection?.stop()
+      if (hub === connection) hub = null
+      presence = {}
       setStatus('off')
     }
   }, [enabled, myUserId, qc])

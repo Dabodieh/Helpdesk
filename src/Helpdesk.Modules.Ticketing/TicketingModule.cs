@@ -52,6 +52,8 @@ public static class TicketingModule
         services.AddSignalR();
         services.AddSingleton<ITicketEvents, TicketEventPublisher>();
         services.AddSingleton<HubAccess>();
+        services.AddSingleton<PresenceService>();
+        services.AddHostedService<PresenceSweeper>();
         services.AddSingleton<IAccessChangeListener>(sp => sp.GetRequiredService<HubAccess>());
         services.AddHostedService<HubAccessRefresher>();
         services.AddScoped<SlaEngine>();

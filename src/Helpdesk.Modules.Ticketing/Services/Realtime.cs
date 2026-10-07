@@ -131,8 +131,14 @@ internal sealed partial class TicketEventPublisher(IHubContext<TicketHub> hub, I
 /// the user's memberships change (<see cref="IAccessChangeListener"/>) and on a periodic re-check.
 /// </summary>
 [Authorize]
-internal sealed class TicketHub(HubAccess access) : Hub
+internal sealed class TicketHub(HubAccess access, PresenceService presence) : Hub
 {
+    /// <summary>
+    /// The ONLY client-callable method. Declares what this connection is doing on one ticket ("viewing", "reply", "note"; anything else leaves). It carries no
+    /// text and changes no ticket data; the server decides whether the connection may be on that ticket at all. See <see cref="PresenceService"/>.
+    /// </summary>
+    public Task SetPresence(Guid ticketId, string? state) => presence.SetAsync(Context.ConnectionId, UserId(Context.User), ticketId, state);
+
     public override async Task OnConnectedAsync()
     {
         await access.ConnectedAsync(Context.ConnectionId, UserId(Context.User));
@@ -142,6 +148,7 @@ internal sealed class TicketHub(HubAccess access) : Hub
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
         access.Disconnected(Context.ConnectionId);
+        await presence.LeaveAsync(Context.ConnectionId);
         await base.OnDisconnectedAsync(exception);
     }
 
@@ -162,6 +169,31 @@ internal sealed partial class HubAccess(IHubContext<TicketHub> hub, IServiceScop
     private readonly ConcurrentDictionary<string, Connection> _connections = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _gate = new(1, 1);
 
+    /// <summary>Raised after a connection's group membership was re-evaluated (access may have been removed).</summary>
+    public event Action<string>? GroupsChanged;
+
+    /// <summary>Raised when a connection closed.</summary>
+    public event Action<string>? ConnectionClosed;
+
+    /// <summary>Is this connection currently in the server-decided group? (The authority for presence: the same groups that gate every realtime event.)</summary>
+    public bool InGroup(string connectionId, string group)
+    {
+        if (!_connections.TryGetValue(connectionId, out var connection))
+        {
+            return false;
+        }
+
+        _gate.Wait();
+        try
+        {
+            return connection.Groups.Contains(group);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public int ConnectionCount => _connections.Count;
 
     public async Task ConnectedAsync(string connectionId, Guid userId)
@@ -170,7 +202,11 @@ internal sealed partial class HubAccess(IHubContext<TicketHub> hub, IServiceScop
         await RefreshConnectionAsync(connectionId, CancellationToken.None);
     }
 
-    public void Disconnected(string connectionId) => _connections.TryRemove(connectionId, out _);
+    public void Disconnected(string connectionId)
+    {
+        _connections.TryRemove(connectionId, out _);
+        ConnectionClosed?.Invoke(connectionId);
+    }
 
     public async Task AccessChangedAsync(Guid userId, CancellationToken cancellationToken = default)
     {
@@ -230,6 +266,8 @@ internal sealed partial class HubAccess(IHubContext<TicketHub> hub, IServiceScop
             {
                 _gate.Release();
             }
+
+            GroupsChanged?.Invoke(connectionId);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

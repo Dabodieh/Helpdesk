@@ -6,10 +6,12 @@ import { getTicket } from '../api/tickets'
 import { useMe } from '../auth'
 import { formatDateTime } from '../lib/format'
 import { usePref } from '../lib/prefs'
+import { useReportPresence, usePresence, type PresenceState } from '../lib/realtime'
 import { livePolling } from '../queries'
 import { ErrorNotice, Loading } from './common'
 import type { ComposerHandle } from './Composer'
 import Composer from './Composer'
+import PresenceNotice from './PresenceNotice'
 import Conversation from './Conversation'
 import History from './History'
 import { Icon } from './icons'
@@ -46,12 +48,17 @@ export default function TicketPane({ ticketRef, backTo, composerRef }: Props) {
   const [tab, setTab] = useState<'conversation' | 'history'>('conversation')
   const [problem, setProblem] = useState<unknown>(null)
   const [dialog, setDialog] = useState<TicketDialogName | null>(null)
+  const [composing, setComposing] = useState<PresenceState | null>(null)
   const [root, setRoot] = useState<HTMLDivElement | null>(null)
   const narrow = useNarrow(root, DOCK_MIN_WIDTH)
   const [docked, setDocked] = usePref('helpdesk.properties', ['open', 'closed'] as const, 'open')
   const [overlayOpen, setOverlayOpen] = useState(false)
   const panelOpen = narrow ? overlayOpen : docked === 'open'
   const togglePanel = () => (narrow ? setOverlayOpen((v) => !v) : setDocked(docked === 'open' ? 'closed' : 'open'))
+
+  // Advisory presence: viewing, or writing a reply / internal note (a state only, never the text).
+  useReportPresence(ticket.data?.id, ticket.data ? (composing ?? 'viewing') : null)
+  const others = usePresence(ticket.data?.id)
 
   function reload() {
     setProblem(null)
@@ -144,7 +151,10 @@ export default function TicketPane({ ticketRef, backTo, composerRef }: Props) {
             Replies and notes are disabled on a merged ticket. Continue on {t.mergedInto.reference}.
           </p>
         ) : (
-          <Composer key={t.id} ticket={t} routeRef={ticketRef} handleRef={composerRef} onReload={reload} />
+          <>
+            <PresenceNotice users={others} />
+            <Composer key={t.id} ticket={t} routeRef={ticketRef} handleRef={composerRef} onReload={reload} onComposing={setComposing} />
+          </>
         )}
       </div>
       {panelOpen && (

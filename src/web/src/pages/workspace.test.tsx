@@ -1,4 +1,5 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { applyPresence } from '../lib/realtime'
 import { afterEach, expect, test, vi } from 'vitest'
 import {
   agentMe,
@@ -324,4 +325,22 @@ test('a saved internal note marks the mentioned colleague, public replies never 
   await openTicket()
   const mark = await screen.findByText('@Lena Lead')
   expect(mark.tagName).toBe('MARK')
+})
+
+test('presence: others on the ticket are listed quietly, the draft survives new activity with a non-blocking warning', async () => {
+  const detailAt = (updatedAt: string) => makeDetail({ id: 't1', reference: 'IT-1', subject: 'Printer jam', updatedAt })
+  let current = detailAt('2026-01-12T09:00:00Z')
+  mockFetch({ ...ticketRoutes(), 'GET /api/tickets/IT-1': () => current })
+  await openTicket()
+  act(() => applyPresence({ ticketId: 't1', users: [{ userId: 'u9', displayName: 'Sarah', state: 'viewing' }, { userId: 'u8', displayName: 'Bob', state: 'reply' }, { userId: 'u7', displayName: 'Sue', state: 'note' }] }))
+  expect(await screen.findByText('Sarah is viewing this ticket · Bob is writing a reply · Sue is writing an internal note')).toBeInTheDocument()
+
+  // Writing a public reply, then somebody else changes the ticket: a warning appears and the draft stays.
+  fireEvent.change(screen.getByRole('textbox', { name: 'Public reply' }), { target: { value: 'Working on it' } })
+  expect(screen.queryByText(/new activity since you started writing/)).not.toBeInTheDocument()
+  current = detailAt('2026-01-12T09:05:00Z')
+  window.dispatchEvent(new Event('visibilitychange'))
+  expect(await screen.findByText(/new activity since you started writing/)).toBeInTheDocument()
+  expect((screen.getByRole('textbox', { name: 'Public reply' }) as HTMLTextAreaElement).value).toBe('Working on it')
+  expect(screen.getByRole('button', { name: 'Post public reply' })).toBeEnabled() // never blocks sending
 })
