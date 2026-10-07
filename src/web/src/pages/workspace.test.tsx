@@ -294,3 +294,34 @@ test('new ticket: requester email, subject, description and priority are posted;
     priority: 'High',
   })
 })
+
+test('internal note: typing @ offers eligible colleagues, picking one inserts the name and sends the mention id', async () => {
+  const calls = mockFetch({
+    ...ticketRoutes(),
+    'GET /api/tickets/t1/mentionable?q=Le': () => [{ userId: 'u2', displayName: 'Lena Lead' }],
+    'POST /api/tickets/t1/messages': () => json({ message: makeMessage({ id: 'm3', kind: 'Internal', authorType: 'Agent', author: { id: 'u1', displayName: 'Test User' }, body: 'x' }), ticket: makeDetail({ version: 'v3' }) }, 201),
+  })
+  await openTicket()
+  fireEvent.click(screen.getByRole('radio', { name: /Internal note/ }))
+  const box = screen.getByRole('textbox', { name: 'Internal note' })
+  fireEvent.change(box, { target: { value: 'Please look @Le', selectionStart: 15 } })
+  fireEvent.click(await screen.findByRole('option', { name: '@Lena Lead' }))
+  expect((screen.getByRole('textbox', { name: 'Internal note' }) as HTMLTextAreaElement).value).toBe('Please look @Lena Lead ')
+  fireEvent.click(screen.getByRole('button', { name: 'Add internal note' }))
+  await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.path === '/api/tickets/t1/messages')).toBe(true))
+  const sent = calls.find((c) => c.method === 'POST' && c.path === '/api/tickets/t1/messages')!.body as { kind: string; mentionUserIds?: string[] }
+  expect(sent).toMatchObject({ kind: 'Internal', mentionUserIds: ['u2'] })
+})
+
+test('a saved internal note marks the mentioned colleague, public replies never do', async () => {
+  mockFetch({
+    ...ticketRoutes(),
+    'GET /api/tickets/t1/messages': () =>
+      page([
+        makeMessage({ id: 'n1', kind: 'Internal', authorType: 'Agent', author: { id: 'u1', displayName: 'Test User' }, body: 'Over to @Lena Lead please', mentions: [{ userId: 'u2', displayName: 'Lena Lead' }] }),
+      ]),
+  })
+  await openTicket()
+  const mark = await screen.findByText('@Lena Lead')
+  expect(mark.tagName).toBe('MARK')
+})

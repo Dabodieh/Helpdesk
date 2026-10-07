@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
 import { getSignature } from '../api/emailIdentity'
-import { postMessage } from '../api/tickets'
+import { postMessage, searchMentionable } from '../api/tickets'
 import { canTicket } from '../api/permissions'
 import { STATUSES, type TicketDetail } from '../api/ticketSchemas'
 import { useMe } from '../auth'
@@ -41,12 +41,20 @@ export default function Composer({
   const [mode, setMode] = useState<ComposerMode>(canReply && !closed ? 'Public' : 'Internal')
   const [text, setText] = useState(() => getDraft(ticket.id))
   const [statusAfter, setStatusAfter] = useState('')
+  // Colleagues picked for @mention in this note (ids go to the server only for names still in the text).
+  const [mentioned, setMentioned] = useState<{ userId: string; displayName: string }[]>([])
+  const [caret, setCaret] = useState(0)
   const area = useRef<HTMLTextAreaElement>(null)
   // Only to tell the agent what will be appended; the server resolves the real signature when the reply is sent.
   const signature = useQuery({ queryKey: ['signature', ticket.departmentId], queryFn: () => getSignature(ticket.departmentId), enabled: canReply, retry: false, staleTime: 60_000 })
 
   // A closed ticket cannot take public replies: fall back to a note.
   const effectiveMode: ComposerMode = mode === 'Public' && publicBlocked && canNote ? 'Internal' : mode
+
+  // "@ab" just before the caret: look colleagues up (internal notes only; the server returns only people who can read internal notes here).
+  const trigger = effectiveMode === 'Internal' ? /(^|\s)@([^\s@]{2,})$/.exec(text.slice(0, caret)) : null
+  const query = trigger?.[2] ?? ''
+  const found = useQuery({ queryKey: ['mentionable', ticket.id, query], queryFn: () => searchMentionable(ticket.id, query), enabled: query.length >= 2, staleTime: 30_000, retry: false })
 
   useEffect(() => {
     handleRef.current = {
@@ -86,16 +94,20 @@ ${draft}` : draft
     })
   }
 
+  const picked = mentioned.filter((m) => text.includes(`@${m.displayName}`)).map((m) => m.userId)
+  const mentionIds = picked.length > 0 ? picked : undefined
   const send = useMutation({
     mutationFn: () =>
       postMessage(ticket.id, {
         kind: effectiveMode,
         body: text.trim(),
         status: statusAfter && statusAfter !== ticket.status ? statusAfter : undefined,
+        mentionUserIds: effectiveMode === 'Internal' ? mentionIds : undefined,
       }),
     onSuccess: (res) => {
       setDraft(ticket.id, '')
       setText('')
+      setMentioned([])
       setStatusAfter('')
       apply(res.ticket)
     },
@@ -110,6 +122,22 @@ ${draft}` : draft
   }
 
   const internal = effectiveMode === 'Internal'
+  function pickMention(person: { userId: string; displayName: string }) {
+    const before = text.slice(0, caret)
+    const start = before.length - query.length - 1
+    const insert = `@${person.displayName} `
+    const next = text.slice(0, start) + insert + text.slice(caret)
+    setText(next)
+    setDraft(ticket.id, next)
+    setMentioned((cur) => (cur.some((m) => m.userId === person.userId) ? cur : [...cur, person]))
+    const pos = start + insert.length
+    setCaret(pos)
+    requestAnimationFrame(() => {
+      area.current?.focus()
+      area.current?.setSelectionRange(pos, pos)
+    })
+  }
+
   const nothing = text.trim().length === 0
 
   function submit(e?: FormEvent) {
@@ -173,8 +201,10 @@ ${draft}` : draft
         placeholder={internal ? 'Write an internal note…' : 'Write a reply…'}
         onChange={(e) => {
           setText(e.target.value)
+          setCaret(e.target.selectionStart ?? e.target.value.length)
           setDraft(ticket.id, e.target.value)
         }}
+        onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
             e.preventDefault()
@@ -185,6 +215,19 @@ ${draft}` : draft
           }
         }}
       />
+      {internal && query.length >= 2 && found.data && (
+        <div className="mention-picker" role="listbox" aria-label="Mention a colleague">
+          {found.data.length === 0 ? (
+            <span className="muted small">No colleague with that name can read internal notes here.</span>
+          ) : (
+            found.data.map((p) => (
+              <button key={p.userId} type="button" role="option" aria-selected="false" onClick={() => pickMention(p)}>
+                @{p.displayName}
+              </button>
+            ))
+          )}
+        </div>
+      )}
       <ProblemBanner error={send.error} onReload={onReload} onDismiss={() => send.reset()} />
       <div className="composer-actions">
         {canStatus && (

@@ -33,6 +33,7 @@ internal sealed class TicketService(
     TicketingAudit audit,
     TicketProjection projection,
     TicketResolver resolver,
+    MentionService mentions,
     IAuthorizer authorizer,
     ICurrentUser current,
     IOrganisationDirectory organisation,
@@ -378,6 +379,8 @@ internal sealed class TicketService(
             await authorizer.RequireAsync(PermissionCodes.TicketsUpdate, key.DepartmentId, ct);
         }
 
+        // Mentions are validated before anything is written: internal notes only, and only colleagues who can read internal notes in this department.
+        var mentionIds = await mentions.ValidateAsync(key.DepartmentId, kind == MessageKind.Internal, request.MentionUserIds, ct);
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var ticket = await LockAndLoadAsync(key.Id, expectedVersion: null, ct);
         if (kind == MessageKind.Public && ticket.Status == TicketStatus.Closed)
@@ -424,6 +427,11 @@ internal sealed class TicketService(
             CreatedAt = now,
         };
         db.Messages.Add(message);
+        foreach (var mentioned in mentionIds)
+        {
+            // Saved with the note in one transaction; the interceptor turns each row into a durable notification intent. Never follows, assigns or grants access.
+            db.MessageMentions.Add(new MessageMention { MessageId = message.Id, UserId = mentioned, DepartmentId = ticket.DepartmentId, TicketId = ticket.Id, CreatedAt = now });
+        }
 
         var previousStatus = ticket.Status;
         var statusChanged = status is { } requested && ticket.ApplyStatus(requested, now);
@@ -490,7 +498,8 @@ internal sealed class TicketService(
 
         await lifecycle.AfterCommitAsync(ticket, messageChanges, Provenances.User, ct);
         var dto = new MessageDto(message.Id, message.TicketId, message.Kind.ToString(), message.AuthorType.ToString(),
-            new MessageAuthorDto(current.UserId, current.DisplayName), message.Body, null, message.Source, message.DeliveryState.ToString(), message.DeliveryError, [], message.CreatedAt);
+            new MessageAuthorDto(current.UserId, current.DisplayName), message.Body, null, message.Source, message.DeliveryState.ToString(), message.DeliveryError, [], message.CreatedAt,
+            Mentions: await MentionDtosAsync(mentionIds, ct));
         return new PostedMessageDto(dto, await projection.DetailAsync(ticket, ticket.Requester, ct));
     }
 
@@ -610,6 +619,11 @@ internal sealed class TicketService(
             : await db.Requesters.AsNoTracking().Where(r => requesterIds.Contains(r.Id)).ToDictionaryAsync(r => r.Id, r => r.DisplayName, ct);
 
         var files = await attachments.ListForMessagesAsync(key.DepartmentId, rows.Select(m => m.Id).ToArray(), ct);
+        var rowIds = rows.Select(m => m.Id).ToArray();
+        var mentionRows = rowIds.Length == 0
+            ? []
+            : await db.MessageMentions.AsNoTracking().Where(x => rowIds.Contains(x.MessageId)).Select(x => new { x.MessageId, x.UserId }).ToListAsync(ct);
+        var mentionNames = await users.GetManyAsync([.. mentionRows.Select(x => x.UserId).Distinct()], ct);
         var items = rows.Select(m => new MessageDto(
             m.Id,
             m.TicketId,
@@ -623,9 +637,19 @@ internal sealed class TicketService(
             m.DeliveryError,
             files.TryGetValue(m.Id, out var list) ? list : [],
             m.CreatedAt,
-            m.TicketId == key.Id ? null : conversation[m.TicketId])).ToList();
+            m.TicketId == key.Id ? null : conversation[m.TicketId],
+            // Only internal notes carry mentions, and internal notes are only in this query for callers who may read them.
+            m.Kind == MessageKind.Internal
+                ? [.. mentionRows.Where(x => x.MessageId == m.Id).Select(x => new MentionDto(x.UserId, mentionNames.TryGetValue(x.UserId, out var person) ? person.DisplayName : "Unknown user"))]
+                : null)).ToList();
         var next = hasMore ? Cursor.Encode(string.Create(CultureInfo.InvariantCulture, $"{rows[^1].CreatedAt.UtcTicks}|{rows[^1].Id}")) : null;
         return new PageDto<MessageDto>(items, next);
+    }
+
+    private async Task<IReadOnlyList<MentionDto>> MentionDtosAsync(IReadOnlyList<Guid> ids, CancellationToken ct)
+    {
+        var people = await users.GetManyAsync(ids, ct);
+        return [.. ids.Select(id => new MentionDto(id, people.TryGetValue(id, out var p) ? p.DisplayName : "Unknown user"))];
     }
 
     private static MessageAuthorDto AuthorOf(Message m, IReadOnlyDictionary<Guid, UserSummary> people, Dictionary<Guid, string> requesters) => m.AuthorType switch

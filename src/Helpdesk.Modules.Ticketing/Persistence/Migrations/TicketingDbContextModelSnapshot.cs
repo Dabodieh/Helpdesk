@@ -616,6 +616,36 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.MessageMention", b =>
+                {
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("message_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("department_id");
+
+                    b.Property<Guid>("TicketId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ticket_id");
+
+                    b.HasKey("MessageId", "UserId");
+
+                    b.HasIndex("TicketId")
+                        .HasDatabaseName("ix_message_mentions_ticket");
+
+                    b.ToTable("message_mentions", "ticketing");
+                });
+
             modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.Notification", b =>
                 {
                     b.Property<Guid>("Id")
@@ -629,6 +659,10 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                     b.Property<Guid>("DepartmentId")
                         .HasColumnType("uuid")
                         .HasColumnName("department_id");
+
+                    b.Property<Guid?>("MessageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("message_id");
 
                     b.Property<DateTimeOffset?>("ReadAt")
                         .HasColumnType("timestamp with time zone")
@@ -661,7 +695,7 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
 
                     b.ToTable("notifications", "ticketing", t =>
                         {
-                            t.HasCheckConstraint("ck_notifications_type", "type IN ('assigned','requester_reply','followed_update')");
+                            t.HasCheckConstraint("ck_notifications_type", "type IN ('assigned','requester_reply','followed_update','mentioned')");
                         });
                 });
 
@@ -1840,9 +1874,17 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         .HasColumnType("character varying(16)")
                         .HasColumnName("kind");
 
+                    b.Property<Guid?>("MessageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("message_id");
+
                     b.Property<DateTimeOffset?>("ProcessedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("processed_at");
+
+                    b.Property<Guid?>("SubjectUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("subject_user_id");
 
                     b.Property<Guid>("TicketId")
                         .HasColumnType("uuid")
@@ -1885,6 +1927,16 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_messages_ticket_department");
+                });
+
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.MessageMention", b =>
+                {
+                    b.HasOne("Helpdesk.Modules.Ticketing.Domain.Message", null)
+                        .WithMany()
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_message_mentions_message");
                 });
 
             modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.RequestForm", b =>

@@ -76,8 +76,12 @@ const cursorPath = (base: string, cursor: string | null, limit: number) => {
 export const listMessages = (ticket: string, cursor: string | null, limit = 50) =>
   api('GET', cursorPath(`${tk(ticket)}/messages`, cursor, limit), { schema: pageSchema(messageSchema) })
 
-export const postMessage = (ticket: string, body: { kind: 'Public' | 'Internal'; body: string; status?: string }) =>
+export const postMessage = (ticket: string, body: { kind: 'Public' | 'Internal'; body: string; status?: string; mentionUserIds?: string[] }) =>
   api('POST', `${tk(ticket)}/messages`, { body, schema: postMessageResultSchema })
+
+/** Eligible colleagues for an @mention in an internal note of this ticket (this department only; the server decides eligibility). */
+export const searchMentionable = (ticket: string, q: string) =>
+  api('GET', `${tk(ticket)}/mentionable?q=${encodeURIComponent(q)}`, { schema: z.array(z.object({ userId: z.string(), displayName: z.string() })) })
 
 export const retryDelivery = (ticket: string, messageId: string) =>
   api('POST', `${tk(ticket)}/messages/${encodeURIComponent(messageId)}/retry-delivery`, { schema: messageSchema })

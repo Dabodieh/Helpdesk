@@ -28,6 +28,11 @@ internal sealed class NotificationOutboxItem
     /// <summary>The signed-in user whose request made the change (never notified about it); null for ingestion and system work.</summary>
     public Guid? ActorUserId { get; set; }
 
+    /// <summary>For a mention: the one user to notify; the internal note it is in is <see cref="MessageId"/>. Null for every other kind.</summary>
+    public Guid? SubjectUserId { get; set; }
+
+    public Guid? MessageId { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset? ProcessedAt { get; set; }
@@ -35,7 +40,8 @@ internal sealed class NotificationOutboxItem
 
 /// <summary>
 /// Stages <see cref="NotificationOutboxItem"/> rows inside the same SaveChanges (hence the same transaction) as the mutation that qualifies: an assignee change
-/// (including the initial assignee of a new ticket), a status change, a priority change, or a new PUBLIC message (requester or agent). Internal notes, team-only
+/// (including the initial assignee of a new ticket), a status change, a priority change, a new PUBLIC message (requester or agent), or a new @mention row of an internal
+/// note (the mention, never the note itself, is the intent). Other internal-note content, team-only
 /// changes and every other edit stage nothing.
 ///
 /// IMPORTANT LIMIT: this only sees EF-TRACKED mutations. A relevant path that uses ExecuteUpdate or raw SQL (none does today for these fields) would be invisible
@@ -65,12 +71,15 @@ internal sealed class NotificationOutboxInterceptor(IServiceProvider services) :
         var user = services.GetService(typeof(ICurrentUser)) as ICurrentUser;
         Guid? actor = user is { IsAuthenticated: true } ? user.UserId : null;
         var now = ClockExtensions.GetUtcNowMicroseconds((TimeProvider?)services.GetService(typeof(TimeProvider)) ?? TimeProvider.System);
-        var staged = new HashSet<(Guid Ticket, string Kind)>();
-        void Add(Guid departmentId, Guid ticketId, string kind)
+        var staged = new HashSet<(Guid Ticket, string Kind, Guid? Subject)>();
+        void Add(Guid departmentId, Guid ticketId, string kind, Guid? subject = null, Guid? messageId = null)
         {
-            if (staged.Add((ticketId, kind)))
+            if (staged.Add((ticketId, kind, subject)))
             {
-                db.NotificationOutbox.Add(new NotificationOutboxItem { Id = Guid.CreateVersion7(), DepartmentId = departmentId, TicketId = ticketId, Kind = kind, ActorUserId = actor, CreatedAt = now });
+                db.NotificationOutbox.Add(new NotificationOutboxItem
+                {
+                    Id = Guid.CreateVersion7(), DepartmentId = departmentId, TicketId = ticketId, Kind = kind, ActorUserId = actor, SubjectUserId = subject, MessageId = messageId, CreatedAt = now,
+                });
             }
         }
 
@@ -104,6 +113,10 @@ internal sealed class NotificationOutboxInterceptor(IServiceProvider services) :
                     break;
                 case Message message when entry.State == EntityState.Added && message.Kind == MessageKind.Public:
                     Add(message.DepartmentId, message.TicketId, TicketEventKinds.Message);
+                    break;
+                case MessageMention mention when entry.State == EntityState.Added:
+                    // One intent per mentioned user (a duplicate is impossible: the key is note + user).
+                    Add(mention.DepartmentId, mention.TicketId, TicketEventKinds.Mention, mention.UserId, mention.MessageId);
                     break;
             }
         }
@@ -169,7 +182,7 @@ internal sealed partial class NotificationOutboxDrainer(TicketingDbContext db, N
         }
 
         var item = await db.NotificationOutbox.AsNoTracking().SingleAsync(i => i.Id == id, ct);
-        var notified = await recorder.RecordAsync(item.DepartmentId, item.TicketId, item.Kind, item.ActorUserId, ct);
+        var notified = await recorder.RecordAsync(item.DepartmentId, item.TicketId, item.Kind, item.ActorUserId, ct, item.SubjectUserId, item.MessageId);
         await tx.CommitAsync(ct);
         return notified;
     }

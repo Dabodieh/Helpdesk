@@ -3,11 +3,13 @@ import { api } from './http'
 
 export const notificationSchema = z.object({
   id: z.string(),
-  type: z.enum(['assigned', 'requester_reply', 'followed_update']),
+  type: z.enum(['assigned', 'requester_reply', 'followed_update', 'mentioned']),
   createdAt: z.string(),
   read: z.boolean(),
   reference: z.string(),
   subject: z.string(),
+  /** For a mention: the internal note it is in (a link target, never text). */
+  messageId: z.string().nullish(),
 })
 export type Notification = z.infer<typeof notificationSchema>
 

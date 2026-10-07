@@ -469,6 +469,9 @@ internal sealed class Notification
 
     public string Type { get; set; } = "";
 
+    /// <summary>The internal note of the latest mention (only for type mentioned); the link target inside the ticket. Never the note text.</summary>
+    public Guid? MessageId { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset? ReadAt { get; set; }
@@ -482,4 +485,21 @@ internal sealed class TicketNotifyState
     public Guid DepartmentId { get; set; }
 
     public Guid? AssigneeUserId { get; set; }
+}
+
+/// <summary>
+/// Who was @mentioned in an INTERNAL note: one row per note and user, written with the note in the same transaction. A mention is a pointer for a notification and
+/// grants nothing: it never assigns, follows or shows the note to anyone who could not already read it. Only ids are stored (the name shown is looked up).
+/// </summary>
+internal sealed class MessageMention
+{
+    public Guid MessageId { get; set; }
+
+    public Guid UserId { get; set; }
+
+    public Guid DepartmentId { get; set; }
+
+    public Guid TicketId { get; set; }
+
+    public DateTimeOffset CreatedAt { get; set; }
 }

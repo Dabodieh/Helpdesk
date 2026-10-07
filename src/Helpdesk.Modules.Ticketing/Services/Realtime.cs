@@ -25,6 +25,9 @@ internal static class TicketEventKinds
     public const string Delivery = "delivery";
     public const string Attachment = "attachment";
     public const string Sla = "sla";
+
+    /// <summary>Outbox-only: a user was @mentioned in an internal note. Never published to clients (note events use <see cref="Note"/>).</summary>
+    public const string Mention = "mention";
 }
 
 /// <summary>Payload of the <c>ticketChanged</c> hub message. No subject, body, names or addresses: ids and a kind only.</summary>

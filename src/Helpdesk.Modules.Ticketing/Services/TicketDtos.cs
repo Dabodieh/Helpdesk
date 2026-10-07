@@ -86,7 +86,11 @@ internal sealed record MessageDto(
     string? DeliveryError,
     IReadOnlyList<Helpdesk.Modules.Attachments.Contracts.AttachmentSummary> Attachments,
     DateTimeOffset CreatedAt,
-    string? ImportedFrom = null);
+    string? ImportedFrom = null,
+    IReadOnlyList<MentionDto>? Mentions = null);
+
+/// <summary>A colleague @mentioned in an internal note (only ever returned to callers who may read internal notes).</summary>
+internal sealed record MentionDto(Guid UserId, string DisplayName);
 
 internal sealed record PostedMessageDto(MessageDto Message, TicketDetailDto Ticket);
 
@@ -120,7 +124,7 @@ internal sealed record UpdateTicketRequest(string? Version, string? Subject, str
 
 internal sealed record AssignTicketRequest(string? Version, Guid? TeamId, Guid? AssigneeUserId);
 
-internal sealed record PostMessageRequest(string? Kind, string? Body, string? Status);
+internal sealed record PostMessageRequest(string? Kind, string? Body, string? Status, IReadOnlyList<Guid>? MentionUserIds = null);
 
 internal sealed record IdChange(Guid? Id);
 

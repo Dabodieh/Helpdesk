@@ -10,6 +10,8 @@ internal sealed partial class TicketingDbContext
 
     public DbSet<TicketNotifyState> TicketNotifyStates => Set<TicketNotifyState>();
 
+    public DbSet<MessageMention> MessageMentions => Set<MessageMention>();
+
     public DbSet<Services.NotificationOutboxItem> NotificationOutbox => Set<Services.NotificationOutboxItem>();
 
     public DbSet<RequesterLink> RequesterLinks => Set<RequesterLink>();
@@ -32,13 +34,14 @@ internal sealed partial class TicketingDbContext
     {
         modelBuilder.Entity<Notification>(e =>
         {
-            e.ToTable("notifications", t => t.HasCheckConstraint("ck_notifications_type", "type IN ('assigned','requester_reply','followed_update')"));
+            e.ToTable("notifications", t => t.HasCheckConstraint("ck_notifications_type", "type IN ('assigned','requester_reply','followed_update','mentioned')"));
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
             e.Property(x => x.UserId).HasColumnName("user_id");
             e.Property(x => x.DepartmentId).HasColumnName("department_id");
             e.Property(x => x.TicketId).HasColumnName("ticket_id");
             e.Property(x => x.Type).HasColumnName("type").HasMaxLength(24);
+            e.Property(x => x.MessageId).HasColumnName("message_id");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.ReadAt).HasColumnName("read_at");
             // One unread notification per user and ticket (the dedupe key and the upsert target); recent-per-user for the list.
@@ -55,9 +58,24 @@ internal sealed partial class TicketingDbContext
             e.Property(x => x.TicketId).HasColumnName("ticket_id");
             e.Property(x => x.Kind).HasColumnName("kind").HasMaxLength(16);
             e.Property(x => x.ActorUserId).HasColumnName("actor_user_id");
+            e.Property(x => x.SubjectUserId).HasColumnName("subject_user_id");
+            e.Property(x => x.MessageId).HasColumnName("message_id");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.ProcessedAt).HasColumnName("processed_at");
             e.HasIndex(x => x.CreatedAt).HasFilter("processed_at IS NULL").HasDatabaseName("ix_notification_outbox_pending");
+        });
+
+        modelBuilder.Entity<MessageMention>(e =>
+        {
+            e.ToTable("message_mentions");
+            e.HasKey(x => new { x.MessageId, x.UserId });
+            e.Property(x => x.MessageId).HasColumnName("message_id");
+            e.Property(x => x.UserId).HasColumnName("user_id");
+            e.Property(x => x.DepartmentId).HasColumnName("department_id");
+            e.Property(x => x.TicketId).HasColumnName("ticket_id");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.HasOne<Message>().WithMany().HasForeignKey(x => x.MessageId).OnDelete(DeleteBehavior.Cascade).HasConstraintName("fk_message_mentions_message");
+            e.HasIndex(x => x.TicketId).HasDatabaseName("ix_message_mentions_ticket");
         });
 
         modelBuilder.Entity<TicketNotifyState>(e =>

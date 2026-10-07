@@ -168,6 +168,12 @@ internal static class TicketEndpoints
             .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsRead, Route)
             .WithTags("Tickets");
 
+        // The @mention picker: eligible colleagues of THIS ticket's department only; the service requires tickets.note.
+        app.MapGet("/api/tickets/{ticket}/mentionable", async (string ticket, string? q, MentionService mentions, CancellationToken ct) =>
+                TypedResults.Ok(await mentions.SearchAsync(ticket, q, ct)))
+            .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsRead, Route)
+            .WithTags("Tickets");
+
         // Baseline tickets.read; the service requires tickets.reply (Public) or tickets.note (Internal), plus tickets.update for `status`.
         app.MapPost("/api/tickets/{ticket}/messages", async (string ticket, PostMessageRequest body, TicketService tickets, CancellationToken ct) =>
             {

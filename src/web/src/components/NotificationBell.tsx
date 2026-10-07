@@ -10,6 +10,7 @@ const TEXT: Record<Notification['type'], string> = {
   assigned: 'Assigned to you',
   requester_reply: 'Requester replied',
   followed_update: 'Update on a ticket you follow',
+  mentioned: 'Mentioned you in a note on',
 }
 
 /**
@@ -87,7 +88,7 @@ export default function NotificationBell() {
                   onClick={() => {
                     if (!n.read) read.mutate(n.id)
                     setOpen(false)
-                    void navigate(`/tickets/${encodeURIComponent(n.reference)}`)
+                    void navigate(`/tickets/${encodeURIComponent(n.reference)}${n.messageId ? `#msg-${n.messageId}` : ''}`)
                   }}
                 >
                   <span className="notify-title">

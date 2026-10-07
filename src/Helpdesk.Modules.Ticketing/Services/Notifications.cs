@@ -15,8 +15,9 @@ internal static class NotificationTypes
     public const string Assigned = "assigned";
     public const string RequesterReply = "requester_reply";
     public const string FollowedUpdate = "followed_update";
+    public const string Mentioned = "mentioned";
 
-    public static bool IsValid(string value) => value is Assigned or RequesterReply or FollowedUpdate;
+    public static bool IsValid(string value) => value is Assigned or RequesterReply or FollowedUpdate or Mentioned;
 }
 
 /// <summary>
@@ -29,9 +30,10 @@ internal static class NotificationTypes
 internal sealed class NotificationRecorder(TicketingDbContext db, IOrganisationDirectory organisation, TimeProvider clock)
 {
     /// <summary>Returns the users whose notification list changed (so the caller can prompt them to refresh).</summary>
-    public async Task<IReadOnlyCollection<Guid>> RecordAsync(Guid departmentId, Guid ticketId, string kind, Guid? actorUserId, CancellationToken ct)
+    public async Task<IReadOnlyCollection<Guid>> RecordAsync(
+        Guid departmentId, Guid ticketId, string kind, Guid? actorUserId, CancellationToken ct, Guid? subjectUserId = null, Guid? messageId = null)
     {
-        if (kind is not (TicketEventKinds.Created or TicketEventKinds.Assignment or TicketEventKinds.Message or TicketEventKinds.Status or TicketEventKinds.Priority))
+        if (kind is not (TicketEventKinds.Created or TicketEventKinds.Assignment or TicketEventKinds.Message or TicketEventKinds.Status or TicketEventKinds.Priority or TicketEventKinds.Mention))
         {
             return [];
         }
@@ -52,7 +54,7 @@ internal sealed class NotificationRecorder(TicketingDbContext db, IOrganisationD
             }
         }
 
-        var followers = kind == TicketEventKinds.Created
+        var followers = kind is TicketEventKinds.Created or TicketEventKinds.Mention // following never comes from a mention
             ? []
             : await db.TicketFollowers.AsNoTracking().IgnoreDepartmentScope().Where(f => f.TicketId == ticketId && f.DepartmentId == departmentId).Select(f => f.UserId).ToListAsync(ct);
 
@@ -79,6 +81,13 @@ internal sealed class NotificationRecorder(TicketingDbContext db, IOrganisationD
                 foreach (var f in followers)
                 {
                     Add(f, NotificationTypes.FollowedUpdate);
+                }
+
+                break;
+            case TicketEventKinds.Mention:
+                if (subjectUserId is { } mentioned)
+                {
+                    Add(mentioned, NotificationTypes.Mentioned);
                 }
 
                 break;
@@ -131,14 +140,22 @@ internal sealed class NotificationRecorder(TicketingDbContext db, IOrganisationD
                 continue;
             }
 
+            // A mention points into an internal note: only someone who may read internal notes is told.
+            if (type == NotificationTypes.Mentioned && !(await organisation.GetDepartmentsWithPermissionAsync(user, PermissionCodes.TicketsNotesRead, ct)).Contains(departmentId))
+            {
+                continue;
+            }
+
+            var linkMessage = type == NotificationTypes.Mentioned ? messageId : null;
             await db.Database.ExecuteSqlAsync(
                 $"""
-                INSERT INTO ticketing.notifications (id, user_id, department_id, ticket_id, type, created_at)
-                VALUES ({Guid.CreateVersion7()}, {user}, {departmentId}, {ticketId}, {type}, {now})
+                INSERT INTO ticketing.notifications (id, user_id, department_id, ticket_id, type, message_id, created_at)
+                VALUES ({Guid.CreateVersion7()}, {user}, {departmentId}, {ticketId}, {type}, {linkMessage}, {now})
                 ON CONFLICT (user_id, ticket_id) WHERE read_at IS NULL DO UPDATE SET
-                    type = CASE WHEN (CASE EXCLUDED.type WHEN 'assigned' THEN 3 WHEN 'requester_reply' THEN 2 ELSE 1 END)
-                                   > (CASE notifications.type WHEN 'assigned' THEN 3 WHEN 'requester_reply' THEN 2 ELSE 1 END)
+                    type = CASE WHEN (CASE EXCLUDED.type WHEN 'mentioned' THEN 4 WHEN 'assigned' THEN 3 WHEN 'requester_reply' THEN 2 ELSE 1 END)
+                                   > (CASE notifications.type WHEN 'mentioned' THEN 4 WHEN 'assigned' THEN 3 WHEN 'requester_reply' THEN 2 ELSE 1 END)
                                 THEN EXCLUDED.type ELSE notifications.type END,
+                    message_id = CASE WHEN EXCLUDED.type = 'mentioned' THEN EXCLUDED.message_id ELSE notifications.message_id END,
                     created_at = EXCLUDED.created_at
                 """,
                 ct);
@@ -150,13 +167,14 @@ internal sealed class NotificationRecorder(TicketingDbContext db, IOrganisationD
 
     private static int Rank(string type) => type switch
     {
+        NotificationTypes.Mentioned => 4,
         NotificationTypes.Assigned => 3,
         NotificationTypes.RequesterReply => 2,
         _ => 1,
     };
 }
 
-internal sealed record NotificationDto(Guid Id, string Type, DateTimeOffset CreatedAt, bool Read, string Reference, string Subject);
+internal sealed record NotificationDto(Guid Id, string Type, DateTimeOffset CreatedAt, bool Read, string Reference, string Subject, Guid? MessageId = null);
 
 internal sealed record NotificationListDto(int UnreadCount, IReadOnlyList<NotificationDto> Items);
 
@@ -165,7 +183,7 @@ internal sealed record NotificationListDto(int UnreadCount, IReadOnlyList<Notifi
 /// none), so a notification whose ticket the caller can no longer read is not listed, not counted and reveals nothing. Opening the link goes through the
 /// normal ticket authorisation: a notification is a pointer, never access.
 /// </summary>
-internal sealed class NotificationService(TicketingDbContext db, IDepartmentScope scope, ICurrentUser current, TimeProvider clock)
+internal sealed class NotificationService(TicketingDbContext db, IDepartmentScope scope, IAuthorizer authorizer, ICurrentUser current, TimeProvider clock)
 {
     public const int DefaultLimit = 20;
     public const int MaxLimit = 50;
@@ -180,17 +198,17 @@ internal sealed class NotificationService(TicketingDbContext db, IDepartmentScop
 
         await scope.EnsureLoadedAsync(ct);
         var me = current.UserId;
-        var visible = Visible(me);
+        var visible = await VisibleAsync(me, ct);
         var unread = await visible.CountAsync(x => x.N.ReadAt == null, ct);
         var rows = await visible.OrderByDescending(x => x.N.CreatedAt).ThenByDescending(x => x.N.Id).Take(take)
-            .Select(x => new NotificationDto(x.N.Id, x.N.Type, x.N.CreatedAt, x.N.ReadAt != null, x.T.Reference, x.T.Subject)).ToListAsync(ct);
+            .Select(x => new NotificationDto(x.N.Id, x.N.Type, x.N.CreatedAt, x.N.ReadAt != null, x.T.Reference, x.T.Subject, x.N.Type == NotificationTypes.Mentioned ? x.N.MessageId : null)).ToListAsync(ct);
         return new NotificationListDto(unread, rows);
     }
 
     public async Task<int> UnreadCountAsync(CancellationToken ct)
     {
         await scope.EnsureLoadedAsync(ct);
-        return await Visible(current.UserId).CountAsync(x => x.N.ReadAt == null, ct);
+        return await (await VisibleAsync(current.UserId, ct)).CountAsync(x => x.N.ReadAt == null, ct);
     }
 
     public async Task MarkReadAsync(Guid id, CancellationToken ct)
@@ -211,10 +229,17 @@ internal sealed class NotificationService(TicketingDbContext db, IDepartmentScop
         await db.Database.ExecuteSqlAsync($"UPDATE ticketing.notifications SET read_at = {now} WHERE user_id = {me} AND read_at IS NULL", ct);
     }
 
-    private IQueryable<NotificationRow> Visible(Guid userId) =>
-        db.Notifications.AsNoTracking().Where(n => n.UserId == userId)
+    /// <summary>
+    /// Ticket access through the department scope; a MENTION additionally needs internal-note access in that department NOW (it points into a note), so a
+    /// revoked note permission hides it and its count even while the ticket itself stays readable.
+    /// </summary>
+    private async Task<IQueryable<NotificationRow>> VisibleAsync(Guid userId, CancellationToken ct)
+    {
+        var noteDepartments = (await authorizer.AccessibleDepartmentsAsync(PermissionCodes.TicketsNotesRead, ct)).ToArray();
+        return db.Notifications.AsNoTracking().Where(n => n.UserId == userId && (n.Type != NotificationTypes.Mentioned || noteDepartments.Contains(n.DepartmentId)))
             .Join(db.Tickets.AsNoTracking(), n => n.TicketId, t => t.Id, (n, t) => new NotificationRow { N = n, T = t })
             .Where(x => x.T.DepartmentId == x.N.DepartmentId);
+    }
 
     private sealed class NotificationRow
     {

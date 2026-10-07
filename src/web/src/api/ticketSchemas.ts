@@ -108,6 +108,8 @@ export const messageSchema = z.object({
   createdAt: z.string(),
   /** Agent-only provenance: the reference of the merged ticket this entry came from. */
   importedFrom: z.string().nullish(),
+  /** Colleagues @mentioned in an internal note (only ever sent to callers who may read internal notes). */
+  mentions: z.array(z.object({ userId: z.string(), displayName: z.string() })).nullish(),
 })
 export type Message = z.infer<typeof messageSchema>
 

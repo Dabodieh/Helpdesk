@@ -5,6 +5,7 @@ import { attachmentHref, listMessages, retryDelivery } from '../api/tickets'
 import type { Attachment, Message } from '../api/ticketSchemas'
 import { useMe } from '../auth'
 import { pollInterval } from '../lib/realtime'
+import { useLocation } from 'react-router-dom'
 import { formatDateTime } from '../lib/format'
 import { livePolling, PENDING_POLL_MS } from '../queries'
 import { ErrorNotice, Loading } from './common'
@@ -118,13 +119,35 @@ function Delivery({ message: m }: { message: Message }) {
   }
 }
 
+/** Splits a note body so that each "@Name" of a mentioned colleague is marked. Only the names the server returned are matched. */
+function withMentions(body: string, names: string[]) {
+  const escaped = names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  if (escaped.length === 0) return body
+  const parts = body.split(new RegExp(`(@(?:${escaped.join('|')}))`, 'g'))
+  return parts.map((part, i) =>
+    i % 2 === 1 ? (
+      <mark key={i} className="mention">
+        {part}
+      </mark>
+    ) : (
+      part
+    ),
+  )
+}
+
 /** One conversation entry. Public vs internal differ by label, icon, border style and background, never colour alone. */
 export function MessageItem({ message: m }: { message: Message }) {
+  const location = useLocation()
   const internal = m.kind === 'Internal'
   const label = internal ? 'Internal note' : m.authorType === 'Requester' ? 'Requester message' : 'Public reply'
   const [formatted, setFormatted] = useState(false)
   return (
     <article
+      id={`msg-${m.id}`}
+      ref={(el) => {
+        // Arriving from a notification: bring that note into view.
+        if (el && location.hash === `#msg-${m.id}`) el.scrollIntoView?.({ block: 'center' })
+      }}
       className={`msg ${internal ? 'msg-internal' : 'msg-public'} author-${m.authorType.toLowerCase()}`}
       aria-label={`${label} from ${m.author.displayName}`}
     >
@@ -145,8 +168,8 @@ export function MessageItem({ message: m }: { message: Message }) {
           <span className="msg-imported">↳ Imported from {m.importedFrom}</span>
         </p>
       )}
-      {/* Plain text by default: React escapes it and CSS preserves the line breaks. */}
-      {formatted && m.bodyHtml ? <FormattedBody html={m.bodyHtml} /> : <p className="msg-body">{m.body}</p>}
+      {/* Plain text by default: React escapes it and CSS preserves the line breaks. Mentioned colleagues are marked (text plus style). */}
+      {formatted && m.bodyHtml ? <FormattedBody html={m.bodyHtml} /> : <p className="msg-body">{internal && m.mentions?.length ? withMentions(m.body, m.mentions.map((x) => x.displayName)) : m.body}</p>}
       {!internal && m.bodyHtml && (
         <button type="button" className="linklike small" aria-pressed={formatted} onClick={() => setFormatted((v) => !v)}>
           {formatted ? 'Show plain text' : 'Show formatted'}
