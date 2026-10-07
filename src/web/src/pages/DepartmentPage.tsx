@@ -16,6 +16,7 @@ import KnowledgeSection from '../components/KnowledgeSection'
 import MacrosSection from '../components/MacrosSection'
 import MailboxesSection from '../components/MailboxesSection'
 import MembersSection from '../components/MembersSection'
+import RequesterIdentitiesSection from '../components/RequesterIdentitiesSection'
 import SlaPoliciesSection from '../components/SlaPoliciesSection'
 import TeamsSection from '../components/TeamsSection'
 
@@ -98,6 +99,13 @@ export default function DepartmentPage() {
           { id: 'overview', label: 'Overview', group: 'Department', content: <DepartmentOverview department={d} onOpen={open} /> },
           { id: 'teams', label: 'Teams', group: 'People', content: <TeamsSection department={d} /> },
           { id: 'members', label: 'Members', group: 'People', content: <MembersSection department={d} /> },
+          {
+            id: 'requesters',
+            label: 'Requester identities',
+            group: 'People',
+            hidden: !canInDepartment(me, 'department.members.manage', d.id),
+            content: <RequesterIdentitiesSection department={d} />,
+          },
           {
             id: 'mailboxes',
             label: 'Mailboxes',

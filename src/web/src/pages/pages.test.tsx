@@ -182,3 +182,58 @@ test('deep link to a section opens it directly', async () => {
   renderApp('/admin/departments/d1?section=members')
   expect(await screen.findByRole('tab', { name: 'Members', selected: true })).toBeInTheDocument()
 })
+
+const CASE = {
+  requesterId: 'r1',
+  displayName: 'Jane Smith',
+  email: 'jane@example.test',
+  ticketCount: 3,
+  openCount: 1,
+  firstSeenAt: '2026-01-01T00:00:00Z',
+  lastActivityAt: '2026-02-01T00:00:00Z',
+  matchingAccount: { userId: 'u9', displayName: 'Jane Jones', email: 'jane@example.test' },
+  needsAttention: true,
+}
+const identityRoutes = (link: () => unknown) => ({
+  ...deptRoutes(),
+  'GET /api/departments/d1/requester-identities': () => [CASE, { ...CASE, requesterId: 'r2', displayName: 'Vendor Ltd', needsAttention: false, matchingAccount: null }],
+  'GET /api/departments/d1/requester-identities/r1': () => ({ case: CASE, status: 'Unlinked', linkedAccount: null, tickets: [{ reference: 'IT-1', subject: 'Printer', status: 'Open', updatedAt: '2026-02-01T00:00:00Z' }] }),
+  'POST /api/departments/d1/requester-identities/r1/link': link,
+  ...csrfHandler,
+})
+
+test('requester identity resolution: needs-attention list, deliberate selection, explicit confirmation, then the link request', async () => {
+  const calls = mockFetch(identityRoutes(() => ({ alreadyLinked: false })))
+  renderApp('/admin/departments/d1?section=requesters')
+  expect(await screen.findByRole('heading', { name: /Needs attention \(1\)/ })).toBeInTheDocument()
+  expect(screen.queryByText('Vendor Ltd')).not.toBeInTheDocument() // other unlinked requesters are collapsed
+  fireEvent.click(screen.getByRole('button', { name: 'Resolve Jane Smith' }))
+  const dialog = await screen.findByRole('dialog')
+  expect(await within(dialog).findByText('IT-1')).toBeInTheDocument()
+  expect(within(dialog).getByRole('button', { name: 'Link requester to account…' })).toBeDisabled() // nothing is pre-selected
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Select this account' }))
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Link requester to account…' }))
+  const confirm = await screen.findByRole('dialog', { name: 'Link requester to account?' })
+  expect(within(confirm).getByText(/will not grant department staff permissions/)).toBeInTheDocument()
+  expect(calls.some((c) => c.method === 'POST')).toBe(false) // nothing sent before the confirmation
+  fireEvent.click(within(confirm).getByRole('button', { name: 'Link account' }))
+  await waitFor(() => expect(calls.find((c) => c.method === 'POST')?.body).toEqual({ userId: 'u9' }))
+})
+
+test('requester identity resolution: a conflict is shown and the requester stays unresolved; agents do not get the section', async () => {
+  mockFetch(identityRoutes(() => problem(409, 'Conflict', { code: 'conflict', detail: 'This requester is already linked to a different account.' })))
+  renderApp('/admin/departments/d1?section=requesters')
+  fireEvent.click(await screen.findByRole('button', { name: 'Resolve Jane Smith' }))
+  const dialog = await screen.findByRole('dialog')
+  fireEvent.click(await within(dialog).findByRole('button', { name: 'Select this account' }))
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Link requester to account…' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Link account' }))
+  expect(await screen.findByText(/already linked to a different account/)).toBeInTheDocument()
+})
+
+test('requester identity section is not offered without department.members.manage', async () => {
+  mockFetch(deptRoutes(agentMe))
+  renderApp('/admin/departments/d1')
+  await screen.findByRole('tab', { name: 'Members' })
+  expect(screen.queryByRole('tab', { name: 'Requester identities' })).not.toBeInTheDocument()
+})

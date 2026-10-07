@@ -28,4 +28,10 @@ public interface IUserDirectory
     Task<UserSummary?> FindAsync(Guid userId, CancellationToken cancellationToken = default);
 
     Task<IReadOnlyDictionary<Guid, UserSummary>> GetManyAsync(IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Active accounts whose current address equals one of the given lower-cased addresses, keyed by that address. Only ever a SUGGESTION for an administrator
+    /// (an address is mutable and reusable, never proof of who somebody is). When several accounts share an address none is suggested.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, UserSummary>> FindActiveByEmailsAsync(IReadOnlyCollection<string> normalisedEmails, CancellationToken cancellationToken = default);
 }

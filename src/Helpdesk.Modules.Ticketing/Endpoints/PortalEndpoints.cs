@@ -99,6 +99,18 @@ internal static class PortalEndpoints
                 TypedResults.Ok(await service.SetFieldsAsync(departmentId, formId, body, ct)))
             .RequirePermission(PermissionCodes.DepartmentFormsManage);
 
+        // Requester identity resolution: department-scoped, same authority as managing members (people). Platform administrators gain nothing extra:
+        // every query is department-scope filtered, so without a membership the requesters and tickets simply do not exist.
+        var identities = app.MapGroup("/api/departments/{departmentId:guid}/requester-identities").WithTags("Requester identities");
+        identities.MapGet("", async (Guid departmentId, RequesterIdentityAdminService service, CancellationToken ct) => TypedResults.Ok(await service.ListAsync(departmentId, ct)))
+            .RequirePermission(PermissionCodes.DepartmentMembersManage);
+        identities.MapGet("{requesterId:guid}", async (Guid departmentId, Guid requesterId, RequesterIdentityAdminService service, CancellationToken ct) =>
+                TypedResults.Ok(await service.GetAsync(departmentId, requesterId, ct)))
+            .RequirePermission(PermissionCodes.DepartmentMembersManage);
+        identities.MapPost("{requesterId:guid}/link", async (Guid departmentId, Guid requesterId, LinkRequesterRequest body, RequesterIdentityAdminService service, CancellationToken ct) =>
+                TypedResults.Ok(await service.LinkAsync(departmentId, requesterId, body, ct)))
+            .RequirePermission(PermissionCodes.DepartmentMembersManage);
+
         // Ticket types and ticket fields share the forms permission: they are the same configuration area (Ticketing).
         var types = app.MapGroup("/api/departments/{departmentId:guid}/ticket-types").WithTags("Ticket types");
         types.MapGet("", async (Guid departmentId, TicketTypesService service, CancellationToken ct) => TypedResults.Ok(await service.ListAsync(departmentId, ct)))
