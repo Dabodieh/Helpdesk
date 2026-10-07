@@ -10,6 +10,7 @@ import { ActiveBadge, ErrorNotice, Loading, PageHeader, Tabs } from '../componen
 import EditForm from '../components/EditForm'
 import TicketingSection from '../components/TicketingSection'
 import KnowledgeSection from '../components/KnowledgeSection'
+import MacrosSection from '../components/MacrosSection'
 import MailboxesSection from '../components/MailboxesSection'
 import MembersSection from '../components/MembersSection'
 import SlaPoliciesSection from '../components/SlaPoliciesSection'
@@ -110,6 +111,12 @@ export default function DepartmentPage() {
             label: 'Knowledge',
             hidden: !canInDepartment(me, 'department.knowledge.manage', d.id),
             content: <KnowledgeSection department={d} />,
+          },
+          {
+            id: 'macros',
+            label: 'Macros',
+            hidden: !canInDepartment(me, 'department.canned.manage', d.id),
+            content: <MacrosSection department={d} />,
           },
           {
             id: 'responses',

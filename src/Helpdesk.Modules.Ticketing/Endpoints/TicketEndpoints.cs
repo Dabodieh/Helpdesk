@@ -238,6 +238,18 @@ internal static class TicketEndpoints
             .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsUpdate, Route)
             .WithTags("Tickets");
 
+        // Macros an agent may run on this ticket (active, same department, within the caller's permissions) and running one. Baseline tickets.read; the service
+        // requires exactly what the equivalent manual actions need. Running never sends email: a reply action only returns draft text.
+        app.MapGet("/api/tickets/{ticket}/macros", async (string ticket, string? q, MacroRunService macros, CancellationToken ct) =>
+                TypedResults.Ok(await macros.PickAsync(ticket, q, ct)))
+            .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsRead, Route)
+            .WithTags("Tickets");
+
+        app.MapPost("/api/tickets/{ticket}/macros/{macroId:guid}/run", async (string ticket, Guid macroId, RunMacroRequest body, MacroRunService macros, CancellationToken ct) =>
+                TypedResults.Ok(await macros.RunAsync(ticket, macroId, body, ct)))
+            .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsRead, Route)
+            .WithTags("Tickets");
+
         app.MapGet("/api/tickets/{ticket}/activity",
                 async (string ticket, string? cursor, int? limit, TicketService tickets, CancellationToken ct) =>
                     TypedResults.Ok(await tickets.ActivityAsync(ticket, cursor, limit, ct)))

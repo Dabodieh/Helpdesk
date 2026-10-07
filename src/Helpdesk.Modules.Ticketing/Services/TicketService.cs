@@ -837,7 +837,7 @@ internal sealed class TicketService(
     /// Serialises writers of one ticket (row lock for the rest of the transaction), then loads it tracked. With
     /// <paramref name="expectedVersion"/> a mismatch is a <c>version_conflict</c>; the lock makes the comparison race-free.
     /// </summary>
-    private async Task<Ticket> LockAndLoadAsync(Guid ticketId, uint? expectedVersion, CancellationToken ct)
+    internal async Task<Ticket> LockAndLoadAsync(Guid ticketId, uint? expectedVersion, CancellationToken ct)
     {
         await db.Database.ExecuteSqlAsync($"SELECT 1 FROM ticketing.tickets WHERE id = {ticketId} FOR UPDATE", ct);
         var ticket = await db.Tickets.Include(t => t.Requester).SingleOrDefaultAsync(t => t.Id == ticketId, ct) ?? throw new NotFoundException();
@@ -864,7 +864,7 @@ internal sealed class TicketService(
     /// no assignee (or keep one they already hold) or release a ticket they hold, leaving the team unchanged (on create: no team,
     /// assignee = themself). Taking a ticket that is assigned to another agent is a reassignment and needs <c>assign.any</c>.
     /// </summary>
-    private async Task RequireAssignmentRightsAsync(Guid departmentId, Guid? teamId, Guid? assigneeUserId, Ticket? ticket, CancellationToken ct)
+    internal async Task RequireAssignmentRightsAsync(Guid departmentId, Guid? teamId, Guid? assigneeUserId, Ticket? ticket, CancellationToken ct)
     {
         if (ticket is null && teamId is null && assigneeUserId is null)
         {
@@ -887,7 +887,7 @@ internal sealed class TicketService(
         }
     }
 
-    private async Task ValidateTeamAsync(Guid departmentId, Guid? teamId, CancellationToken ct)
+    internal async Task ValidateTeamAsync(Guid departmentId, Guid? teamId, CancellationToken ct)
     {
         if (teamId is not { } id)
         {
@@ -906,7 +906,7 @@ internal sealed class TicketService(
         }
     }
 
-    private async Task ValidateAssigneeAsync(Guid departmentId, Guid? assigneeUserId, CancellationToken ct)
+    internal async Task ValidateAssigneeAsync(Guid departmentId, Guid? assigneeUserId, CancellationToken ct)
     {
         if (assigneeUserId is { } id && !await organisation.IsEligibleAssigneeAsync(departmentId, id, ct))
         {
@@ -914,7 +914,7 @@ internal sealed class TicketService(
         }
     }
 
-    private async Task SaveAsync(CancellationToken ct)
+    internal async Task SaveAsync(CancellationToken ct)
     {
         try
         {

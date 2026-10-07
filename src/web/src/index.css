@@ -2534,3 +2534,20 @@ fieldset.choice {
 .follow-toggle.on {
   font-weight: 600;
 }
+
+/* Macros */
+.macro-list button {
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+.macro-summary {
+  display: block;
+}
+.macro-action-row {
+  display: grid;
+  grid-template-columns: 9rem 1fr auto;
+  gap: 0.4rem;
+  align-items: start;
+  margin-bottom: 0.4rem;
+}

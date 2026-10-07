@@ -96,7 +96,7 @@ internal sealed class TicketPropertiesService(
 
         if (request.Fields is { Count: > 0 } submitted)
         {
-            var allowed = await EditableBindingsAsync(ticket, ct);
+            var allowed = await EditableBindingsAsync(ticket, ticket.TicketTypeId, ct);
             var fieldErrors = new Dictionary<string, string[]>();
             var result = FieldValueValidator.Validate(allowed, submitted, ValidationMode.Patch, fieldErrors);
             TicketValidation.ThrowIfAny(fieldErrors);
@@ -131,9 +131,9 @@ internal sealed class TicketPropertiesService(
     }
 
     /// <summary>Applicable fields the agent may see, plus fields that already hold a value (active ones stay editable).</summary>
-    private async Task<List<FieldBinding>> EditableBindingsAsync(Ticket ticket, CancellationToken ct)
+    internal async Task<List<FieldBinding>> EditableBindingsAsync(Ticket ticket, Guid? typeId, CancellationToken ct)
     {
-        var bindings = (await catalog.ForTypeAsync(ticket.DepartmentId, ticket.TicketTypeId, ct)).Where(b => b.Field.AgentVisible).ToList();
+        var bindings = (await catalog.ForTypeAsync(ticket.DepartmentId, typeId, ct)).Where(b => b.Field.AgentVisible).ToList();
         var heldIds = await db.TicketFieldValues.IgnoreDepartmentScope().AsNoTracking()
             .Where(v => v.TicketId == ticket.Id && v.DepartmentId == ticket.DepartmentId && v.FieldId != null).Select(v => v.FieldId!.Value).ToListAsync(ct);
         if (heldIds.Count > 0)

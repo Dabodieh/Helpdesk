@@ -21,6 +21,8 @@ internal sealed partial class TicketingDbContext(DbContextOptions<TicketingDbCon
 
     public DbSet<TicketLink> TicketLinks => Set<TicketLink>();
 
+    public DbSet<Macro> Macros => Set<Macro>();
+
     public DbSet<TicketFollower> TicketFollowers => Set<TicketFollower>();
 
     public DbSet<SavedView> SavedViews => Set<SavedView>();
@@ -221,6 +223,26 @@ internal sealed partial class TicketingDbContext(DbContextOptions<TicketingDbCon
 
             // Department rows are visible only inside the caller's department scope; personal rows are filtered by owner in the service.
             e.HasQueryFilter(x => x.DepartmentId == null || ScopedDepartmentIds.Contains(x.DepartmentId.Value));
+        });
+
+        modelBuilder.Entity<Macro>(e =>
+        {
+            e.ToTable("macros", t => t.HasCheckConstraint("ck_macros_name", "length(btrim(name)) BETWEEN 1 AND 100"));
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            e.Property(x => x.DepartmentId).HasColumnName("department_id");
+            e.Property(x => x.Name).HasColumnName("name").HasMaxLength(100);
+            e.Property(x => x.Description).HasColumnName("description").HasMaxLength(300);
+            e.Property(x => x.IsActive).HasColumnName("is_active");
+            e.Property(x => x.SortOrder).HasColumnName("sort_order");
+            e.Property(x => x.Actions).HasColumnName("actions").HasColumnType("jsonb");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            e.Property(x => x.Version).HasColumnName("xmin").HasColumnType("xid").IsRowVersion();
+            e.HasIndex(x => new { x.DepartmentId, x.Name }).IsUnique().HasDatabaseName("ux_macros_department_name");
+            e.HasIndex(x => new { x.DepartmentId, x.IsActive, x.SortOrder }).HasDatabaseName("ix_macros_department_active");
+
+            // No scope filter (like automation rules): administration is authorised per department by its endpoint filter; the run path filters by the ticket's department itself.
         });
 
         modelBuilder.Entity<TicketFollower>(e =>

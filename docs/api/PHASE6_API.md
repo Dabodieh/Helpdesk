@@ -52,3 +52,9 @@ All routes are ticket-id routes (`{ticket}` = id or reference); the department c
 - `GET /api/tickets/{ticket}/follower-candidates?q=` (`tickets.update`): up to 10 active department readers not following yet, matched by name or email.
 - `GET /api/tickets?queue=following`, saved views with `queue: "following"`, and `following` in `GET /api/tickets/queue-counts`.
 - Activity: `ticket.follower_added`, `ticket.follower_removed`.
+
+## Macros (refinement 5)
+- Administration, `department.canned.manage`, department scoped (foreign department = 404): `GET|POST /api/departments/{d}/macros`, `PATCH .../{id}` (`version`, `name`, `description`, `isActive`, `actions`), `PUT .../order` (`ids`, every macro once). A macro is `{id, name, description, isActive, order, actions:[{type, value?, text?, key?, data?}], summary[], version}`; action types `setStatus`, `setPriority`, `setTeam`, `setAssignee`, `clearAssignee`, `assignToMe`, `setType`, `setField` (`key` + `data`), `internalNote` (`text`), `publicReply` (`value` = canned response id, or `text`). Errors are keyed `actions[i]`.
+- `GET /api/tickets/{ticket}/macros?q=` (`tickets.read`): active macros of the ticket's department that the caller may run, filtered by name or description; each carries a `summary` (the preview text).
+- `POST /api/tickets/{ticket}/macros/{macroId}/run` `{version}` (`tickets.read`, then the permissions of the actions, else 403): `{ticket, draft:{body, cannedResponseId, title}|null, noteAdded}`. Errors: 404 (foreign or missing), `409 inactive`, `409 ticket_merged`, `409 canned_unavailable`, `409 version_conflict`, 400 (invalid final state), 403. Nothing is applied on any error. It never sends email.
+- Activity: `ticket.macro_run`; macro administration is audited as `macro.created` and `macro.updated`.

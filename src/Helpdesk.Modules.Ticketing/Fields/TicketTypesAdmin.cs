@@ -220,6 +220,9 @@ internal sealed class TicketTypesService(TicketingDbContext db, TicketingAudit a
     public Task<Guid?> DefaultIdAsync(Guid departmentId, CancellationToken ct) =>
         db.TicketTypes.AsNoTracking().Where(t => t.DepartmentId == departmentId && t.IsDefault && t.IsActive).Select(t => (Guid?)t.Id).SingleOrDefaultAsync(ct);
 
+    public Task<bool> IsActiveAsync(Guid departmentId, Guid typeId, CancellationToken ct) =>
+        db.TicketTypes.AsNoTracking().AnyAsync(t => t.Id == typeId && t.DepartmentId == departmentId && t.IsActive, ct);
+
     /// <summary>A foreign, missing or inactive type all answer the same way, so nothing about other departments is revealed.</summary>
     public async Task<Guid> RequireActiveAsync(Guid departmentId, Guid typeId, string field, CancellationToken ct) =>
         await db.TicketTypes.AsNoTracking().AnyAsync(t => t.Id == typeId && t.DepartmentId == departmentId && t.IsActive, ct)

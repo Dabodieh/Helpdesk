@@ -65,7 +65,7 @@ export default function TicketPane({ ticketRef, backTo, composerRef }: Props) {
 
   return (
     <div className="ticket-inner">
-      <TicketHeader ticket={t} routeRef={ticketRef} back={back} onProblem={setProblem} />
+      <TicketHeader ticket={t} routeRef={ticketRef} back={back} onProblem={setProblem} composerRef={composerRef} />
       <ProblemBanner error={problem} onReload={reload} onDismiss={() => setProblem(null)} />
       {t.mergedInto && (
         <section className="merged-banner" aria-label="Merged ticket">
@@ -105,11 +105,13 @@ function TicketHeader({
   routeRef,
   back,
   onProblem,
+  composerRef,
 }: {
   ticket: TicketDetail
   routeRef: string
   back: ReactNode
   onProblem: (e: unknown) => void
+  composerRef: RefObject<ComposerHandle | null>
 }) {
   const me = useMe()
   const apply = useApplyTicket(routeRef)
@@ -154,7 +156,7 @@ function TicketHeader({
         {back}
         <span className="ref">{t.reference}</span>
         <span className="muted small">{t.departmentName}</span>
-        {canUpdate && <MoreMenu ticket={t} routeRef={routeRef} />}
+        {canUpdate && <MoreMenu ticket={t} routeRef={routeRef} composerRef={composerRef} />}
       </div>
       <Subject ticket={t} canEdit={canUpdate} busy={busy} save={(subject, version) => patch.mutateAsync({ subject, version })} onProblem={onProblem} />
       <div className="t-controls">

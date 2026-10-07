@@ -77,6 +77,8 @@ export function describeActivity(a: Activity, names: NameLookup): string {
       if (from === null && to === null) return `changed ${label}`
       return to ? (from ? `changed ${label} from ${quote(from)} to ${quote(to)}` : `set ${label} to ${quote(to)}`) : `cleared ${label}`
     }
+    case 'ticket.macro_run':
+      return `ran macro "${pick(a.next, 'name') ?? 'a macro'}"`
     case 'ticket.follower_added': {
       const id = pick(a.next, 'userId')
       return a.next?.self === true ? 'followed this ticket' : `added ${who(id)} as a follower`

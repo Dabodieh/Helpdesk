@@ -11,7 +11,7 @@ import { Icon } from './icons'
 import ProblemBanner from './ProblemBanner'
 
 export type ComposerMode = 'Public' | 'Internal'
-export type ComposerHandle = { focus: (mode: ComposerMode) => void }
+export type ComposerHandle = { focus: (mode: ComposerMode) => void; insertDraft: (text: string) => void }
 
 /**
  * Reply box with an explicit Public reply / Internal note toggle. The mode is stated in words, with an icon,
@@ -52,11 +52,21 @@ export default function Composer({
         setMode(m)
         area.current?.focus()
       },
+      // Macro reply draft: switches to a public reply and puts the text in the box. It is never sent from here.
+      insertDraft: (draft) => {
+        const next = text.trim() ? `${text}
+
+${draft}` : draft
+        if (!publicBlocked) setMode('Public')
+        setText(next)
+        setDraft(ticket.id, next)
+        requestAnimationFrame(() => area.current?.focus())
+      },
     }
     return () => {
       handleRef.current = null
     }
-  }, [handleRef, publicBlocked, canNote])
+  }, [handleRef, publicBlocked, canNote, text, ticket.id])
 
   /** Insert canned text at the cursor (or replace the selection). Nothing is posted; the agent reviews and submits. */
   function insertText(snippet: string) {

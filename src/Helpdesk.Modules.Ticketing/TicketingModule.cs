@@ -34,6 +34,9 @@ public static class TicketingModule
         services.AddScoped<TicketMergeService>();
         services.AddScoped<TicketLinkService>();
         services.AddScoped<TicketFollowerService>();
+        services.AddScoped<MacroSummariser>();
+        services.AddScoped<MacroAdminService>();
+        services.AddScoped<MacroRunService>();
         services.AddScoped<RequesterService>();
         services.AddScoped<RequesterHistoryService>();
         services.AddScoped<Fields.FieldCatalog>();

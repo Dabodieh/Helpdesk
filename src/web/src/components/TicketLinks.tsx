@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent, type RefObject } from 'react'
 import { Link } from 'react-router-dom'
 import { describeError } from '../api/errors'
 import {
@@ -15,15 +15,17 @@ import {
   type LinkType,
 } from '../api/merge'
 import type { TicketDetail } from '../api/ticketSchemas'
+import type { ComposerHandle } from './Composer'
+import MacroRunner from './MacroRunner'
 import { useApplyTicket } from '../hooks/useApplyTicket'
 import { livePolling } from '../queries'
 import { ErrorNotice, Loading } from './common'
 import Dialog from './Dialog'
 
 /** "More" actions of the ticket: kept out of the permanent header. Only offered to agents who can update the ticket. */
-export function MoreMenu({ ticket, routeRef }: { ticket: TicketDetail; routeRef: string }) {
+export function MoreMenu({ ticket, routeRef, composerRef }: { ticket: TicketDetail; routeRef: string; composerRef: RefObject<ComposerHandle | null> }) {
   const [open, setOpen] = useState(false)
-  const [dialog, setDialog] = useState<'merge' | 'link' | null>(null)
+  const [dialog, setDialog] = useState<'merge' | 'link' | 'macro' | null>(null)
   const root = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
   const panelId = useId()
@@ -58,6 +60,15 @@ export function MoreMenu({ ticket, routeRef }: { ticket: TicketDetail; routeRef:
             type="button"
             onClick={() => {
               setOpen(false)
+              setDialog('macro')
+            }}
+          >
+            Run macro
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false)
               setDialog('merge')
             }}
           >
@@ -74,6 +85,7 @@ export function MoreMenu({ ticket, routeRef }: { ticket: TicketDetail; routeRef:
           </button>
         </div>
       )}
+      {dialog === 'macro' && <MacroRunner ticket={ticket} routeRef={routeRef} composerRef={composerRef} onClose={() => setDialog(null)} />}
       {dialog === 'merge' && <MergeDialog ticket={ticket} routeRef={routeRef} onClose={() => setDialog(null)} />}
       {dialog === 'link' && <LinkDialog ticket={ticket} onClose={() => setDialog(null)} />}
     </div>

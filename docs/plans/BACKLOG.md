@@ -78,3 +78,5 @@
 
 - (Refinement 4) Follower notifications (in-app and email) using the follower table; "follow automatically" rules (assignee, requester reply, mentions); follower counts in queue rows; a realtime event kind for followers instead of the plain `updated` event.
 - (Refinement 4) Clean up follower rows when a user is deactivated (only membership removal cascades today; the list already ignores inactive users); team-level followers; follow from the bulk bar.
+
+- (Refinement 5) Macro usage statistics and "last run"; personal (per-agent) macros and macro folders; macro actions for followers, links, tags and mentions; a dry-run of a macro against a ticket showing the concrete before/after (the preview is the configured action list today); keyboard shortcut to run a macro; one browser flow (admin creates macro, agent runs it, reply stays an unsent draft) is covered by API and Vitest tests only.

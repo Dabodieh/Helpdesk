@@ -347,6 +347,33 @@ internal sealed class TicketFollower
     public DateTimeOffset AddedAt { get; set; }
 }
 
+/// <summary>
+/// A manually run bundle of structured ticket actions of one department (not an automation rule: it never reacts to events). Deactivate rather than delete.
+/// </summary>
+internal sealed class Macro
+{
+    public Guid Id { get; set; }
+
+    public Guid DepartmentId { get; set; }
+
+    public string Name { get; set; } = "";
+
+    public string? Description { get; set; }
+
+    public bool IsActive { get; set; } = true;
+
+    public int SortOrder { get; set; }
+
+    /// <summary>JSON array of <see cref="Services.MacroAction"/> (data only, no code).</summary>
+    public string Actions { get; set; } = "[]";
+
+    public DateTimeOffset CreatedAt { get; set; }
+
+    public DateTimeOffset UpdatedAt { get; set; }
+
+    public uint Version { get; set; }
+}
+
 internal static class TicketLinkTypes
 {
     /// <summary>Symmetric; stored once with the smaller id first.</summary>

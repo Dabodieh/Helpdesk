@@ -21,6 +21,7 @@ internal static class ServiceManagementEndpoints
         MapBusinessHours(app);
         MapSlaPolicies(app);
         MapAutomation(app);
+        MapMacros(app);
 
         app.MapGet("/api/tickets/{ticket}/sla", async (string ticket, SlaReadService sla, CancellationToken ct) =>
                 await sla.GetAsync(ticket, ct) is { } dto ? Results.Ok(dto) : Results.NoContent())
@@ -68,6 +69,26 @@ internal static class ServiceManagementEndpoints
         g.MapPut("order", async (Guid departmentId, ReorderRequest body, SlaPolicyService service, CancellationToken ct) =>
                 TypedResults.Ok(await service.ReorderAsync(departmentId, body, ct)))
             .RequirePermission(PermissionCodes.DepartmentSlaManage);
+    }
+
+    private static void MapMacros(IEndpointRouteBuilder app)
+    {
+        // Macros are agent productivity (like canned responses): managed with department.canned.manage, department scoped (foreign department = 404).
+        var g = app.MapGroup("/api/departments/{departmentId:guid}/macros").WithTags("Macros");
+        g.MapGet("", async (Guid departmentId, MacroAdminService service, CancellationToken ct) => TypedResults.Ok(await service.ListAsync(departmentId, ct)))
+            .RequirePermission(PermissionCodes.DepartmentCannedManage);
+        g.MapPost("", async (Guid departmentId, MacroRequest body, MacroAdminService service, CancellationToken ct) =>
+            {
+                var created = await service.CreateAsync(departmentId, body, ct);
+                return TypedResults.Created($"/api/departments/{departmentId}/macros/{created.Id}", created);
+            })
+            .RequirePermission(PermissionCodes.DepartmentCannedManage);
+        g.MapPatch("{id:guid}", async (Guid departmentId, Guid id, MacroRequest body, MacroAdminService service, CancellationToken ct) =>
+                TypedResults.Ok(await service.UpdateAsync(departmentId, id, body, ct)))
+            .RequirePermission(PermissionCodes.DepartmentCannedManage);
+        g.MapPut("order", async (Guid departmentId, ReorderRequest body, MacroAdminService service, CancellationToken ct) =>
+                TypedResults.Ok(await service.ReorderAsync(departmentId, body, ct)))
+            .RequirePermission(PermissionCodes.DepartmentCannedManage);
     }
 
     private static void MapAutomation(IEndpointRouteBuilder app)
