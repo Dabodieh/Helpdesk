@@ -24,7 +24,9 @@ public sealed class PortalEmailTests(HelpdeskFixture fixture) : IClassFixture<He
         var reference = ticket.GetProperty("reference").GetString()!;
         Assert.Equal("email", (await d.Agent.GetTicketAsync(ticketId)).Expect(HttpStatusCode.OK).Json.GetProperty("source").GetString());
 
-        // 2. The same person signs in to the portal (verified address = the requester's address): it is in My requests, nothing else needed.
+        // 2. The same address signing in to the portal is not enough to own the email-created history; once the requester is explicitly linked to the account, it is in My requests.
+        Assert.Empty((await alice.PortalListAsync()).GetProperty("items").EnumerateArray());
+        await fixture.LinkRequesterAsync(d.Id, alice.Email, alice.User.Id);
         var list = (await alice.PortalListAsync()).GetProperty("items").EnumerateArray().ToArray();
         Assert.Equal(reference, Assert.Single(list).GetProperty("reference").GetString());
 

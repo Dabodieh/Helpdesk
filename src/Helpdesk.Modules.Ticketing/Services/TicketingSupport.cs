@@ -53,6 +53,8 @@ internal static class TicketAuditActions
     public const string LinkRemoved = "ticket.link_removed";
     public const string MessageDeliveryChanged = "ticket.message_delivery_changed";
     public const string RequesterCreated = "requester.created";
+    public const string RequesterIdentityLinked = "requester.identity_linked";
+    public const string RequesterLinkAmbiguous = "requester.link_ambiguous";
     public const string CannedCreated = "canned_response.created";
     public const string CannedUpdated = "canned_response.updated";
     public const string BusinessHoursCreated = "business_hours.created";

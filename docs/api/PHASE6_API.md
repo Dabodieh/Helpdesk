@@ -5,7 +5,7 @@ All portal endpoints require authentication and are scoped to the caller's reque
 ## Portal
 - `GET /api/portal/forms`, `GET /api/portal/forms/{formId}`: published request forms with requester-visible fields, only for forms whose requester audience includes the caller; any other form id is 404 (as is `POST /api/portal/requests` for it, before any field validation).
 - `GET /api/portal/requests?filter=open|closed|all&cursor=&limit=`: caller's requests, ordered by `lastPublicActivityAt` desc.
-- `POST /api/portal/requests`: `{formId, subject, description, fields: {key: value}}`; creates a ticket (source `portal`). 409 if the address belongs to another user's claimed requester.
+- `POST /api/portal/requests`: `{formId, subject, description, fields: {key: value}}`; creates a ticket (source `portal`). The caller's Department-local requester is the one linked to their account (created and linked on first submission; address and display name follow the account). 409 if the address belongs to another user's requester, or to an unlinked requester that already has tickets (left for administrator resolution).
 - `GET /api/portal/requests/{reference}`: public conversation only, requester status (In progress, Waiting, Resolved, Closed).
 - `POST /api/portal/requests/{reference}/replies`: JSON `{body}` or multipart with files.
 - `GET /api/portal/requests/{reference}/attachments/{id}`: public attachments only.

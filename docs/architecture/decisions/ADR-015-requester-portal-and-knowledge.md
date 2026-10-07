@@ -5,8 +5,8 @@ Status: accepted (Phase 6). Production gates D-16, D-08, D-09, D-13 remain open.
 ## Decisions
 
 1. **Requester identity is an explicit link.** `requester_links` ties a department-scoped `Requester` to an Entra `User`
-   (`requester_id` unique; `(user_id, department_id)` unique). A link is created only from the verified email in the
-   Entra token (`ICurrentUser.Email`) and only while the requester is unclaimed. Later access is by link id, never by
+   (`requester_id` unique; `(user_id, department_id)` unique). A link is created only by the signed-in user's own
+   portal submission (amended: an address alone no longer claims existing requesters, see TICKETING.md "Requester identity"). Later access is by link id, never by
    re-matching the address, so an impostor sharing an address cannot claim or read.
 2. **Requester authorisation is a separate boundary.** `/api/portal/*` endpoints are authenticated-only and scope every
    query by the caller's links. Agent permissions (`IAuthorizer`) are never used for portal reads. Inaccessible

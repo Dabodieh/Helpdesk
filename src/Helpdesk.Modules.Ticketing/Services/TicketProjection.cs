@@ -46,8 +46,9 @@ internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirec
             assignee = user is null ? null : new RefDto(user.Id, user.DisplayName);
         }
 
+        var personIds = await RequesterPeople.IdsAsync(db, requester, ct);
         var counts = await db.Tickets.AsNoTracking()
-            .Where(t => t.Requester.EmailNormalised == requester.EmailNormalised)
+            .Where(t => personIds.Contains(t.RequesterId))
             .GroupBy(_ => 1)
             .Select(g => new
             {

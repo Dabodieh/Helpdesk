@@ -21,7 +21,7 @@ internal sealed record RequesterProfileDto(
 
 /// <summary>
 /// Agent-facing view of one person's support history. A requester row exists per department, so a person is the set of requester rows
-/// sharing the normalised address. Every query runs through the department-scope global filter, so tickets (and requester rows) in
+/// linked to the same authenticated account (unlinked rows group by address only among themselves, see <see cref="RequesterPeople"/>). Every query runs through the department-scope global filter, so tickets (and requester rows) in
 /// departments the caller cannot read do not exist here: not in lists, counts, timestamps or paging. Dates are the visible
 /// <c>UpdatedAt</c>, which internal notes never move.
 /// </summary>
@@ -38,7 +38,7 @@ internal sealed class RequesterHistoryService(TicketingDbContext db, IDepartment
     {
         await scope.EnsureLoadedAsync(ct);
         var requester = await db.Requesters.AsNoTracking().SingleOrDefaultAsync(r => r.Id == requesterId, ct) ?? throw new NotFoundException();
-        var ids = await PersonIdsAsync(requester.EmailNormalised, ct);
+        var ids = await RequesterPeople.IdsAsync(db, requester, ct);
         var tickets = db.Tickets.AsNoTracking().Where(t => ids.Contains(t.RequesterId));
 
         var summary = await tickets.GroupBy(_ => 1)
@@ -77,7 +77,7 @@ internal sealed class RequesterHistoryService(TicketingDbContext db, IDepartment
         TicketValidation.ThrowIfAny(errors);
         await scope.EnsureLoadedAsync(ct);
         var requester = await db.Requesters.AsNoTracking().SingleOrDefaultAsync(r => r.Id == requesterId, ct) ?? throw new NotFoundException();
-        var ids = await PersonIdsAsync(requester.EmailNormalised, ct);
+        var ids = await RequesterPeople.IdsAsync(db, requester, ct);
         IQueryable<Ticket> tickets = db.Tickets.AsNoTracking().Where(t => ids.Contains(t.RequesterId));
         tickets = kind switch
         {
@@ -87,9 +87,6 @@ internal sealed class RequesterHistoryService(TicketingDbContext db, IDepartment
         };
         return await PageAsync(tickets, cursor, take, ct);
     }
-
-    private Task<Guid[]> PersonIdsAsync(string emailNormalised, CancellationToken ct) =>
-        db.Requesters.AsNoTracking().Where(r => r.EmailNormalised == emailNormalised).Select(r => r.Id).ToArrayAsync(ct);
 
     private async Task<PageDto<TicketListItemDto>> PageAsync(IQueryable<Ticket> tickets, string? cursor, int take, CancellationToken ct)
     {
@@ -127,5 +124,22 @@ internal sealed class RequesterHistoryService(TicketingDbContext db, IDepartment
         }
 
         return (new DateTimeOffset(ticks, TimeSpan.Zero), id);
+    }
+}
+
+/// <summary>
+/// Which requester rows are "the same person". Linked rows: all rows linked to the same authenticated user, whatever their address (a changed or
+/// reused address never moves history). Unlinked rows (email senders, contractors, legacy): rows sharing the address that are themselves unlinked,
+/// so someone who now holds a reused address never merges with an account's history. Callers read tickets through the department-scope filter, so
+/// grouping never widens what an agent may see.
+/// </summary>
+internal static class RequesterPeople
+{
+    public static async Task<Guid[]> IdsAsync(TicketingDbContext db, Requester requester, CancellationToken ct)
+    {
+        var userId = await db.RequesterLinks.AsNoTracking().Where(l => l.RequesterId == requester.Id).Select(l => (Guid?)l.UserId).SingleOrDefaultAsync(ct);
+        return userId is { } u
+            ? await db.Requesters.AsNoTracking().Where(r => db.RequesterLinks.Any(l => l.RequesterId == r.Id && l.UserId == u)).Select(r => r.Id).ToArrayAsync(ct)
+            : await db.Requesters.AsNoTracking().Where(r => r.EmailNormalised == requester.EmailNormalised && !db.RequesterLinks.Any(l => l.RequesterId == r.Id)).Select(r => r.Id).ToArrayAsync(ct);
     }
 }

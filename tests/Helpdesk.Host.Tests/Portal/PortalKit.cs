@@ -19,12 +19,42 @@ public static class PortalKit
         var id = Unique.Id();
         var email = $"{prefix}-{id}@example.test";
         var user = await fixture.SignInAsync($"{prefix}-{id}", $"{prefix} {id}", email);
+        Trusted[email] = (fixture, user.Id);
         return new Employee(user, email);
     }
 
-    /// <summary>An agent creates a ticket for the requester address (as the email channel or an agent would), so the employee can later claim it.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (HelpdeskFixture Fixture, Guid UserId)> Trusted = new();
+
+    /// <summary>
+    /// Stands in for an explicit, trusted requester link (one an administrator or the portal itself established). An address alone never claims a requester,
+    /// so tests that want an employee to own a requester created another way must say so.
+    /// </summary>
+    public static async Task LinkRequesterAsync(this HelpdeskFixture fixture, Guid departmentId, string requesterEmail, Guid userId) =>
+        await fixture.ScalarAsync<long>(
+            """
+            WITH ins AS (
+              INSERT INTO ticketing.requester_links (id, requester_id, department_id, user_id, linked_email_normalised, created_at)
+              SELECT gen_random_uuid(), r.id, r.department_id, @u, r.email_normalised, now() FROM ticketing.requesters r
+              WHERE r.department_id = @d AND r.email_normalised = @e AND NOT EXISTS (SELECT 1 FROM ticketing.requester_links l WHERE l.requester_id = r.id)
+              RETURNING 1)
+            SELECT count(*) FROM ins
+            """,
+            TicketKit.P("u", userId), TicketKit.P("d", departmentId), TicketKit.P("e", requesterEmail.Trim().ToLowerInvariant()));
+
+    /// <summary>An agent creates a ticket for the requester address (as the email channel or an agent would), and, when the address belongs to a registered test employee, links that employee as its trusted owner (an address alone never claims a requester).</summary>
     public static async Task<ApiResponse> TicketForAsync(this Dept d, string requesterEmail, string? subject = null, object? extra = null) =>
-        await d.Agent.CreateTicketAsync(d.Department, TicketHelpers.NewTicketBody(subject, requesterEmail, extra));
+        await d.CreateForAsync(requesterEmail, subject, extra);
+
+    private static async Task<ApiResponse> CreateForAsync(this Dept d, string requesterEmail, string? subject, object? extra)
+    {
+        var created = await d.Agent.CreateTicketAsync(d.Department, TicketHelpers.NewTicketBody(subject, requesterEmail, extra));
+        if (Trusted.TryGetValue(requesterEmail, out var owner))
+        {
+            await owner.Fixture.LinkRequesterAsync(d.Id, requesterEmail, owner.UserId);
+        }
+
+        return created;
+    }
 
     public static async Task<JsonElement> PortalListAsync(this Employee e, string query = "") =>
         (await e.User.Client.GetAsync("/api/portal/requests" + query)).Expect(HttpStatusCode.OK).Json;
