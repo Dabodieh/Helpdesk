@@ -3,6 +3,20 @@
 ## Principles
 Secure defaults, server-side authorization on every operation, least privilege, defence in depth for department isolation, auditable changes, no secrets in the repo.
 
+## Security baseline and compliance targets
+These are design targets, not claims. Nothing here states that the product is certified or compliant.
+- **Application security:** the target baseline is OWASP ASVS Level 2. Not certified, and no full ASVS audit has been done; individual controls are mapped as they are built.
+- **UK GDPR / Data Protection Act 2018:** privacy by design and by default. Department segregation is a technical access-control measure that supports confidentiality, access limitation and data minimisation (appropriate security of personal data). It does not by itself make the product compliant. Retention, data-subject request tooling and records of processing are later tasks.
+- **Cyber Essentials / Cyber Essentials Plus:** readiness is a project requirement (secure configuration, security updates, user access control, malware protection, firewall/network scope). No assessment has been done. The department boundary below strengthens the user-access-control theme at application level.
+
+## Department isolation (permanent rules)
+- **Department is the hard security boundary. Teams are assignment/routing constructs and do not grant cross-Department visibility.** A Platform Administrator holds no ticket-content access without a department membership.
+- Server-side enforcement only. React visibility is UX, never security: every route authorises on the server, and search, counts, history and candidate lookups run inside the caller's authorised department scope (the query filter) instead of filtering results afterwards.
+- Non-disclosure: an object of another department answers exactly like an object that does not exist (same status and body), including through crafted ids in request bodies. No message names another department or confirms an id, reference, count, timestamp or snippet.
+- Relevant ASVS/OWASP classes: broken object-level authorization (IDOR), broken function-level authorization and field-level information disclosure.
+- Verified by `DepartmentIsolationMatrixTests` (three departments, IT / HR / Finance, users with one, two and no department): ticket routes, queues, counts, saved views, search (reference, requester, subject, message and note body, merged reference), requester history, ticket types, fields, request forms, mailboxes, SLA, automation (config, dry run, history), merge, links, followers and candidates, attachments, internal notes, and realtime. Earlier matrices (`TicketIsolation*`, `Organisation*`) remain.
+- **Intentional exceptions (self-service, not ticket data):** published request forms (`VisibleToRequesters`, active) are listed to every authenticated portal user whatever their department, so any employee can raise a request; knowledge articles follow their own audience (Everyone, or Requesters of that department) and only published content is readable. Neither exposes tickets, requesters or internal configuration.
+
 ## Threat areas and controls
 | Area | Control |
 |---|---|

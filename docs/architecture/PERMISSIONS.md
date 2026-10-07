@@ -70,3 +70,7 @@ Policy-style authorization handlers sit behind `IAuthorizer`; endpoint filters m
 `department.forms.manage` (ticketing configuration: ticket types, ticket fields and request forms) and `department.knowledge.manage` (knowledge categories and articles): administrative kind, DepartmentAdmin only. Portal endpoints (`/api/portal/*`) use no department permission: they are authenticated-only and scoped by the caller's requester links (ADR-015).
 
 `department.sla.manage` (business hours, SLA policies) and `department.automation.manage` (rules, execution history, dry run): administrative kind, DepartmentAdmin only. The platform-admin flag satisfies them but grants no ticket content access, so the dry run (which needs the caller's own `tickets.read` scope) is not available to a platform administrator without membership. Agents see the SLA state of tickets they can read and nothing of the configuration.
+
+## Department boundary (security refinement 1)
+Department is the hard security boundary. Teams are assignment/routing constructs and do not grant cross-Department visibility. Followers, links, merges, saved views and search never widen scope: they all run through the department-scoped query filters and `IAuthorizer`, and a foreign object answers like a missing one. See SECURITY.md for the baseline, the intentional self-service exceptions and the verifying tests.
+
