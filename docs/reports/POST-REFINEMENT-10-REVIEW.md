@@ -13,7 +13,7 @@ The session limit interrupted the review. Only four of the ten specialist review
 | SRE / Production Operations Engineer | Completed | SRE |
 | QA / Reliability Engineer | Completed | QA |
 | Lead Architect / Technical Lead | **Completed later (section 18)** | ARC |
-| ITSM Product & Service Desk Lead | **Did not complete** (rate-limited; no findings returned) | ITSM |
+| ITSM Product & Service Desk Lead | **Completed later (section 19)** | ITSM |
 | Backend / Domain Engineer | **Completed later (section 17)** | BE |
 | Microsoft 365 / Messaging Engineer | **Completed later (section 16)** | MSG |
 | Security / Privacy Engineer | **Completed later (section 15)** | SEC |
@@ -27,7 +27,7 @@ Completed specialists also returned their findings as text (the findings files i
 - **Messaging (Graph/Exchange; now reviewed, see section 16, which supersedes this bullet):** inbound sync, subscriptions, delta, threading, outbound state machine, uncertain-send reconciliation, NDR/loop suppression, mailbox health. D-16 evidence status was not re-assessed (it stays OPEN: simulator evidence only).
 - **Backend / Domain (now reviewed, see section 17, which supersedes this bullet):** concurrency, data integrity, constraints, indexes, Hangfire job idempotency, SLA job correctness, migrations.
 - **Architecture (now reviewed, see section 18, which supersedes this bullet):** module boundaries, outbox/transaction design, SignalR boundary, ADR gaps.
-- **ITSM product:** ticket lifecycle semantics, queue/assignment clarity, SLA semantics as users see them, requester language, admin discoverability.
+- **ITSM product (now reviewed, see section 19, which supersedes this bullet):** ticket lifecycle semantics, queue/assignment clarity, SLA semantics as users see them, requester language, admin discoverability.
 - **Data / Reporting:** dashboard and SLA metric semantics, history capture for future reports.
 
 Recommendation: re-run these six after the session limit resets (not done here, per instruction).
@@ -911,3 +911,113 @@ Counts for this section (new architectural findings; nothing here is a productio
 - That the migration order numbers satisfy every foreign key dependency from a clean database in the production role (only the two newest migrations and one scratch-database cycle were run, for earlier work).
 - Performance of the shared predicates on large tables, and the cost of the in-request outbox drain after a long backlog.
 - Whether the scope filter's omission on the entities listed in ARC-002 hides any other administrative endpoint that returns content: I checked the administrative endpoints I could identify (mail attention, automation history, requester identities, mailboxes, forms, knowledge, members, audit); the proposed probe test would check them all.
+
+
+---
+
+# 19. ITSM Product / Service Desk review (added after the Architect section)
+
+Specialist: ITSM Product & Service Desk Lead (AGENTS.md section 8). Baseline: commit `081f660`. Method: single agent, read-only. I judged the product as an internal service desk run by first-line agents, specialist resolvers, a team lead, a department administrator and ordinary employees as requesters, reading the status and queue logic, the composer and message path, assignment and permission rules, SLA behaviour, the portal mapping, macros and automation triggers, the dashboard and the department setup overview. I walked no screen in a browser. Technical findings from the other reviews were reused, not repeated; where they matter to a workflow they are assessed in 19.1.
+
+Classification used: **broken** (behaves wrongly), **confusing** (works but misleads), **safeguard** (a missing guard against a mistake), **enhancement** (not a defect; listed only so it is not mistaken for one). Nothing here proposes an excluded feature (scoring, tags, time tracking, CRM, forwarding, telephony, Team security boundaries).
+
+**Result in one line:** the lifecycle, the conversation model and the dashboard are coherent and compare well with the mature desks the project cites. The weak spots are all about *knowing who must act next*: after an agent answers, the ticket looks untouched; agents cannot hand work on; some tickets can never be answered by email; and the requester-facing words do not say what the requester should do.
+
+| Severity | Count |
+|---|---|
+| Critical | 0 |
+| High | 0 |
+| Medium | 3 |
+| Low | 4 |
+| Polish | 0 |
+| **Total** | **7** |
+
+Production blockers from this review: **0** (ITSM-003 should be settled before the portal goes live, see its entry). Decisions required: **5** (ITSM-001, ITSM-002, ITSM-003, ITSM-004, ITSM-005). Four enhancements are listed in 19.4 and are not counted.
+
+## 19.1 Assessment of the specific questions
+
+**BE-006, SLA policy chosen once at creation.** Seen from the desk: the behaviour is coherent only for tickets whose team, type and priority are known when they are created, which in practice means agent-created tickets and portal requests (a request form carries a default team, type and priority). Email is the main channel of most desks, and an email ticket always arrives with no team, the department's default type and Normal priority; routing, classification and priority changes come later, from an automation rule or an agent. So team-, type- and priority-based policies will not apply to most email tickets, and an agent who raises a ticket to Urgent does not get an Urgent SLA. The administrator is offered those conditions with no hint that they only work at creation. Conclusion: a real functional gap, not a preferred workflow. Recommended direction for the decision (not a decision): re-evaluate the policy when team, type or priority changes, with the original start time kept, so that the clock does not restart on re-triage; the alternative is to say plainly in the policy editor which conditions can match which kinds of ticket.
+
+**BE-007, first-response clock on resolved tickets.** Seen from the desk this is not an edge case. A normal service-desk flow is "log and resolve at first contact" (a phone call, a walk-up, an agent who fixes it and records an internal note), and spam and duplicates are closed without a reply. Every such ticket, under a policy with a first-response target, goes on to record a first-response warning, a breach and a `SlaBreached` automation run after it was resolved, and any future attainment report would count it as a miss. Conclusion: a real defect in expected SLA semantics. The three coherent behaviours are: the clock stops when the ticket is resolved or closed and counts as not applicable; it stops and counts as met at that moment; or a reply is required (today). The first is the usual desk convention. The choice is the owner's.
+
+**MSG-002 / BE-001, participants.** Normal desk behaviour: people the requester copies become participants and get the replies; the agent can see who is on the Cc line, add a colleague and remove someone; a stranger cannot join by sending mail. Today people can join from any sender who holds a thread identifier, nobody can see the list by name when replying, and nobody can remove anyone. Conclusion: the participant model is missing its safeguards, which is why it is part of the MSG-002 blocker. No participant feature beyond sender rule, visibility and removal is needed.
+
+**SEC-004 / BE-002, merging different requesters.** Seen from the desk, merging tickets of different people is legitimate and common: one outage reported by twelve users, or one person writing from two addresses. Blocking it would hurt. The mature convention is to keep one working ticket and to treat the other requesters as participants who receive the answers. The current product does the first half only: the merged requesters' tickets leave their portals and they stop receiving replies. Conclusion: the right outcome is "merge allowed, source requester becomes a participant (and sees the canonical request)"; the decision is the owner's (BE-002 lists the options).
+
+**Are status, type, priority and team semantics coherent?** Yes, apart from BE-006. Open means in progress; Pending means waiting for the requester or a third party and pauses the resolution clock only where the policy says so; Resolved means solved and still reopenable; Closed is final for agents (no public reply without reopening) but any late requester mail reopens it by an owner decision (D-15), so Closed means "no further work expected", not "locked". Priority is the four-level ladder without an impact and urgency matrix, which is the right size. Type classifies and shapes the fields. Teams are routing groups, not a boundary. One wrinkle: "Open" does not tell an agent who must act (ITSM-001).
+
+**Can a workflow leave a ticket misleading or operationally impossible?** Four cases found: answered but still Open and possibly Unassigned (ITSM-001); a ticket with no stored mailbox that can never be answered by email (ITSM-003); resolved with a first-response breach recorded afterwards (BE-007); the merged requester's request disappearing (BE-002). Cleanly handled cases: a member removed from the department has their assignments cleared by the database so their tickets return to Unassigned; a deactivated mailbox blocks replies visibly and never switches sender; a merged ticket is read-only and out of queues.
+
+**Do the queue and dashboard expose the work an agent or team lead needs?** Largely yes: My, Team, Unassigned, All and Following queues with saved views, default view, columns and quick filters (awaiting first response, failed or uncertain sends, no team, type, SLA states); the dashboard shows open and pending, unassigned, SLA overdue and due soon, awaiting first human response, ageing, team workload including "No team", the oldest tickets and mail send problems, every figure linking to the queue it counts. The gap is the one that matters most to a lead after the first reply: "the requester answered and we have not responded" has no view or figure of its own except through the status (ITSM-001). Stale Pending tickets (waiting a long time) are not visible either (enhancement E-3).
+
+**Do acknowledgements, notifications and requester-visible behaviour match normal expectations?** Acknowledgements are per department and per channel, sent from the ticket's mailbox with no agent signature, and are not treated as a human response: this matches mature desks. Requester emails are sent when an agent replies; nothing is sent when a ticket is resolved or closed without a reply (ITSM-005). Internal notifications cover assignment, requester reply, followed update and mention; they do not cover a new ticket in a team's queue or an SLA warning (enhancements E-1, E-2, already in the backlog). In the portal a "Waiting" status does not say whose turn it is (ITSM-004).
+
+## 19.2 Medium
+
+### ITSM-001: After an agent answers, the ticket looks untouched
+- **Specialist / category:** ITSM / ITSM Workflow. **Classification:** confusing workflow (misleading state). **Severity:** Medium. **Confidence:** High (code and docs).
+- **Evidence:** the composer's "Set status after" defaults to "Keep" (`Composer.tsx`), so a public reply leaves the ticket Open unless the agent chooses Pending. The automation triggers are ticket created, requester message, status, priority, team, assignee, SLA approaching and SLA breached (`RuleModel.cs:8-33`): there is no agent-reply trigger, so a department cannot automate "set Pending after a reply". An agent's public reply does not assign the ticket (`TicketService.PostMessageAsync`). The queue list has no last-speaker indicator, and "awaiting first response" covers only the first reply. A requester reply returns the ticket to Open (documented), but an Open ticket may just as well be one the agent has already answered, so Open does not say whose turn it is.
+- **Impact / scenario:** an agent answers a new, unassigned ticket and moves on. It is still Open, still Unassigned, indistinguishable in the queue from one nobody has looked at (apart from the SLA badge); a colleague takes it and answers again, or the lead sees a long "Open and Unassigned" list that is actually answered. For every later exchange, an Open ticket may be "waiting for us" or "waiting for them" and the queue cannot say which.
+- **Smallest recommended fix:** the owner's choice among: a per-department default for "status after a public reply" (for example Pending), an agent-reply automation trigger, or a last-speaker marker in the queue row. Do not add a new status.
+- **Decision required:** Yes. **Production blocker:** No.
+- **Related:** BE-007, UX (queue columns).
+
+### ITSM-002: Agents cannot hand a ticket to another team or colleague, and macros that do are invisible to them
+- **Classification:** confusing workflow / missing safeguard. **Severity:** Medium. **Confidence:** High.
+- **Evidence:** the Agent role holds `tickets.assign.self` only; `tickets.assign.any` belongs to Team Lead and Department Admin (`PermissionCatalogue.cs`, role grants). With self-assignment an agent may claim an unassigned ticket or release one they hold, leaving the team unchanged (`TicketService.RequireAssignmentRightsAsync`); changing the team or choosing another assignee needs assign.any. A macro whose actions need assignment is filtered out of the macro picker for anyone without the right (`Macros.cs`, `Needs(...).All(allowed.Contains)`), so it is not offered and not explained.
+- **Impact / scenario:** first-line escalation to a specialist team, the most common desk action after "reply", needs a team lead every time. An administrator who builds an "Escalate to Network" macro finds that agents never see it. The only handoff open to an agent is an internal note with an @mention, which tells a colleague but does not route the ticket.
+- **Smallest recommended fix:** the owner decides whether Agents may change the team (routing only, with assignee changes staying with leads) or whether the macro picker should show unavailable macros as disabled with a reason.
+- **Decision required:** Yes (this changes the permission model). **Production blocker:** No.
+- **Related:** UX (macro picker), PERMISSIONS.md.
+
+### ITSM-003: A ticket without a stored mailbox can never be answered by email, and nothing repairs it
+- **Classification:** broken (operationally impossible state, by an earlier locked decision). **Severity:** Medium. **Confidence:** High.
+- **Evidence:** the department default mailbox is chosen only when a ticket is created (`PortalRequestService.cs:369`); if the department has no default, or has several active mailboxes and none marked default, the portal ticket is stored with no mailbox. Public replies on such a ticket are recorded as not delivered (`no_ticket_mailbox`, `TicketService.cs:399`) and never fall back (locked rule). The project rules state that a human must assign a valid mailbox first and ask before designing that workflow; no such action exists. Portal requests are accepted whether or not a mailbox exists. The department setup overview does warn ("No mailbox", "No default mailbox").
+- **Impact / scenario:** the portal is switched on a week before the shared mailbox is connected, or an administrator removes the default. Every request created meanwhile can be answered in the portal only; the requester gets no email, the agent sees "not delivered", and connecting the mailbox later does not help those tickets. In a department that uses the portal only, ticket replies are never emailed by design, so requesters must be told to look at the portal.
+- **Smallest recommended fix:** a decision first: either refuse portal submissions (or disable the form) until the department has a usable default mailbox, or design the explicit "assign a mailbox to this ticket" action for an authorised user that the rules already anticipate. Until then, make the rollout order explicit in the setup guide: mailbox first, forms second.
+- **Decision required:** Yes. **Production blocker:** No, but settle it before the portal is opened to requesters.
+- **Related:** DOC-010, UX-005.
+
+## 19.3 Low
+
+### ITSM-004: The portal status "Waiting" does not say whose turn it is
+- **Classification:** confusing workflow (requester experience). **Confidence:** High. **Evidence:** Pending is defined as "waiting for the requester, a third party or another dependency" (`TICKETING.md`), and the portal maps it to the single label "Waiting" (`PortalRequestService.cs:23-37`); Open is "In progress". **Impact:** a requester who sees "Waiting" cannot tell whether they must reply or whether support is waiting on someone else; they either do not answer or chase unnecessarily. **Fix:** decide whether Pending always means "waiting for you" in requester language, or give the requester a plain line of explanation (for example "We are waiting for more information" versus "We are waiting on another team"). **Decision required:** Yes (wording and meaning). **Blocker:** No.
+
+### ITSM-005: Resolving or closing without a public message tells the requester nothing, and nothing ever closes a resolved ticket
+- **Classification:** safeguard (partly a known enhancement). **Confidence:** High. **Evidence:** a status change made without a reply sends no mail to anyone (only an agent public reply, or an acknowledgement at creation, is emailed); there are no timers: no auto-close and no reminder for Pending (BACKLOG lists auto-close timers). **Impact:** an agent who changes the status to Resolved from the properties rail leaves the requester unaware, and Resolved tickets remain Resolved until someone closes them or the requester writes back (which reopens them, by decision D-15). **Fix:** at minimum prompt the agent when resolving without a public reply, with the choice to send one now. Timers stay in the backlog. **Decision required:** Yes (whether to prompt, and whether silent resolution is acceptable). **Blocker:** No.
+- **Related:** BE-007.
+
+### ITSM-006: The department setup overview can say "1 active form" when no requester can use it
+- **Classification:** confusing workflow (admin). **Confidence:** High. **Evidence:** a new request form is created active and visible but restricted to "Selected people" with nobody selected (`FormsAdmin.cs:63-80`), and the overview counts active forms only (`DepartmentOverview.tsx`, "N active form(s)"); the warning "Requesters cannot raise tickets through the portal" appears only when there is no active form. The overview also has no row for acknowledgements, signatures, help topics or Knowledge. **Impact:** an administrator reads the overview as "portal ready" while the catalogue is empty for everyone. **Fix:** count forms that at least one requester can use, and add the acknowledgement setting to the overview. **Decision required:** No. **Blocker:** No.
+
+### ITSM-007: New email tickets are unrouted and only an administrator-built rule routes them
+- **Classification:** confusing workflow. **Confidence:** Medium. **Evidence:** a mailbox has no default team (only request forms do); an email ticket is created with no team and no assignee, so it appears in "Unassigned", "All" and the "No team" filter, not in anyone's Team queue. Routing needs an automation rule on ticket creation, which runs after commit (BE-004) and, for SLA, after the policy was chosen (BE-006). **Impact:** a department that relies on the Team queue sees new mail only when someone looks at Unassigned. The dashboard's Unassigned figure and the "No team" row mitigate this. **Fix:** none required; if it proves a problem, the smallest remedy is a default team on the mailbox (enhancement E-4). **Decision required:** No. **Blocker:** No.
+
+## 19.4 Enhancements (not defects; listed so they are not mistaken for defects)
+
+- **E-1. Notify a team when an unassigned ticket arrives in its queue.** Today only the assignee, followers and mentioned colleagues are notified. Listed in the backlog as a notification channel item.
+- **E-2. Notify the assignee or lead of an SLA warning or breach.** Warnings and breaches are visible in the queue and the dashboard and can run an automation, but nobody is notified. Backlog item (Phase 5).
+- **E-3. A view or dashboard figure for Pending tickets that have waited a long time.** The queue's age and the dashboard's ageing help, but waiting time per status is not shown.
+- **E-4. A default team on a mailbox,** so that email arrives already routed (see ITSM-007).
+
+## 19.5 Workflow strengths (do not disturb)
+
+- **Lifecycle:** four statuses with defined meaning, timestamps that follow status, atomic "reply and set status", reopen on requester reply with team and assignee kept, closed tickets protected from agent replies, merged tickets read-only and out of the queues.
+- **One conversation:** email and portal replies are one thread; public replies and Internal Notes are visually and technically separate; Internal Notes never reach the requester.
+- **Truthful delivery states:** the reply is shown as "accepted for delivery, not confirmed as delivered", with clear failed and uncertain states, an attention list, and no silent change of sender.
+- **Agent collaboration:** followers, @mentions limited to people who can read the note, in-app notifications, presence and a collision hint that never blocks.
+- **Work organisation:** My, Team, Unassigned, All and Following queues, saved views, default view, column choice, quick filters, search that includes message text but never hidden notes.
+- **Dashboard:** current-state figures that equal the queues they link to, no per-agent ranking.
+- **SLA:** business-hours calendars with holidays, pause on Pending by policy, new resolution cycle on reopen, first response measured by a human public reply (an acknowledgement does not count).
+- **Requester side:** request forms with explicit audiences and plain names, help topics ahead of forms, status in requester words, My Requests with live updates, article suggestions, Knowledge with owner and review date, requester-safe article links.
+- **Administration:** grouped department shell, a real overview with setup warnings, safe defaults (new forms restricted, mailbox sender never switched), audit of configuration changes, mailbox health.
+- **Merge and links:** same-department only, preserved provenance, related, duplicate and parent links, follower transfer.
+- **Macros:** manual actions, a public-reply macro only prepares a draft, never sends, never exceeds the caller's permissions.
+
+## 19.6 Could not be verified
+
+- How agents actually use the status-after-reply control and the queues day to day; findings ITSM-001, ITSM-002 and ITSM-007 are judged from the design and the code, not from observed use or from the DEMO screens.
+- The rules an administrator actually configures (the DEMO department has no automation rules), so the effect of BE-006 and ITSM-007 on a real configuration is reasoned, not measured.
+- Real email behaviour (Graph, threading, bounces): see section 16; nothing here depends on it except ITSM-003, which depends only on the stored mailbox.
+- Requester comprehension of the portal wording (ITSM-004); that needs a few real users.
+- Volumes: whether the queues and dashboard stay usable with thousands of open tickets.
