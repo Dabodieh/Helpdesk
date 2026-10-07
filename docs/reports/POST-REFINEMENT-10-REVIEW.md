@@ -16,14 +16,14 @@ The session limit interrupted the review. Only four of the ten specialist review
 | ITSM Product & Service Desk Lead | **Did not complete** (rate-limited; no findings returned) | ITSM |
 | Backend / Domain Engineer | **Did not complete** (rate-limited) | BE |
 | Microsoft 365 / Messaging Engineer | **Did not complete** (rate-limited) | MSG |
-| Security / Privacy Engineer | **Did not complete** (rate-limited) | SEC |
+| Security / Privacy Engineer | **Completed later (section 15)** | SEC |
 | Data / Reporting Engineer | **Did not complete** (rate-limited) | DATA |
 
 Completed specialists also returned their findings as text (the findings files in the scratchpad were not written, because subagents were refused file writes). All of their detail below is taken from those handbacks. Confidence is quoted where the specialist stated it; "not stated" means the handback did not give one. Every completed review was static and sampled, not exhaustive; their stated limits are in section 14.
 
 **Areas that remain UNREVIEWED.** The absence of findings in these areas is not evidence that they are sound.
 
-- **Security / Privacy (highest priority gap):** Department isolation on read and write paths, IDOR/BOLA, non-disclosure, Internal Note leakage paths, requester identity and audience enforcement, attachment security, XSS/sanitisation, audit completeness, logging privacy, and the new `article-links` and `queue-types` endpoints. Several UX/QA findings below ask for server-side confirmation (UX-009, UX-012, QA-004) that nobody has yet done.
+- **Security / Privacy (highest priority gap; now reviewed, see section 15, which supersedes this bullet):** Department isolation on read and write paths, IDOR/BOLA, non-disclosure, Internal Note leakage paths, requester identity and audience enforcement, attachment security, XSS/sanitisation, audit completeness, logging privacy, and the new `article-links` and `queue-types` endpoints. Several UX/QA findings below ask for server-side confirmation (UX-009, UX-012, QA-004) that nobody has yet done.
 - **Messaging (Graph/Exchange):** inbound sync, subscriptions, delta, threading, outbound state machine, uncertain-send reconciliation, NDR/loop suppression, mailbox health. D-16 evidence status was not re-assessed (it stays OPEN: simulator evidence only).
 - **Backend / Domain:** concurrency, data integrity, constraints, indexes, Hangfire job idempotency, SLA job correctness, migrations.
 - **Architecture:** module boundaries, outbox/transaction design, SignalR boundary, ADR gaps.
@@ -323,3 +323,155 @@ Open gates known from the project (not re-assessed by any completed specialist u
 - SRE: no Docker build or run, no restore drill, no live DB/container; ForwardedHeaders and EF advisory-lock behaviour unexercised.
 - QA: about 60 test files assessed by name inventory and grep, not read in depth; nothing was run; mail protocol and Fake-provider versus Graph fidelity not audited. Only QA-001 is a code-proven product defect; QA-002 to QA-004 are evidence gaps, not demonstrated bugs.
 - Not reviewed by anyone: the Refinement 9 and 10 backend code (queue preferences, queue filters, knowledge owner/review date, reply-link endpoint) beyond what the above touched.
+
+
+---
+
+# 15. Security / Privacy review (added after the partial report)
+
+Specialist: Security / Privacy Engineer (AGENTS.md section 12). Baseline: commit `081f660`, code unchanged since. Method: single agent, read-only, static reading of the code paths below plus a handful of read-only GET probes against the local dev API as the bootstrap Platform Admin (`dev-admin`, not a member of the DEMO department) to confirm one finding. No tests, builds or mutations were run; DEMO data was not changed. Existing Frontend/QA/SRE/Content findings were reused, not repeated; cross-references are given where they overlap.
+
+**Result in one line:** the ticket content boundary is well built (department scope filter on tickets/messages/requesters, 404 non-disclosure, per-ticket re-authorisation in bulk, Internal Note gates in REST, search, snippets, notifications, mentions, presence and SignalR). The one confirmed exposure is a Platform Admin side door through an administrative mail endpoint. The rest are abuse-control, attachment-policy and trust-assumption gaps.
+
+| Severity | Count |
+|---|---|
+| Critical | 0 |
+| High | 1 |
+| Medium | 3 |
+| Low | 8 |
+| Polish | 1 |
+| **Total** | **13** |
+
+Production blockers: **3** (SEC-001, SEC-002, SEC-003). Decisions required: **5** (SEC-002, SEC-004, SEC-006, SEC-007, SEC-012).
+
+## 15.1 High
+
+### SEC-001: Platform Admin reads sender addresses and subjects of any department's problem mail
+- **Specialist / category:** Security / Authorization, Privacy. **Severity:** High. **Confidence:** High (code read and confirmed at runtime).
+- **Evidence:** `GET /api/departments/{id}/mail/attention` is guarded by `RequirePermission(DepartmentMailboxesManage)` (`MailEndpoints.cs:55-57`). That is an administrative permission, which the authorisation handler grants to any Platform Admin for any existing department without a membership (`PermissionAuthorizationHandler.cs:44-48`). `MailboxService.AttentionAsync` (`MailboxService.cs:244-277`) filters only by `DepartmentId` and returns `Address` (the sender address) and `Subject` (first 200 characters) for Failed, Uncertain and Ignored mail; `MailDbContext` has no department scope filter. Runtime, as `dev-admin` (member only of IT Support): `GET .../IT Support (Demo)/mail/attention` returned 200 with 2 items containing `address` and `subject`, while `GET .../dashboard` for the same department returned 404. Values were not printed or recorded. The existing test only asserts the platform admin can list mailboxes (`MailAdminApiTests.cs:32`); none covers `attention`.
+- **Affected area:** Mail administration API; Platform Admin separation.
+- **Impact / abuse scenario:** a Platform Admin with no membership in HR calls the attention endpoint for HR and reads who emailed the HR mailbox and the subject lines of ignored, failed and uncertain mail (for example a subject naming an employee or a grievance). This is ticket-content metadata and breaks the locked rule that a Platform Admin gets no implicit Department content access. The ticket dashboard, queues and tickets correctly answer 404 for the same caller.
+- **Smallest recommended fix:** in `AttentionAsync`, return subject and sender address only when the caller also holds `tickets.read` in that department (by membership); otherwise return the operational fields (state, category, attempts, ids) with those two fields omitted. Add one test for a non-member Platform Admin.
+- **Decision required:** No. **Production blocker:** Yes (violates a hard rule).
+- **Related:** SEC-005, SEC-012 (same root cause: administrative permission plus data not covered by the scope filter).
+
+## 15.2 Medium
+
+### SEC-002: Attachment policy is a short extension blocklist with no scanner behind it (D-08)
+- **Specialist / category:** Security / Production Readiness. **Severity:** Medium. **Confidence:** High (code), the exposure depends on D-08 status.
+- **Evidence:** `AttachmentValidator.cs` blocks 26 executable and script extensions and checks magic bytes for common formats; everything else is stored and downloadable as `application/octet-stream`. Not blocked: macro-enabled Office (`docm`, `xlsm`, `pptm`), disk and container images (`iso`, `img`, `vhd`), `html`/`htm`/`svg`/`xhtml`, `url`/`scf`, `one`, `xll`, `msix`/`appx`. A `zip` passes on its signature alone. `RequireCleanScan=false` is accepted in Production (SRE-010).
+- **Impact / abuse scenario:** an external sender mails a macro-enabled workbook or an `.iso` containing malware to a department mailbox. It is ingested as an attachment of a ticket, and an agent downloads and opens it. With no scanner the blocklist is the only control, and download is not blocked while scan state is `NotScanned` unless `RequireCleanScan` is on. Download is correctly forced as an attachment with `nosniff` and an API CSP, so the risk is endpoint malware, not in-app XSS.
+- **Smallest recommended fix:** extend the blocked-type list for the extensions above, and make Production startup fail when `RequireCleanScan` is false (SRE-010) until a scanner exists.
+- **Decision required:** Yes (which additional types the organisation wants blocked, for example whether legitimate macro workbooks must be allowed after scanning). **Production blocker:** Yes (existing gate D-08).
+- **Related:** SRE-010.
+
+### SEC-003: No rate limiting or abuse controls on authenticated endpoints; large uploads are buffered in memory
+- **Specialist / category:** Security / Production Readiness. **Severity:** Medium. **Confidence:** High.
+- **Evidence:** no `AddRateLimiter` or request-size policy exists in `src` (the only throttle is the inbound mail sender window, `InboundProcessor.cs:145-152`). Portal create (`PortalRequestService.CreateAsync`) and reply have no per-account limit. A reply accepts up to 5 files of 25 MB each (`PortalRequestService.cs:86`, `AttachmentOptions.cs:9`), read into `byte[]` in memory. `ReadFormAsync` runs with framework default limits. Search uses `ILIKE '%term%'` over message bodies.
+- **Impact / abuse scenario:** any signed-in employee scripts the portal to create thousands of requests (each queueing an acknowledgement email) or posts concurrent 125 MB replies, exhausting memory, storage, the mail queue or database. A compromised low-privilege account can do this without any department membership.
+- **Smallest recommended fix:** add the built-in ASP.NET Core rate limiter (per-user policies for portal create, reply and search) and explicit request-body limits for the multipart endpoint. No new dependency.
+- **Decision required:** No (limits themselves are values to agree). **Production blocker:** Yes (abuse controls are a listed project gate).
+- **Related:** SRE-005, QA-004.
+
+### SEC-004: Merging tickets of different requesters shares one conversation with both people
+- **Specialist / category:** Security / Privacy. **Severity:** Medium. **Confidence:** Medium (code read; not run).
+- **Evidence:** `TicketMerge.cs` checks department and permission only; it does not compare requesters. `MailBridge.AddMessageAsync` (`MailBridge.cs:215-282`) sends later email replies for a merged source's thread to the canonical ticket as public Requester messages with the sender as author. The portal shows all public messages of the canonical ticket to its requester, labelling other authors "Another participant" (`PortalRequestService.cs:224-230`). The merge dialog shows the candidate's requester name but gives no warning.
+- **Impact / abuse scenario:** an agent merges Ana's ticket (source) into Ben's (canonical) as a "duplicate". Ana replies by email; her message and its text now appear in Ben's portal request, and Ben's replies and agent replies on the canonical thread go to Ben only. Neither requester expects to share a thread with a stranger. This is within one department and only after an agent action, but it discloses a requester's words to another requester.
+- **Smallest recommended fix:** the options are product decisions (see below).
+- **Decision required:** Yes: (a) allow it but warn the agent in the merge dialog when requesters differ, (b) block merge across different requesters, or (c) keep as is. **Production blocker:** No.
+- **Related:** ITSM review (not yet run); SEC-006.
+
+## 15.3 Low
+
+### SEC-005: Automation execution history is not covered by the department scope filter
+- **Category:** Authorization. **Confidence:** Medium (code read; DEMO has no rules, so not confirmed at runtime).
+- **Evidence:** `AutomationExecution` has no `HasQueryFilter` (the scoped entities are Ticket, Message, Requester, TicketSla, SlaEvent, TicketFieldValue, TicketFollower, TicketLink, TicketParticipant, CannedResponse). `GET /api/departments/{id}/automations/history` requires `department.automation.manage` (administrative, so a Platform Admin passes) and returns `TicketReference`, rule names, outcomes and condition traces (`AutomationAdmin.cs:171-196`). Traces never hold the subject (it is null by design, `Conditions.cs:206`) but do hold `RequesterDomain`.
+- **Impact / abuse scenario:** a Platform Admin without membership lists which tickets (by reference) a department's rules fired on and the requester domains. Metadata only, same root cause as SEC-001.
+- **Smallest recommended fix:** return history only to callers who also hold `tickets.read` in that department, or add a department scope filter to the execution entity.
+- **Decision required:** No. **Production blocker:** No. **Related:** SEC-001, SEC-012.
+
+### SEC-006: A correlated inbound email is accepted from any sender into an existing ticket
+- **Category:** Messaging / Security. **Confidence:** Low-Medium (needs the Messaging review to confirm what the correlation evidence can be).
+- **Evidence:** headers and our correlation token decide the ticket (`InboundProcessor.cs:260-289`); `MailBridge.AddMessageAsync` then adds a public Requester message authored by whatever address sent it, appears to the ticket's requester as "Another participant", and reopens the ticket (D-15). There is no check that the sender is the requester or a participant.
+- **Impact / abuse scenario:** a person who obtains a ticket's `Message-ID` or token (for example from a forwarded email) sends mail with the matching `In-Reply-To` to the department mailbox. Their text appears on the victim's ticket and reopens it.
+- **Smallest recommended fix:** none until the product decision is made.
+- **Decision required:** Yes (should replies from addresses that are not the requester or a participant be attached, held for review, or become a new ticket?). **Production blocker:** No.
+- **Related:** SEC-004; Messaging review pending.
+
+### SEC-007: Entra `email`/`preferred_username` is treated as a verified address
+- **Category:** Authentication. **Confidence:** Medium.
+- **Evidence:** `EntraClaimsReader.cs:26-29` takes `email`, else `preferred_username`; the requester identity code describes it as "verified" (`RequesterIdentityService.cs` class summary) and uses it to link an existing requester row that has no ticket history (`:43-61`) and to overwrite the linked requester's contact address and name on each portal use (`RefreshContactAsync`). Entra does not guarantee that these claims are verified or immutable by the tenant.
+- **Impact / abuse scenario:** someone who can set their own mail attribute or UPN in the tenant (a guest, or an account with directory write access) sets it to a colleague's address. If the colleague has an unused requester row in a department, the attacker's portal use links it, and the colleague later gets "already linked to a different account" for that department. The reply address on that requester follows the attacker's claim. The precondition is tenant-level attribute control, so this is a trust assumption more than an open hole.
+- **Smallest recommended fix:** state the assumption (tenant-controlled attributes) in the security notes, or additionally require the immutable account identifier (already stored) to match before any address-based link.
+- **Decision required:** Yes (accept the tenant-trust assumption or tighten linking). **Production blocker:** No.
+
+### SEC-008: Any Department Admin can search the whole organisation's directory
+- **Category:** Privacy. **Confidence:** High.
+- **Evidence:** `GET /api/users/lookup` allows any caller with `department.members.manage` in any department (`UserEndpoints.cs:39-55`) to search all active users by name or email (minimum length and a result cap apply, `PlatformUserService.cs:65-80`).
+- **Impact:** a Department Admin can enumerate names and email addresses of staff who have no relationship to their department. Needed for adding members, but broader than required.
+- **Smallest recommended fix:** none required now; consider returning email only on an exact or prefix match, or restricting to users with no member-only filter. **Decision required:** No. **Production blocker:** No.
+
+### SEC-009: SignalR hub has no WebSocket origin allow-list
+- **Category:** Security (defence in depth). **Confidence:** Low (relies on the framework default, not checked at runtime).
+- **Evidence:** `services.AddSignalR()` only (`TicketingModule.cs:52`); no `UseWebSockets`/`AllowedOrigins`. The negotiate POST is CSRF-protected (the client sends the antiforgery header) and the session cookie is `SameSite=Lax`.
+- **Impact / abuse scenario:** a page on a sibling origin of the same site could open a skip-negotiation WebSocket carrying the victim's cookie and receive content-free ticket events (ids, references, department ids) or set presence as the victim. Cross-site origins are blocked by `SameSite=Lax`.
+- **Smallest recommended fix:** configure an explicit allowed-origin list. **Decision required:** No. **Production blocker:** No.
+
+### SEC-010: Sanitiser keeps `data:` links in HTML mail and signatures
+- **Category:** Security. **Confidence:** High (code), exploitation unlikely.
+- **Evidence:** `MailText.cs:36-52` allows the `data` scheme and restricts only `img`; `a href="data:text/html,…"` is kept. Inbound HTML is shown in a sandboxed frame without scripts (safe in-app), but signature HTML is sent to external recipients.
+- **Impact:** a crafted link survives in outbound mail or inbound display. In-app impact is negligible because of the sandbox and CSP. **Smallest fix:** allow `data:` only for `img` (`data:image/`). **Decision required:** No. **Production blocker:** No.
+
+### SEC-011: Document responses carry no clickjacking or content-type headers
+- **Category:** Deployment / Security. **Confidence:** High.
+- **Evidence:** `Program.cs:98-114` sets `nosniff`, `Referrer-Policy` and a restrictive CSP only on `/api` responses; the host does not serve the SPA (SRE-001), so no `frame-ancestors`, CSP or `X-Frame-Options` exists for the application page.
+- **Impact:** once deployed, the page can be framed by another site (clickjacking on destructive buttons) unless the serving layer adds headers. **Fix:** set CSP with `frame-ancestors 'none'`, `nosniff` and `Referrer-Policy` on the SPA when the production serving design (SRE-001) is made. **Decision required:** No. **Production blocker:** No (fold into SRE-001).
+
+### SEC-012: Platform Admin's reach over non-content department data is implicit and undocumented
+- **Category:** Authorization. **Confidence:** High.
+- **Evidence:** by `PermissionKind.Administrative`, a Platform Admin passes every `department.*.manage` permission without membership. Beyond SEC-001/SEC-005 this includes retrying and re-sending failed mail with duplicate risk (`MailEndpoints.cs:59-64`), reading and editing Knowledge drafts, request-form audience user lists, member lists, and the department audit view (organisation events only).
+- **Impact:** configuration data and operational actions, not ticket content, but the boundary is not written down and these actions are not gated by the "no implicit content access" rule.
+- **Smallest recommended fix:** list explicitly (in `PERMISSIONS.md`) which administrative capabilities a Platform Admin keeps. **Decision required:** Yes (confirm the intended boundary, in particular mail retry and Knowledge draft access). **Production blocker:** No.
+
+## 15.4 Polish
+
+### SEC-013: Knowledge markdown accepts `/\host` as an in-app link
+- **Category:** Visual Polish / Security hygiene. **Confidence:** Medium.
+- **Evidence:** `markdown.tsx:9` accepts a link beginning with `/` unless the next character is `/`; `/\evil.example` passes and browsers treat it like `//evil.example`. The server's `ReturnUrl.Sanitize` rejects backslashes, the client does not.
+- **Impact:** none beyond what an author can already do with an `https://` link, but it can make an external link look in-app (`target` is not set for it). **Fix:** reject `\` in `safeHref`. **Decision required:** No. **Production blocker:** No.
+
+## 15.5 Cross-references to earlier findings
+
+- **UX-009 (BulkBar hidden team/assignee):** server enforcement confirmed. `BulkOneAsync` re-checks `tickets.update`, assignment rights and `ValidateTeamAsync`/`ValidateAssigneeAsync` against each ticket's own department; a foreign team or ineligible assignee returns `invalid` for that ticket (same message for missing and foreign IDs, so no existence oracle). The UI issue stands as a clarity defect only.
+- **UX-012:** UX only, the server authorises `tickets.reply` against the ticket's department.
+- **SRE-010 / SEC-002:** `RequireCleanScan=false` accepted in Production strengthens SEC-002.
+- **SRE-001 / SEC-011:** serving design must add document security headers.
+- **QA-004 / SEC-003:** concurrency and abuse of the portal reply path.
+
+## 15.6 Areas reviewed with no issue found
+
+- **Department scope filter and 404 non-disclosure:** Tickets, messages, requesters, SLA, followers, links, participants and field values carry the global scope filter; resource endpoints resolve the ticket through it, then check permission against the stored department (`ResourceAuthorization.cs`). `IgnoreDepartmentScope()` is used only in portal, mail-bridge, automation and system paths, and the calls I read (portal, mail bridge, notifications, presence, realtime) filter by explicit department or owner id; the remaining automation and SLA calls were listed, not read in full.
+- **Client-supplied IDs:** ticket create (`requesterId`, team, assignee, mailbox, type), bulk, macros (macro, canned, type, team, assignee all re-validated against the ticket's department), merge and links (cross-department answers 409 only after the ticket is visible), follower targets (must hold `tickets.read`), request forms and Help Topics (form must belong to the department), saved-view and queue-preference default views (owner only). Foreign and missing team/user IDs give the same error text.
+- **Internal Notes:** excluded in the query for callers without `tickets.notes.read` (messages list, activity, search body match and snippets), never selected in the portal, notification and mention paths re-check note access at creation and at read, realtime note events go to a separate group that requires note access, presence downgrades "writing a note" to "viewing" without it. Every role that can read tickets also has note access today.
+- **Portal:** requester ownership is by explicit link, never address; merged requests fail closed; attachments only for public messages; idempotency keys include the requester id; reply author labelling does not expose other requesters' names.
+- **Request Form audiences and Help Topics:** one shared `PortalFormAccess` decision for catalogue, metadata and submission; topics exist only if their form is usable by the caller.
+- **Knowledge:** Published slot only, audience and active category rules in one shared predicate; reply-link endpoint requires `tickets.reply`, a linked active account and the ticket's own department; maintenance endpoints are department-scoped and owner eligibility is validated; no draft or archived article reaches a requester.
+- **New endpoints:** `queue-types` (route department plus `tickets.read`), `queue-preferences` (own row only, view ownership checked), `article-links` (above): no issues beyond SEC-001's general pattern, which they do not share.
+- **SignalR:** group names are server-decided, the only client-callable method (`SetPresence`) is membership-checked, payloads carry ids and kinds only, requester events use a separate group and coarse kinds.
+- **XSS:** React text rendering by default; markdown renderer builds React nodes (no raw HTML) with a scheme allow-list; email HTML is sanitised server-side and shown in a sandboxed, script-less frame with a restrictive CSP; signature and acknowledgement placeholders are HTML-encoded; stored signature HTML is sanitised before saving.
+- **Authentication and session:** single-tenant issuer and `tid` pinning, PKCE, state and nonce, `oid` as the stable subject, per-request active-user validation, `HttpOnly` / `SameSite` cookies, antiforgery on every unsafe endpoint except the Graph webhooks, `returnUrl` sanitised, dev sign-in guarded by environment (SRE verified).
+- **Webhooks:** per-subscription client-state secret stored hashed and compared in constant time, body size limited, handshake echo served as `text/plain` with `nosniff`.
+- **Audit and logging:** platform audit is limited to organisation and identity categories; audit rows resist update/delete (asserted in the existing audit tests); ActionResult never stores note text; log templates use codes and ids, no addresses, subjects or bodies; no committed secrets found (`git grep`).
+- **Attachments (delivery side):** attachment-only `Content-Disposition`, our own content-type table, filename sanitising, path stripping, composite department+ticket+id lookup, private object keys.
+- **Hangfire dashboard:** read-only and limited to Platform Admins; jobs carry ids only.
+
+## 15.7 Could not be verified
+
+- Runtime behaviour of `article-links`, `queue-types` and `queue-preferences` (the dev API may predate commit `081f660`); these were judged from code.
+- SEC-005 at runtime (the DEMO department has no automation rules).
+- SEC-009: the default WebSocket origin behaviour of the framework was recalled, not exercised.
+- Live Entra claim behaviour (SEC-007) and anything involving a real Graph tenant (D-16 stays open; Messaging review pending).
+- Object-store access policy in a real deployment (only the dev compose file exists, SRE-001).
+- Agent-side upload endpoints and the full set of attachment size/scan flows beyond the validator and download path.
+- No fuzzing of guessed IDs across every endpoint was run; coverage came from reading the authorisation pattern and its use. The existing isolation test matrix was not run (and not reviewed beyond noting its coverage).
+- Components for markdown/RichText beyond the files named above; exhaustive review of every admin screen's rendering.
