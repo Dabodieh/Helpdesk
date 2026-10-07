@@ -316,10 +316,27 @@ internal sealed partial class MailboxService(
 
         if (message.Direction == MessageDirections.Outbound)
         {
+            // A confirmed non-delivery report means the earlier send reached the provider: clear the draft so the retry is a genuine new send (see MailOutbox.RetryAsync).
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
             var now = clock.GetUtcNowMicroseconds();
-            await db.Database.ExecuteSqlAsync(
-                $"UPDATE mail.messages SET state = 'Queued', attempts = 0, last_error = NULL, next_attempt_at = {now}, delivery_reported_at = NULL, updated_at = {now} WHERE id = {mailMessageId} AND department_id = {departmentId} AND state = 'Failed'",
+            var ndr = MailErrorCodes.NdrDeliveryFailed;
+            var resent = await db.Database.ExecuteSqlAsync(
+                $"UPDATE mail.messages SET state = 'Queued', attempts = 0, last_error = NULL, provider_draft_id = CASE WHEN last_error = {ndr} THEN NULL ELSE provider_draft_id END, next_attempt_at = {now}, delivery_reported_at = NULL, updated_at = {now} WHERE id = {mailMessageId} AND department_id = {departmentId} AND state = 'Failed' AND last_error = {ndr}",
                 ct);
+            if (resent == 1)
+            {
+                await audit.WriteAsync(
+                    MailAuditActions.ResentAfterBounce, MailAudit.MessageObject, mailMessageId, departmentId,
+                    new { state = MessageStates.Failed, error = ndr }, new { state = MessageStates.Queued, resend = true }, ct);
+            }
+            else
+            {
+                await db.Database.ExecuteSqlAsync(
+                    $"UPDATE mail.messages SET state = 'Queued', attempts = 0, last_error = NULL, next_attempt_at = {now}, delivery_reported_at = NULL, updated_at = {now} WHERE id = {mailMessageId} AND department_id = {departmentId} AND state = 'Failed'",
+                    ct);
+            }
+
+            await tx.CommitAsync(ct);
             scheduler.EnqueueSend(mailMessageId);
             return null;
         }

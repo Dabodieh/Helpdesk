@@ -382,7 +382,7 @@ internal sealed class InboundTicketSink(
 /// <summary><see cref="IDeliveryStateSink"/>: Mail reports how an agent's public reply ended. Only the delivery columns of that message change.</summary>
 internal sealed class DeliveryStateSink(TicketingDbContext db, TicketingAudit audit, ITicketEvents events) : IDeliveryStateSink
 {
-    public async Task SetAsync(Guid departmentId, Guid ticketMessageId, string state, string? failureCode, CancellationToken cancellationToken = default)
+    public async Task SetAsync(Guid departmentId, Guid ticketMessageId, string state, string? failureCode, long sequence, CancellationToken cancellationToken = default)
     {
         var target = state switch
         {
@@ -395,16 +395,33 @@ internal sealed class DeliveryStateSink(TicketingDbContext db, TicketingAudit au
         await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
         var message = await db.Messages.IgnoreDepartmentScope().SingleOrDefaultAsync(
             m => m.Id == ticketMessageId && m.DepartmentId == departmentId && m.Kind == MessageKind.Public && m.AuthorType == AuthorType.Agent, cancellationToken);
-        if (message is null || message.DeliveryState == target)
+        if (message is null || sequence <= message.DeliveryReportSequence)
         {
+            // Unknown message, a repeat (equal) or a stale report (lower): never regress, never repeat work.
             await tx.RollbackAsync(cancellationToken);
             return;
         }
 
         var previous = message.DeliveryState;
         var error = target == DeliveryState.Failed ? (failureCode is { Length: > 200 } ? failureCode[..200] : failureCode) : null;
-        await db.Messages.IgnoreDepartmentScope().Where(m => m.Id == ticketMessageId && m.DepartmentId == departmentId)
-            .ExecuteUpdateAsync(s => s.SetProperty(m => m.DeliveryState, target).SetProperty(m => m.DeliveryError, error), cancellationToken);
+
+        // The ordering check is part of the write itself, so two concurrent reports cannot both pass it.
+        var applied = await db.Messages.IgnoreDepartmentScope().Where(m => m.Id == ticketMessageId && m.DepartmentId == departmentId && m.DeliveryReportSequence < sequence)
+            .ExecuteUpdateAsync(
+                s => s.SetProperty(m => m.DeliveryState, target).SetProperty(m => m.DeliveryError, error).SetProperty(m => m.DeliveryReportSequence, sequence), cancellationToken);
+        if (applied == 0)
+        {
+            await tx.RollbackAsync(cancellationToken);
+            return;
+        }
+
+        if (previous == target && message.DeliveryError == error)
+        {
+            // A newer report that says what the ticket already shows: only the sequence moves.
+            await tx.CommitAsync(cancellationToken);
+            return;
+        }
+
         await audit.WriteSystemAsync(
             TicketAuditActions.MessageDeliveryChanged, TicketingAudit.TicketObject, message.TicketId, departmentId,
             new { messageId = ticketMessageId, delivery = previous.ToString() }, new { messageId = ticketMessageId, delivery = target.ToString(), error }, cancellationToken);

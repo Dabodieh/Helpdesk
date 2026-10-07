@@ -2,7 +2,9 @@
 using System.Net;
 using Helpdesk.Host.Tests.Infrastructure;
 using Helpdesk.Host.Tests.Ticketing;
+using Helpdesk.Modules.Mail.Contracts;
 using Helpdesk.Modules.Mail.Providers;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Helpdesk.Host.Tests.Mail;
 
@@ -136,6 +138,101 @@ public sealed class GraphDeliveryConfidenceTests(HelpdeskFixture fixture) : ICla
         Assert.Equal(messagesBefore, (await s.D.Agent.MessagesAsync(s.TicketId)).Count); // not a requester message
         Assert.Equal(sentBefore, fixture.Fake().SentMail(s.Box.Address).Count); // no acknowledgement or other mail was triggered
         Assert.Equal(1, await fixture.CountAsync("SELECT count(*) FROM mail.messages WHERE mailbox_id = @m AND direction = 'Inbound' AND state = 'Ignored' AND ignore_reason IS NOT NULL AND flags LIKE '%ndr_correlated%'", TicketKit.P("m", s.Box.Id)));
+    }
+
+    private Task<long> TicketSequenceAsync(Guid ticketMessageId) =>
+        fixture.ScalarAsync<long>("SELECT delivery_report_seq FROM ticketing.messages WHERE id = @m", TicketKit.P("m", ticketMessageId));
+
+    private Task ReportAsync(Guid departmentId, Guid ticketMessageId, string state, string? code, long sequence) =>
+        fixture.WithScopeAsync(sp => sp.GetRequiredService<IDeliveryStateSink>().SetAsync(departmentId, ticketMessageId, state, code, sequence));
+
+    [Fact]
+    public async Task A_delivery_report_is_applied_only_when_its_sequence_is_higher_than_the_highest_accepted()
+    {
+        var s = await StartAsync();
+        (await s.D.Agent.PostMessageAsync(s.TicketId, "Public", "Ordered reports")).Expect(HttpStatusCode.Created);
+        await fixture.DispatchAsync();
+        var messageId = (await s.D.Agent.MessagesAsync(s.TicketId)).Single(m => m.Str("body") == "Ordered reports").GetProperty("id").GetGuid();
+        var departmentId = s.D.Department.Id;
+        var seq = await TicketSequenceAsync(messageId);
+        Assert.True(seq > 0);
+        Assert.Equal("Sent", (await TicketMessageAsync(s.D, s.TicketId, "Ordered reports")).Delivery);
+
+        // Newer: accepted, state and sequence move.
+        await ReportAsync(departmentId, messageId, MailDeliveryStates.Failed, "delivery_failed", seq + 1);
+        Assert.Equal("Failed", (await TicketMessageAsync(s.D, s.TicketId, "Ordered reports")).Delivery);
+        Assert.Equal(seq + 1, await TicketSequenceAsync(messageId));
+        var audits = await fixture.CountAuditAsync("ticket.message_delivery_changed", s.TicketId);
+
+        // Older (arriving afterwards): ignored, nothing regresses.
+        await ReportAsync(departmentId, messageId, MailDeliveryStates.Sent, null, seq);
+        Assert.Equal("Failed", (await TicketMessageAsync(s.D, s.TicketId, "Ordered reports")).Delivery);
+        Assert.Equal(seq + 1, await TicketSequenceAsync(messageId));
+
+        // Equal (a repeat, even carrying a different state): idempotent, no regression and no repeated work.
+        await ReportAsync(departmentId, messageId, MailDeliveryStates.Failed, "delivery_failed", seq + 1);
+        await ReportAsync(departmentId, messageId, MailDeliveryStates.Sent, null, seq + 1);
+        Assert.Equal("Failed", (await TicketMessageAsync(s.D, s.TicketId, "Ordered reports")).Delivery);
+        Assert.Equal(audits, await fixture.CountAuditAsync("ticket.message_delivery_changed", s.TicketId));
+
+        // A still newer report is accepted again.
+        await ReportAsync(departmentId, messageId, MailDeliveryStates.Sent, null, seq + 2);
+        Assert.Equal("Sent", (await TicketMessageAsync(s.D, s.TicketId, "Ordered reports")).Delivery);
+        Assert.Equal(seq + 2, await TicketSequenceAsync(messageId));
+    }
+
+    private async Task<Guid> BounceAsync(Dept d, Mailbox box, Guid ticketId, string body)
+    {
+        (await d.Agent.PostMessageAsync(ticketId, "Public", body)).Expect(HttpStatusCode.Created);
+        await fixture.DispatchAsync();
+        var sent = Assert.Single(fixture.Fake().SentMail(box.Address));
+        var report = new FakeInbound(
+            box.Address, $"postmaster@{MailKit.NewSender().Split('@')[1]}", "Undeliverable: " + sent.Subject, "Postmaster", $"Your message could not be delivered.\n\n[hd:{sent.Token}]",
+            Headers: new Dictionary<string, string> { ["Content-Type"] = "multipart/report; report-type=delivery-status", ["Auto-Submitted"] = "auto-replied" });
+        await fixture.ReceiveAsync(box, report);
+        await fixture.DispatchAsync();
+        Assert.Equal(("Failed", "ndr_delivery_failed"), await OutboundAsync(ticketId, body));
+        return (await d.Agent.MessagesAsync(ticketId)).Single(m => m.Str("body") == body).GetProperty("id").GetGuid();
+    }
+
+    [Fact]
+    public async Task Retrying_a_reply_after_a_confirmed_bounce_is_a_genuine_second_send_and_is_audited_as_a_resend()
+    {
+        var s = await StartAsync();
+        var messageId = await BounceAsync(s.D, s.Box, s.TicketId, "Retry after bounce");
+        var mailId = await fixture.ScalarAsync<Guid>("SELECT id FROM mail.messages WHERE ticket_id = @t AND direction = 'Outbound'", TicketKit.P("t", s.TicketId));
+        var bounceSeq = await TicketSequenceAsync(messageId);
+        Assert.Equal(bounceSeq, await fixture.ScalarAsync<long>("SELECT delivery_seq FROM mail.messages WHERE id = @m", TicketKit.P("m", mailId)));
+
+        var retried = (await s.D.Agent.Client.PostAsync($"/api/tickets/{s.TicketId}/messages/{messageId}/retry-delivery")).Expect(HttpStatusCode.OK);
+        Assert.Equal("Pending", retried.Json.Str("deliveryState"));
+        await fixture.DispatchAsync();
+
+        Assert.Equal(2, fixture.Fake().SentMail(s.Box.Address).Count); // the bounced copy in Sent Items was not mistaken for the retry
+        Assert.Equal("Sent", (await OutboundAsync(s.TicketId, "Retry after bounce")).State);
+        Assert.Equal("Sent", (await TicketMessageAsync(s.D, s.TicketId, "Retry after bounce")).Delivery);
+        Assert.Equal(1, await fixture.CountAuditAsync("mail.resent_after_bounce", mailId));
+
+        // The newer Sent report was accepted after the bounce report: the sequence moved forward and both sides agree.
+        var sentSeq = await TicketSequenceAsync(messageId);
+        Assert.True(sentSeq > bounceSeq);
+        Assert.Equal(sentSeq, await fixture.ScalarAsync<long>("SELECT delivery_seq FROM mail.messages WHERE id = @m", TicketKit.P("m", mailId)));
+    }
+
+    [Fact]
+    public async Task The_administrator_retry_of_a_bounced_reply_is_also_a_genuine_second_send_and_is_audited_as_a_resend()
+    {
+        var s = await StartAsync();
+        await BounceAsync(s.D, s.Box, s.TicketId, "Admin retry after bounce");
+        var mailId = (await s.D.Admin.Client.GetAsync($"{s.D.Department.Url}/mail/attention")).Expect(HttpStatusCode.OK).Json.GetProperty("items").EnumerateArray()
+            .Single(i => i.Str("state") == "Failed" && i.Str("direction") == "Outbound").GetProperty("id").GetGuid();
+
+        (await s.D.Admin.Client.PostAsync($"{s.D.Department.Url}/mail/{mailId}/retry")).Expect(HttpStatusCode.NoContent);
+        await fixture.DispatchAsync();
+
+        Assert.Equal(2, fixture.Fake().SentMail(s.Box.Address).Count);
+        Assert.Equal("Sent", (await OutboundAsync(s.TicketId, "Admin retry after bounce")).State);
+        Assert.Equal(1, await fixture.CountAuditAsync("mail.resent_after_bounce", mailId));
     }
 
     [Fact]

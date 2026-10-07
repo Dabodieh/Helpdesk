@@ -130,6 +130,7 @@ internal sealed class MailDbContext(DbContextOptions<MailDbContext> options) : D
             e.Property(x => x.TicketReference).HasColumnName("ticket_reference").HasMaxLength(32);
             e.Property(x => x.RequestedByUserId).HasColumnName("requested_by_user_id");
             e.Property(x => x.DeliveryReportedAt).HasColumnName("delivery_reported_at");
+            e.Property(x => x.DeliverySeq).HasColumnName("delivery_seq").HasDefaultValue(0L).ValueGeneratedOnAddOrUpdate();
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
 

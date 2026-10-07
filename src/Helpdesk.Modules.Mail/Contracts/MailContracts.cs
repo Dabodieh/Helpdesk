@@ -145,7 +145,11 @@ public interface IDeliveryStateSink
 {
     /// <param name="state">One of <see cref="MailDeliveryStates"/>.</param>
     /// <param name="failureCode">Short machine code when failed (never provider text or message content).</param>
-    Task SetAsync(Guid departmentId, Guid ticketMessageId, string state, string? failureCode, CancellationToken cancellationToken = default);
+    /// <param name="sequence">
+    /// Monotonic order of the outbound message's state changes. The sink applies a report only when it is higher than the highest it has accepted for that message;
+    /// an equal or lower value is ignored (a repeat or a stale report), so every caller gets the same ordering guarantee.
+    /// </param>
+    Task SetAsync(Guid departmentId, Guid ticketMessageId, string state, string? failureCode, long sequence, CancellationToken cancellationToken = default);
 }
 
 // ---- Background execution seam (Hangfire lives in the Host; Mail only knows these) -------------------------------------------

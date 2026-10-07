@@ -236,6 +236,9 @@ internal sealed class Message
     /// <summary>Short machine code of a failed delivery (never provider text or content).</summary>
     public string? DeliveryError { get; set; }
 
+    /// <summary>Highest delivery-report sequence accepted from Mail for this message (a report with an equal or lower value is stale or a repeat and is ignored).</summary>
+    public long DeliveryReportSequence { get; set; }
+
     /// <summary>Idempotency key of the producer (the mail message id for email); unique per department and source.</summary>
     public string? SourceRef { get; set; }
 

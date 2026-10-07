@@ -98,7 +98,7 @@ public sealed class MailOutboundTests(HelpdeskFixture fixture) : IClassFixture<H
 
         // Pretend telling Ticketing failed: the row is Sent but unreported and the ticket still says Pending.
         await fixture.ExecuteAsync("UPDATE mail.messages SET delivery_reported_at = NULL WHERE ticket_id = @t AND direction = 'Outbound'", TicketKit.P("t", s.TicketId));
-        await fixture.ExecuteAsync("UPDATE ticketing.messages SET delivery_state = 'Pending' WHERE ticket_id = @t AND author_type = 'Agent'", TicketKit.P("t", s.TicketId));
+        await fixture.ExecuteAsync("UPDATE ticketing.messages SET delivery_state = 'Pending', delivery_report_seq = 0 WHERE ticket_id = @t AND author_type = 'Agent'", TicketKit.P("t", s.TicketId));
         await fixture.DispatchAsync();
 
         Assert.Equal("Sent", await DeliveryAsync(s.D, s.TicketId, "Report me"));

@@ -1,11 +1,13 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Helpdesk.Modules.Audit.Contracts;
 using Helpdesk.Modules.Mail.Contracts;
 using Helpdesk.Modules.Mail.Domain;
 using Helpdesk.Modules.Mail.Persistence;
 using Helpdesk.Modules.Mail.Providers;
 using Helpdesk.SharedKernel.Database;
+using Helpdesk.SharedKernel.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
@@ -18,7 +20,7 @@ namespace Helpdesk.Modules.Mail.Services;
 /// The outbox side used by Ticketing: the reply row is inserted on the caller's own connection and transaction, so the ticket
 /// message and its outbound mail commit or roll back together (nothing is "sent" that the ticket does not show, and vice versa).
 /// </summary>
-internal sealed class MailOutbox(IMailJobScheduler scheduler, TimeProvider clock) : IMailOutbox
+internal sealed class MailOutbox(IMailJobScheduler scheduler, TimeProvider clock, IAuditWriter auditWriter, ICurrentUser current) : IMailOutbox
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -147,16 +149,44 @@ internal sealed class MailOutbox(IMailJobScheduler scheduler, TimeProvider clock
         var now = clock.GetUtcNowMicroseconds();
         await using var command = caller.Database.GetDbConnection().CreateCommand();
         command.Transaction = caller.Database.CurrentTransaction.GetDbTransaction();
+        // A confirmed non-delivery report means the earlier send DID reach the provider: the old draft and its Sent Items copy must not be mistaken for this retry,
+        // so the draft id is cleared and the retry creates a new draft (a deliberate re-send). Any other failure keeps its draft (the sender then reconciles first).
         command.CommandText =
             """
-            UPDATE mail.messages SET state = 'Queued', attempts = 0, last_error = NULL, next_attempt_at = @now, delivery_reported_at = NULL, updated_at = @now
-            WHERE department_id = @department_id AND ticket_message_id = @ticket_message_id AND direction = 'Outbound' AND state = 'Failed'
-            RETURNING id
+            UPDATE mail.messages m SET state = 'Queued', attempts = 0, last_error = NULL, next_attempt_at = @now, delivery_reported_at = NULL, updated_at = @now,
+                provider_draft_id = CASE WHEN o.last_error = @ndr THEN NULL ELSE m.provider_draft_id END
+            FROM (SELECT id, last_error FROM mail.messages
+                  WHERE department_id = @department_id AND ticket_message_id = @ticket_message_id AND direction = 'Outbound' AND state = 'Failed' FOR UPDATE) o
+            WHERE m.id = o.id
+            RETURNING m.id, (o.last_error = @ndr)
             """;
+        command.Parameters.Add(new NpgsqlParameter("ndr", MailErrorCodes.NdrDeliveryFailed));
         command.Parameters.Add(new NpgsqlParameter("now", now));
         command.Parameters.Add(new NpgsqlParameter("department_id", departmentId));
         command.Parameters.Add(new NpgsqlParameter("ticket_message_id", ticketMessageId));
-        return await command.ExecuteScalarAsync(cancellationToken) is Guid id ? id : null;
+        Guid id;
+        bool resend;
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+        {
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                return null;
+            }
+
+            id = reader.GetGuid(0);
+            resend = !reader.IsDBNull(1) && reader.GetBoolean(1);
+        }
+
+        if (resend)
+        {
+            await auditWriter.WriteAsync(
+                new AuditEntry(
+                    AuditCategories.Mail, MailAuditActions.ResentAfterBounce, MailAudit.MessageObject, id, departmentId, current.UserId, current.DisplayName,
+                    new { state = MessageStates.Failed, error = MailErrorCodes.NdrDeliveryFailed }, new { state = MessageStates.Queued, resend = true }),
+                caller, cancellationToken);
+        }
+
+        return id;
     }
 }
 
@@ -394,7 +424,8 @@ internal sealed class OutboundSender(
         {
             // Ticketing only learns "submitted" or "not (confirmed) submitted" plus a safe category. Neither means delivered.
             await delivery.SetAsync(
-                message.DepartmentId, ticketMessageId, message.State == MessageStates.Sent ? MailDeliveryStates.Sent : MailDeliveryStates.Failed, MailErrors.Category(message.LastError), ct);
+                message.DepartmentId, ticketMessageId, message.State == MessageStates.Sent ? MailDeliveryStates.Sent : MailDeliveryStates.Failed, MailErrors.Category(message.LastError),
+                message.DeliverySeq, ct);
             message.DeliveryReportedAt = clock.GetUtcNowMicroseconds();
             await db.SaveChangesAsync(ct);
         }

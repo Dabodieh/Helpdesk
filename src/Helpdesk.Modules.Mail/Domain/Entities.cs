@@ -191,6 +191,12 @@ internal sealed class MailMessage
     /// <summary>Set once the outcome (Sent/Failed) has been reported to Ticketing; unset rows are re-reported by the dispatcher.</summary>
     public DateTimeOffset? DeliveryReportedAt { get; set; }
 
+    /// <summary>
+    /// Monotonic order of this outbound message's state changes: a database trigger adds one on every state change (never a wall clock). It travels with every delivery
+    /// report so Ticketing can ignore a report that is older than one it already applied. Database-generated; never set by code.
+    /// </summary>
+    public long DeliverySeq { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset UpdatedAt { get; set; }

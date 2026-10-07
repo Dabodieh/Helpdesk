@@ -552,6 +552,12 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("delivery_error");
 
+                    b.Property<long>("DeliveryReportSequence")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(0L)
+                        .HasColumnName("delivery_report_seq");
+
                     b.Property<string>("DeliveryState")
                         .IsRequired()
                         .HasMaxLength(16)

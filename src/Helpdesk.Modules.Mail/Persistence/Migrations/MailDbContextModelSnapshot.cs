@@ -64,6 +64,12 @@ namespace Helpdesk.Modules.Mail.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("delivery_reported_at");
 
+                    b.Property<long>("DeliverySeq")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(0L)
+                        .HasColumnName("delivery_seq");
+
                     b.Property<Guid>("DepartmentId")
                         .HasColumnType("uuid")
                         .HasColumnName("department_id");

@@ -173,6 +173,7 @@ internal sealed partial class TicketingDbContext(DbContextOptions<TicketingDbCon
             e.Property(x => x.Source).HasColumnName("source").HasMaxLength(16);
             e.Property(x => x.DeliveryState).HasColumnName("delivery_state").HasMaxLength(16).HasConversion<string>();
             e.Property(x => x.DeliveryError).HasColumnName("delivery_error").HasMaxLength(200);
+            e.Property(x => x.DeliveryReportSequence).HasColumnName("delivery_report_seq").HasDefaultValue(0L);
             e.Property(x => x.SourceRef).HasColumnName("source_ref").HasMaxLength(512);
             e.Property(x => x.BodyHtml).HasColumnName("body_html");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
