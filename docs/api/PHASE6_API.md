@@ -3,7 +3,7 @@
 All portal endpoints require authentication and are scoped to the caller's requester links. Inaccessible objects return 404.
 
 ## Portal
-- `GET /api/portal/forms`, `GET /api/portal/forms/{formId}`: published request forms with requester-visible fields.
+- `GET /api/portal/forms`, `GET /api/portal/forms/{formId}`: published request forms with requester-visible fields, only for forms whose requester audience includes the caller; any other form id is 404 (as is `POST /api/portal/requests` for it, before any field validation).
 - `GET /api/portal/requests?filter=open|closed|all&cursor=&limit=`: caller's requests, ordered by `lastPublicActivityAt` desc.
 - `POST /api/portal/requests`: `{formId, subject, description, fields: {key: value}}`; creates a ticket (source `portal`). 409 if the address belongs to another user's claimed requester.
 - `GET /api/portal/requests/{reference}`: public conversation only, requester status (In progress, Waiting, Resolved, Closed).
@@ -14,7 +14,7 @@ All portal endpoints require authentication and are scoped to the caller's reque
 - `GET /api/portal/knowledge/categories`, `GET /api/portal/knowledge/articles?q=&category=&cursor=`, `GET /api/portal/knowledge/articles/{slug}`, `POST /api/portal/knowledge/articles/{slug}/feedback` `{helpful}`.
 
 ## Administration (department scoped)
-- `/api/departments/{d}/request-forms` (`department.forms.manage`): list, create, patch, order; `/{formId}/fields` create, patch, order.
+- `/api/departments/{d}/request-forms` (`department.forms.manage`): list, create, patch, order (forms carry `audience` = `AllEmployees`|`Selected` and `audienceUsers`; write `audience` and `audienceUserIds` (replaces the list; omit to leave it); a new form defaults to `Selected` with nobody; changes are audited as `request_form.audience_changed`); `/{formId}/fields` create, patch, order.
 - `/api/departments/{d}/knowledge/categories|articles` (`department.knowledge.manage`): list, create, patch, order; articles `publish`, `archive`. Updates carry the `version` for optimistic concurrency.
 
 ## Realtime

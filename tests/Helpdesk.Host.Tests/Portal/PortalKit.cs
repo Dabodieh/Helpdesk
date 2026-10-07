@@ -34,7 +34,7 @@ public static class PortalKit
     /// <summary>Creates a request form (and optional fields) through the real admin API.</summary>
     public static async Task<(Guid FormId, string Version)> FormAsync(this Dept d, string name, object? extra = null, params object[] fields)
     {
-        var body = new Dictionary<string, object?> { ["name"] = name };
+        var body = new Dictionary<string, object?> { ["name"] = name, ["audience"] = "AllEmployees" };
         if (extra is not null)
         {
             foreach (var p in extra.GetType().GetProperties())

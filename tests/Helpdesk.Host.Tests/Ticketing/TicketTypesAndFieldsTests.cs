@@ -223,7 +223,7 @@ public sealed class TicketTypesAndFieldsTests(HelpdeskFixture fixture) : IClassF
         var asset = await FieldAsync(d, PortalKit.Field("Asset", "ShortText", required: true, key: "asset"));
         var cost = await FieldAsync(d, PortalKit.Field("Cost centre", "ShortText", requesterVisible: false, key: "cost"));
         await LinkAsync(d, type, new { fieldId = cost.Id });
-        var form = (await d.Admin.Client.PostAsync($"{d.Department.Url}/request-forms", new { name = $"Hardware {Unique.Id()}", ticketTypeId = type.Id })).Expect(HttpStatusCode.Created);
+        var form = (await d.Admin.Client.PostAsync($"{d.Department.Url}/request-forms", new { name = $"Hardware {Unique.Id()}", ticketTypeId = type.Id, audience = "AllEmployees" })).Expect(HttpStatusCode.Created);
         (await d.Admin.Client.PutAsync($"{d.Department.Url}/request-forms/{form.Id}/fields", new { fields = new object[] { new { fieldId = asset.Id }, new { fieldId = colour.Id, required = true }, new { fieldId = cost.Id } } })).Expect(HttpStatusCode.OK);
 
         // The portal form shows requester-visible fields only, in order, with the form's requirement override.

@@ -1,3 +1,4 @@
+using Helpdesk.Modules.Identity.Contracts;
 using Helpdesk.Modules.Organisation.Contracts;
 using Helpdesk.Modules.Ticketing.Domain;
 using Helpdesk.Modules.Ticketing.Fields;
@@ -14,22 +15,25 @@ namespace Helpdesk.Modules.Ticketing.Portal;
 internal sealed record FormFieldLinkDto(
     Guid FieldId, string Key, string Label, string Type, bool Required, bool? RequiredOverride, int Order, bool FieldIsActive, bool RequesterVisible);
 
+internal sealed record AudienceUserDto(Guid UserId, string DisplayName, string? Email);
+
 internal sealed record FormAdminDto(
     Guid Id, Guid DepartmentId, string Name, string? Description, bool IsActive, bool VisibleToRequesters, int Order, Guid? DefaultTeamId, string? DefaultPriority,
-    Guid? TicketTypeId, IReadOnlyList<FormFieldLinkDto> Fields, string Version);
+    Guid? TicketTypeId, IReadOnlyList<FormFieldLinkDto> Fields, string Version, string Audience, IReadOnlyList<AudienceUserDto> AudienceUsers);
 
 internal sealed record FormRequest(
     string? Name, string? Description, bool? IsActive, bool? VisibleToRequesters, Guid? DefaultTeamId, bool? ClearDefaultTeam, string? DefaultPriority,
-    bool? ClearDefaultPriority, Guid? TicketTypeId, bool? ClearTicketType, string? Version);
+    bool? ClearDefaultPriority, Guid? TicketTypeId, bool? ClearTicketType, string? Version, string? Audience = null, IReadOnlyList<Guid>? AudienceUserIds = null);
 
 /// <summary>
 /// Request form administration (permission department.forms.manage, enforced by the endpoint filter; every query also names the department). A form is
 /// HOW a requester submits: it picks a ticket type of its department and selects, orders and (optionally) overrides the requirement of department ticket fields.
 /// </summary>
-internal sealed class FormsAdminService(TicketingDbContext db, TicketingAudit audit, IOrganisationDirectory organisation, TicketTypesService types, TimeProvider clock)
+internal sealed class FormsAdminService(TicketingDbContext db, TicketingAudit audit, IOrganisationDirectory organisation, IUserDirectory users, TicketTypesService types, TimeProvider clock)
 {
     public const int MaxForms = 50;
     public const int MaxFieldsPerForm = 30;
+    public const int MaxAudienceUsers = 200;
     private const string FormObject = "request_form";
 
     public async Task<IReadOnlyList<FormAdminDto>> ListAsync(Guid departmentId, CancellationToken ct)
@@ -37,8 +41,12 @@ internal sealed class FormsAdminService(TicketingDbContext db, TicketingAudit au
         var forms = await db.RequestForms.AsNoTracking().Where(f => f.DepartmentId == departmentId).OrderBy(f => f.SortOrder).ThenBy(f => f.Name).ToListAsync(ct);
         var links = await db.RequestFormFields.AsNoTracking().Where(l => l.DepartmentId == departmentId)
             .Join(db.TicketFields.AsNoTracking(), l => l.FieldId, f => f.Id, (l, f) => new { Link = l, Field = f }).ToListAsync(ct);
+        var audience = await db.RequestFormAudienceUsers.AsNoTracking().Where(a => a.DepartmentId == departmentId).ToListAsync(ct);
+        var people = await users.GetManyAsync([.. audience.Select(a => a.UserId).Distinct()], ct);
         return [.. forms.Select(f => ToDto(f, links.Where(x => x.Link.FormId == f.Id).OrderBy(x => x.Link.SortOrder)
-            .Select(x => new FormFieldLinkDto(x.Field.Id, x.Field.Key, x.Field.Label, x.Field.FieldType, x.Link.Required ?? x.Field.Required, x.Link.Required, x.Link.SortOrder, x.Field.IsActive, x.Field.RequesterVisible))))];
+            .Select(x => new FormFieldLinkDto(x.Field.Id, x.Field.Key, x.Field.Label, x.Field.FieldType, x.Link.Required ?? x.Field.Required, x.Link.Required, x.Link.SortOrder, x.Field.IsActive, x.Field.RequesterVisible)),
+            [.. audience.Where(a => a.FormId == f.Id).Select(a => people.TryGetValue(a.UserId, out var u) ? new AudienceUserDto(u.Id, u.DisplayName, u.Email) : new AudienceUserDto(a.UserId, "Unknown user", null))
+                .OrderBy(u => u.DisplayName, StringComparer.OrdinalIgnoreCase)]))];
     }
 
     public async Task<FormAdminDto> CreateFormAsync(Guid departmentId, FormRequest request, CancellationToken ct)
@@ -52,6 +60,9 @@ internal sealed class FormsAdminService(TicketingDbContext db, TicketingAudit au
             await types.RequireActiveAsync(departmentId, typeId, "ticketTypeId", ct);
         }
 
+        // A new form is restricted until someone deliberately chooses who may use it.
+        var audience = request.Audience ?? FormAudiences.Selected;
+        var audienceUserIds = await ValidateAudienceAsync(audience, request.AudienceUserIds, ct);
         if (await db.RequestForms.CountAsync(f => f.DepartmentId == departmentId, ct) >= MaxForms)
         {
             throw new ConflictException($"A department can keep at most {MaxForms} request forms.", ProblemCodes.InvalidState);
@@ -67,6 +78,7 @@ internal sealed class FormsAdminService(TicketingDbContext db, TicketingAudit au
             Description = description,
             IsActive = request.IsActive ?? true,
             VisibleToRequesters = request.VisibleToRequesters ?? true,
+            Audience = audience,
             SortOrder = last + 10,
             DefaultTeamId = request.DefaultTeamId,
             DefaultPriority = priority,
@@ -76,10 +88,12 @@ internal sealed class FormsAdminService(TicketingDbContext db, TicketingAudit au
         };
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         db.RequestForms.Add(form);
+        db.RequestFormAudienceUsers.AddRange((audienceUserIds ?? []).Select(id => new RequestFormAudienceUser { FormId = form.Id, DepartmentId = departmentId, UserId = id, CreatedAt = now }));
         await SaveAsync("A form with this name already exists.", ct);
-        await audit.WriteAsync(TicketAuditActions.RequestFormCreated, FormObject, form.Id, departmentId, null, new { name = form.Name, isActive = form.IsActive, ticketTypeId = form.TicketTypeId }, ct);
+        await audit.WriteAsync(TicketAuditActions.RequestFormCreated, FormObject, form.Id, departmentId, null,
+            new { name = form.Name, isActive = form.IsActive, ticketTypeId = form.TicketTypeId, audience = form.Audience, audienceUsers = audienceUserIds?.Count ?? 0 }, ct);
         await tx.CommitAsync(ct);
-        return ToDto(form, []);
+        return (await ListAsync(departmentId, ct)).Single(f => f.Id == form.Id);
     }
 
     public async Task<FormAdminDto> UpdateFormAsync(Guid departmentId, Guid formId, FormRequest request, CancellationToken ct)
@@ -89,6 +103,7 @@ internal sealed class FormsAdminService(TicketingDbContext db, TicketingAudit au
         var (name, description, priority) = ValidateForm(errors, request, creating: false);
         TicketValidation.ThrowIfAny(errors);
         await CheckTeamAsync(departmentId, request.DefaultTeamId, ct);
+        var audienceUserIds = await ValidateAudienceAsync(request.Audience, request.AudienceUserIds, ct);
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var form = await db.RequestForms.SingleOrDefaultAsync(f => f.Id == formId && f.DepartmentId == departmentId, ct) ?? throw new NotFoundException();
@@ -116,9 +131,17 @@ internal sealed class FormsAdminService(TicketingDbContext db, TicketingAudit au
         form.DefaultPriority = request.ClearDefaultPriority == true ? null : priority ?? form.DefaultPriority;
         form.TicketTypeId = request.ClearTicketType == true ? null : request.TicketTypeId ?? form.TicketTypeId;
         form.UpdatedAt = ClockExtensions.GetUtcNowMicroseconds(clock);
+        var audienceChange = await ApplyAudienceAsync(form, request.Audience, audienceUserIds, form.UpdatedAt, ct);
         await SaveAsync("A form with this name already exists.", ct);
         await audit.WriteAsync(TicketAuditActions.RequestFormUpdated, FormObject, form.Id, departmentId, previousType == form.TicketTypeId ? null : new { ticketTypeId = previousType },
             new { name = form.Name, isActive = form.IsActive, visible = form.VisibleToRequesters, ticketTypeId = form.TicketTypeId }, ct);
+        if (audienceChange is not null)
+        {
+            // Identifiers and change type only: never the form content.
+            await audit.WriteAsync(TicketAuditActions.RequestFormAudienceChanged, FormObject, form.Id, departmentId, new { audience = audienceChange.PreviousAudience },
+                new { audience = form.Audience, addedUserIds = audienceChange.Added, removedUserIds = audienceChange.Removed }, ct);
+        }
+
         await tx.CommitAsync(ct);
         return (await ListAsync(departmentId, ct)).Single(f => f.Id == form.Id);
     }
@@ -228,6 +251,56 @@ internal sealed class FormsAdminService(TicketingDbContext db, TicketingAudit au
         return (name, string.IsNullOrEmpty(description) ? null : description, priority);
     }
 
+    private sealed record AudienceChange(string PreviousAudience, Guid[] Added, Guid[] Removed);
+
+    /// <summary>Validates the requested audience. Returns the distinct user ids when a list was supplied (null = leave the list alone).</summary>
+    private async Task<IReadOnlyList<Guid>?> ValidateAudienceAsync(string? audience, IReadOnlyList<Guid>? userIds, CancellationToken ct)
+    {
+        if (audience is not null && !FormAudiences.IsValid(audience))
+        {
+            throw new RequestValidationException("audience", "Audience must be AllEmployees or Selected.");
+        }
+
+        if (userIds is null)
+        {
+            return null;
+        }
+
+        var distinct = userIds.Distinct().ToArray();
+        if (distinct.Length > MaxAudienceUsers)
+        {
+            throw new RequestValidationException("audienceUserIds", $"A form audience can name at most {MaxAudienceUsers} people.");
+        }
+
+        var found = await users.GetManyAsync(distinct, ct);
+        if (distinct.Any(id => !found.TryGetValue(id, out var u) || !u.IsActive))
+        {
+            throw new RequestValidationException("audienceUserIds", "Choose active users.");
+        }
+
+        return distinct;
+    }
+
+    /// <summary>Applies the audience mode and user list to a tracked form; returns what changed (null when nothing did).</summary>
+    private async Task<AudienceChange?> ApplyAudienceAsync(RequestForm form, string? audience, IReadOnlyList<Guid>? userIds, DateTimeOffset now, CancellationToken ct)
+    {
+        var previousAudience = form.Audience;
+        form.Audience = audience ?? form.Audience;
+        Guid[] added = [];
+        Guid[] removed = [];
+        if (userIds is not null)
+        {
+            var existing = await db.RequestFormAudienceUsers.Where(a => a.FormId == form.Id && a.DepartmentId == form.DepartmentId).ToListAsync(ct);
+            var stale = existing.Where(a => !userIds.Contains(a.UserId)).ToList();
+            removed = [.. stale.Select(a => a.UserId)];
+            added = [.. userIds.Where(id => existing.All(a => a.UserId != id))];
+            db.RequestFormAudienceUsers.RemoveRange(stale);
+            db.RequestFormAudienceUsers.AddRange(added.Select(id => new RequestFormAudienceUser { FormId = form.Id, DepartmentId = form.DepartmentId, UserId = id, CreatedAt = now }));
+        }
+
+        return previousAudience == form.Audience && added.Length == 0 && removed.Length == 0 ? null : new AudienceChange(previousAudience, added, removed);
+    }
+
     private async Task CheckTeamAsync(Guid departmentId, Guid? teamId, CancellationToken ct)
     {
         if (teamId is { } id && await organisation.FindTeamAsync(departmentId, id, ct) is not { IsActive: true })
@@ -236,9 +309,9 @@ internal sealed class FormsAdminService(TicketingDbContext db, TicketingAudit au
         }
     }
 
-    private static FormAdminDto ToDto(RequestForm f, IEnumerable<FormFieldLinkDto> fields) =>
+    private static FormAdminDto ToDto(RequestForm f, IEnumerable<FormFieldLinkDto> fields, IReadOnlyList<AudienceUserDto> audienceUsers) =>
         new(f.Id, f.DepartmentId, f.Name, f.Description, f.IsActive, f.VisibleToRequesters, f.SortOrder, f.DefaultTeamId, f.DefaultPriority?.ToString(), f.TicketTypeId,
-            [.. fields], ConcurrencyVersion.ToToken(f.Version));
+            [.. fields], ConcurrencyVersion.ToToken(f.Version), f.Audience, audienceUsers);
 
     private async Task SaveAsync(string duplicateMessage, CancellationToken ct)
     {

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { fieldErrors } from '../api/errors'
+import { lookupUsers } from '../api/organisation'
 import type { Department } from '../api/schemas'
 import { createForm, listForms, listTicketFields, listTicketTypes, reorderForms, setFormFields, updateForm, type FieldLinkInput, type RequestForm } from '../api/ticketing'
 import { PRIORITIES } from '../api/ticketSchemas'
@@ -9,6 +10,73 @@ import { ActiveBadge, ErrorNotice, Field, Loading } from './common'
 import Dialog from './Dialog'
 
 const formsKey = (d: string) => ['request-forms', d]
+
+const MIN_QUERY = 3
+
+type Person = { userId: string; displayName: string; email?: string | null }
+
+/** Selected audience: a controlled picker over the user directory (no raw ids). Needs the same permission as adding members; the server validates every id. */
+function AudiencePicker({ people, onChange }: { people: Person[]; onChange: (p: Person[]) => void }) {
+  const [text, setText] = useState('')
+  const [q, setQ] = useState('')
+  const results = useQuery({ queryKey: ['userLookup', q], queryFn: () => lookupUsers(q), enabled: q.length >= MIN_QUERY })
+  const search = () => setQ(text.trim().length >= MIN_QUERY ? text.trim() : '')
+  const chosen = new Set(people.map((p) => p.userId))
+  return (
+    <div className="audience-picker">
+      <ul className="link-list" aria-label="Selected people">
+        {people.length === 0 && <li className="empty small">Nobody yet: no one can find or submit this form.</li>}
+        {people.map((p) => (
+          <li key={p.userId} className="link-row">
+            <span>
+              <strong>{p.displayName}</strong> {p.email && <span className="muted small">{p.email}</span>}
+            </span>
+            <button type="button" className="ghost" aria-label={`Remove ${p.displayName}`} onClick={() => onChange(people.filter((x) => x.userId !== p.userId))}>
+              Remove
+            </button>
+          </li>
+        ))}
+      </ul>
+      <Field label="Find people to add" hint={`Type at least ${MIN_QUERY} characters of a name or email.`}>
+        {(p) => (
+          <span className="inline">
+            <input
+              {...p}
+              type="search"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  search()
+                }
+              }}
+            />
+            <button type="button" onClick={search} disabled={text.trim().length < MIN_QUERY}>
+              Search
+            </button>
+          </span>
+        )}
+      </Field>
+      <ErrorNotice error={results.error} />
+      {results.isSuccess && results.data.length === 0 && <p className="empty small">No matching people.</p>}
+      {results.isSuccess && results.data.length > 0 && (
+        <ul className="link-list" aria-label="Search results">
+          {results.data.map((u) => (
+            <li key={u.id} className="link-row">
+              <span>
+                <strong>{u.displayName}</strong> {u.email && <span className="muted small">{u.email}</span>}
+              </span>
+              <button type="button" disabled={chosen.has(u.id)} aria-label={`Add ${u.displayName}`} onClick={() => onChange([...people, { userId: u.id, displayName: u.displayName, email: u.email }])}>
+                {chosen.has(u.id) ? 'Added' : 'Add'}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
 
 function FormDialog({ department, existing, onClose }: { department: Department; existing?: RequestForm; onClose: () => void }) {
   const qc = useQueryClient()
@@ -21,6 +89,9 @@ function FormDialog({ department, existing, onClose }: { department: Department;
   const [team, setTeam] = useState(existing?.defaultTeamId ?? '')
   const [priority, setPriority] = useState(existing?.defaultPriority ?? '')
   const [typeId, setTypeId] = useState(existing?.ticketTypeId ?? '')
+  // A new form starts restricted: whoever creates it must deliberately choose who may use it.
+  const [audience, setAudience] = useState<'AllEmployees' | 'Selected'>(existing?.audience ?? 'Selected')
+  const [people, setPeople] = useState<Person[]>(existing?.audienceUsers ?? [])
   const save = useMutation({
     mutationFn: () => {
       const body = {
@@ -34,6 +105,8 @@ function FormDialog({ department, existing, onClose }: { department: Department;
         clearDefaultPriority: !priority,
         ticketTypeId: typeId || null,
         clearTicketType: !typeId,
+        audience,
+        audienceUserIds: people.map((p) => p.userId),
       }
       return existing ? updateForm(department.id, existing.id, { ...body, version: existing.version }) : createForm(department.id, body)
     },
@@ -92,6 +165,18 @@ function FormDialog({ department, existing, onClose }: { department: Department;
             </select>
           )}
         </Field>
+        <fieldset className="audience">
+          <legend>Requester access</legend>
+          <p className="muted small">Who can find and submit this form? This does not give anyone access to the department, its tickets or its settings.</p>
+          <label className="check">
+            <input type="radio" name="audience" checked={audience === 'AllEmployees'} onChange={() => setAudience('AllEmployees')} /> All employees
+          </label>
+          <label className="check">
+            <input type="radio" name="audience" checked={audience === 'Selected'} onChange={() => setAudience('Selected')} /> Selected people only
+          </label>
+          {audience === 'Selected' && <AudiencePicker people={people} onChange={setPeople} />}
+          {(server.audience ?? server.audienceuserids) && <p className="field-error" role="alert">{(server.audience ?? server.audienceuserids)![0]}</p>}
+        </fieldset>
         <label className="check">
           <input type="checkbox" checked={visible} onChange={(e) => setVisible(e.target.checked)} /> Offer this form in the requester portal
         </label>
@@ -249,7 +334,8 @@ export default function FormsSection({ department }: { department: Department })
               </button>
             </span>
             <div>
-              <strong>{f.name}</strong> <ActiveBadge active={f.isActive} /> {!f.visibleToRequesters && <span className="badge">Hidden from portal</span>}
+              <strong>{f.name}</strong> <ActiveBadge active={f.isActive} /> {!f.visibleToRequesters && <span className="badge">Hidden from portal</span>}{' '}
+              <span className="badge">{f.audience === 'AllEmployees' ? 'All employees' : `Restricted: ${f.audienceUsers.length} ${f.audienceUsers.length === 1 ? 'person' : 'people'}`}</span>
               <p className="muted small">
                 {typeName(f.ticketTypeId) ? `Type ${typeName(f.ticketTypeId)} · ` : ''}
                 {f.fields.length} {f.fields.length === 1 ? 'field' : 'fields'}

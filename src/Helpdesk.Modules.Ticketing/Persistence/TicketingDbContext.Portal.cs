@@ -16,6 +16,8 @@ internal sealed partial class TicketingDbContext
 
     public DbSet<TicketTypeField> TicketTypeFields => Set<TicketTypeField>();
 
+    public DbSet<RequestFormAudienceUser> RequestFormAudienceUsers => Set<RequestFormAudienceUser>();
+
     public DbSet<RequestFormField> RequestFormFields => Set<RequestFormField>();
 
     public DbSet<TicketFieldValue> TicketFieldValues => Set<TicketFieldValue>();
@@ -46,6 +48,7 @@ internal sealed partial class TicketingDbContext
             {
                 t.HasCheckConstraint("ck_request_forms_name", "length(btrim(name)) BETWEEN 1 AND 100");
                 t.HasCheckConstraint("ck_request_forms_priority", "default_priority IS NULL OR default_priority BETWEEN 1 AND 4");
+                t.HasCheckConstraint("ck_request_forms_audience", "audience IN ('AllEmployees','Selected')");
             });
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
@@ -54,6 +57,7 @@ internal sealed partial class TicketingDbContext
             e.Property(x => x.Description).HasColumnName("description").HasMaxLength(1000);
             e.Property(x => x.IsActive).HasColumnName("is_active");
             e.Property(x => x.VisibleToRequesters).HasColumnName("visible_to_requesters");
+            e.Property(x => x.Audience).HasColumnName("audience").HasMaxLength(16);
             e.Property(x => x.SortOrder).HasColumnName("sort_order");
             e.Property(x => x.DefaultTeamId).HasColumnName("default_team_id");
             e.Property(x => x.DefaultPriority).HasColumnName("default_priority").HasConversion<short?>();
@@ -133,6 +137,19 @@ internal sealed partial class TicketingDbContext
             e.HasOne<TicketField>().WithMany().HasForeignKey(x => new { x.FieldId, x.DepartmentId })
                 .HasPrincipalKey(f => new { f.Id, f.DepartmentId }).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_ticket_type_fields_field_department");
             e.HasIndex(x => x.FieldId).HasDatabaseName("ix_ticket_type_fields_field");
+        });
+
+        modelBuilder.Entity<RequestFormAudienceUser>(e =>
+        {
+            e.ToTable("request_form_audience_users");
+            e.HasKey(x => new { x.FormId, x.UserId });
+            e.Property(x => x.FormId).HasColumnName("form_id");
+            e.Property(x => x.DepartmentId).HasColumnName("department_id");
+            e.Property(x => x.UserId).HasColumnName("user_id");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.HasOne<RequestForm>().WithMany().HasForeignKey(x => new { x.FormId, x.DepartmentId })
+                .HasPrincipalKey(f => new { f.Id, f.DepartmentId }).OnDelete(DeleteBehavior.Cascade).HasConstraintName("fk_request_form_audience_form_department");
+            e.HasIndex(x => x.UserId).HasDatabaseName("ix_request_form_audience_user");
         });
 
         modelBuilder.Entity<RequestFormField>(e =>

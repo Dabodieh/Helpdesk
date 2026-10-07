@@ -71,6 +71,7 @@ internal static class TicketAuditActions
     public const string TicketFieldCreated = "ticket_field.created";
     public const string TicketFieldUpdated = "ticket_field.updated";
     public const string RequestFormFieldsChanged = "request_form.fields_changed";
+    public const string RequestFormAudienceChanged = "request_form.audience_changed";
     public const string TypeChanged = "ticket.type_changed";
     public const string FieldChanged = "ticket.field_changed";
     public const string ReasonAutomation = "automation";

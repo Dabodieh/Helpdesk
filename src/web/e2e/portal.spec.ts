@@ -37,7 +37,7 @@ test('a requester submits a request through a form, sees it in My requests, and 
   const colour = await admin.send<{ id: string }>('POST', `${base}/ticket-fields`, { label: 'Colour', type: 'SingleSelect', options: [{ label: 'Black' }, { label: 'Silver' }] })
   const cost = await admin.send<{ id: string }>('POST', `${base}/ticket-fields`, { label: 'Internal cost centre', type: 'ShortText', requesterVisible: false })
   await admin.send('PUT', `${base}/ticket-types/${type.id}/fields`, { fields: [{ fieldId: cost.id }] })
-  const form = await admin.send<{ id: string }>('POST', `${base}/request-forms`, { name: `Hardware issue ${formToken}`, description: 'Something is broken', defaultPriority: 'High', ticketTypeId: type.id })
+  const form = await admin.send<{ id: string }>('POST', `${base}/request-forms`, { name: `Hardware issue ${formToken}`, description: 'Something is broken', defaultPriority: 'High', ticketTypeId: type.id, audience: 'AllEmployees' })
   await admin.send('PUT', `${base}/request-forms/${form.id}/fields`, { fields: [{ fieldId: asset.id }, { fieldId: colour.id }, { fieldId: cost.id }] })
   const calendar = await admin.send<{ id: string }>('POST', `${base}/business-hours`, {
     name: 'Always',
@@ -249,7 +249,7 @@ test('the portal works on a phone: no horizontal scrolling on the main pages', a
   const data = await seed()
   const admin = await configure(data)
   const base = `/api/departments/${data.departmentId}`
-  const form = await admin.send<{ id: string }>('POST', `${base}/request-forms`, { name: 'General request' })
+  const form = await admin.send<{ id: string }>('POST', `${base}/request-forms`, { name: 'General request', audience: 'AllEmployees' })
   const article = await admin.send<{ id: string; slug: string; version: string }>('POST', `${base}/knowledge/articles`, { title: 'A helpful article', body: 'Text '.repeat(200) })
   await admin.send('POST', `${base}/knowledge/articles/${article.id}/publish`, { version: article.version })
   const emma = employee()

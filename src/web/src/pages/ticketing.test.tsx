@@ -78,3 +78,43 @@ test('the department page offers a Ticketing area with types, fields and forms f
   expect(screen.getByRole('tab', { name: 'Request forms' })).toBeInTheDocument()
   expect(await screen.findByText(/No ticket types yet/)).toBeInTheDocument()
 })
+
+test('a new request form starts restricted; the administrator picks people and the audience is sent with the form', async () => {
+  const admin = makeMe({ memberships: [membership(['department.read', 'department.manage', 'department.forms.manage', 'department.members.manage'], 'DepartmentAdmin')] })
+  const calls = mockFetch({
+    ...csrfHandler,
+    'GET /api/me': () => admin,
+    [`GET /api/departments/${DEPT.id}`]: () => DEPT,
+    [`GET /api/departments/${DEPT.id}/teams`]: () => [],
+    [`GET /api/departments/${DEPT.id}/members`]: () => [],
+    [`GET /api/departments/${DEPT.id}/ticket-types`]: () => [],
+    [`GET /api/departments/${DEPT.id}/ticket-fields`]: () => [],
+    [`GET /api/departments/${DEPT.id}/request-forms`]: () => [],
+    'GET /api/users/lookup': () => [{ id: 'u-jane', displayName: 'Jane Doe', email: 'jane@example.test' }],
+    [`POST /api/departments/${DEPT.id}/request-forms`]: () => ({}),
+  })
+  renderApp(`/admin/departments/${DEPT.id}`)
+  fireEvent.click(await screen.findByRole('tab', { name: 'Ticketing' }))
+  fireEvent.click(await screen.findByRole('tab', { name: 'Request forms' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'New request form' }))
+  const dialog = await screen.findByRole('dialog')
+  expect(within(dialog).getByRole('radio', { name: 'Selected people only' })).toBeChecked() // deliberate choice required
+  expect(within(dialog).getByText(/no one can find or submit/)).toBeInTheDocument()
+
+  fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Request access' } })
+  fireEvent.change(within(dialog).getByLabelText('Find people to add'), { target: { value: 'jane' } })
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Search' }))
+  fireEvent.click(await within(dialog).findByRole('button', { name: 'Add Jane Doe' }))
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Save form' }))
+
+  await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.path.endsWith('/request-forms'))).toBe(true))
+  const sent = calls.find((c) => c.method === 'POST' && c.path.endsWith('/request-forms'))!.body as { audience: string; audienceUserIds: string[] }
+  expect(sent.audience).toBe('Selected')
+  expect(sent.audienceUserIds).toEqual(['u-jane'])
+})
+
+test('the requester catalogue shows only the forms the server returns and says so when there are none', async () => {
+  mockFetch({ 'GET /api/me': () => makeMe(), 'GET /api/portal/requests': () => ({ items: [], nextCursor: null }), 'GET /api/portal/forms': () => [] })
+  renderApp('/portal/submit')
+  expect(await screen.findByText(/No request types are available to you yet/)).toBeInTheDocument()
+})

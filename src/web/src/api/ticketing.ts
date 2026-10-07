@@ -129,6 +129,8 @@ export const requestFormSchema = z.object({
   ticketTypeId: z.string().nullish(),
   fields: z.array(formFieldLinkSchema),
   version: z.string(),
+  audience: z.enum(['AllEmployees', 'Selected']),
+  audienceUsers: z.array(z.object({ userId: z.string(), displayName: z.string(), email: z.string().nullish() })),
 })
 export type RequestForm = z.infer<typeof requestFormSchema>
 
@@ -144,6 +146,9 @@ export type FormInput = {
   ticketTypeId?: string | null
   clearTicketType?: boolean
   version?: string
+  /** Who may discover and submit the form. Department membership is separate and unaffected. */
+  audience?: 'AllEmployees' | 'Selected'
+  audienceUserIds?: string[]
 }
 
 const formsBase = (d: string) => `/api/departments/${d}/request-forms`

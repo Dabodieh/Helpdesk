@@ -65,6 +65,7 @@ internal sealed record PortalCreatedDto(string Reference, string Status, string 
 /// </summary>
 internal sealed class PortalRequestService(
     TicketingDbContext db,
+    PortalFormAccess formAccess,
     RequesterIdentityService identity,
     IOrganisationDirectory organisation,
     IAttachmentStore attachments,
@@ -315,8 +316,9 @@ internal sealed class PortalRequestService(
         TicketValidation.Body(errors, "description", request.Description);
         TicketValidation.ThrowIfAny(errors);
 
-        // The form decides the department and the defaults. Hidden or inactive forms do not exist for requesters.
-        var form = await db.RequestForms.AsNoTracking().SingleOrDefaultAsync(f => f.Id == request.FormId!.Value && f.IsActive && f.VisibleToRequesters, ct) ?? throw new NotFoundException();
+        // The form decides the department and the defaults. Hidden, inactive or out-of-audience forms do not exist for requesters; audience is re-checked on every submission.
+        var formId = request.FormId!.Value;
+        var form = await formAccess.Usable().AsNoTracking().SingleOrDefaultAsync(f => f.Id == formId, ct) ?? throw new NotFoundException();
         var department = await organisation.FindDepartmentAsync(form.DepartmentId, ct);
         if (department is null || !department.IsActive)
         {

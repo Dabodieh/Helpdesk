@@ -19,7 +19,7 @@ Status: accepted (Phase 6). Production gates D-16, D-08, D-09, D-13 remain open.
 6. **Portal replies use the ticket domain path** used by inbound email (reopen per D-15, SLA, `RequesterMessageAdded`,
    agent realtime). Email and portal share one conversation. Message `source = portal`, ticket `source` in
    agent/email/portal.
-7. **Request forms** are per department, published to all employees, with typed custom fields only (no conditional
+7. **Request forms** are per department, published to an explicit requester audience (all employees, or selected users; amended after Phase 6, see TICKETING.md), with typed custom fields only (no conditional
    logic, scripts, HTML or formulas). Field key and type are immutable; options keep stable values; fields are
    deactivated, never deleted. Submitted values are snapshotted (label, type, display value, visibility) in
    `ticket_field_values`, so later edits never change history. Protected values (department, status, requester,

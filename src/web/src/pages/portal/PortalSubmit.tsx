@@ -9,7 +9,7 @@ import { useDebounced } from '../../lib/useDebounced'
 
 /** Step 1: choose what the request is about. Forms are grouped by the department that will handle them. */
 function ChooseForm() {
-  const forms = useQuery({ queryKey: ['portal', 'forms'], queryFn: listPortalForms, staleTime: 60_000 })
+  const forms = useQuery({ queryKey: ['portal', 'forms'], queryFn: listPortalForms, staleTime: 5_000 }) // short: an audience change must not leave a stale catalogue
   const groups = useMemo(() => {
     const map = new Map<string, PortalFormListItem[]>()
     for (const f of forms.data ?? []) map.set(f.department, [...(map.get(f.department) ?? []), f])
@@ -21,7 +21,7 @@ function ChooseForm() {
       <p className="muted">Choose the option that best describes what you need.</p>
       {forms.isPending && <Loading label="Loading request types" />}
       {forms.isError && <ErrorNotice error={forms.error} onRetry={() => void forms.refetch()} />}
-      {forms.isSuccess && groups.length === 0 && <p className="empty">No request types are available yet.</p>}
+      {forms.isSuccess && groups.length === 0 && <p className="empty">No request types are available to you yet.</p>}
       {groups.map(([department, items]) => (
         <section key={department} className="portal-section" aria-labelledby={`dept-${department}`}>
           <h2 id={`dept-${department}`}>{department}</h2>

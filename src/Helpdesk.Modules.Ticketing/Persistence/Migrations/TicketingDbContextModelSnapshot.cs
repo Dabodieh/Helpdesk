@@ -622,6 +622,12 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("Audience")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("audience");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -692,10 +698,40 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
 
                     b.ToTable("request_forms", "ticketing", t =>
                         {
+                            t.HasCheckConstraint("ck_request_forms_audience", "audience IN ('AllEmployees','Selected')");
+
                             t.HasCheckConstraint("ck_request_forms_name", "length(btrim(name)) BETWEEN 1 AND 100");
 
                             t.HasCheckConstraint("ck_request_forms_priority", "default_priority IS NULL OR default_priority BETWEEN 1 AND 4");
                         });
+                });
+
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.RequestFormAudienceUser", b =>
+                {
+                    b.Property<Guid>("FormId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("form_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("department_id");
+
+                    b.HasKey("FormId", "UserId");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_request_form_audience_user");
+
+                    b.HasIndex("FormId", "DepartmentId");
+
+                    b.ToTable("request_form_audience_users", "ticketing");
                 });
 
             modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.RequestFormField", b =>
@@ -1749,6 +1785,17 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         .HasPrincipalKey("Id", "DepartmentId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_request_forms_type_department");
+                });
+
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.RequestFormAudienceUser", b =>
+                {
+                    b.HasOne("Helpdesk.Modules.Ticketing.Domain.RequestForm", null)
+                        .WithMany()
+                        .HasForeignKey("FormId", "DepartmentId")
+                        .HasPrincipalKey("Id", "DepartmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_request_form_audience_form_department");
                 });
 
             modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.RequestFormField", b =>

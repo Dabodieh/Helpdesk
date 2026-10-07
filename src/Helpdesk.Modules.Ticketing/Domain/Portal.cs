@@ -15,6 +15,27 @@ internal static class FieldTypes
     public static bool HasOptions(string type) => type is SingleSelect or MultiSelect;
 }
 
+/// <summary>Requester audience of a request form. Deliberately small: every signed-in employee, or an explicit list of users.</summary>
+internal static class FormAudiences
+{
+    public const string AllEmployees = "AllEmployees";
+    public const string Selected = "Selected";
+
+    public static bool IsValid(string? value) => value is AllEmployees or Selected;
+}
+
+/// <summary>A user explicitly allowed to use a <see cref="FormAudiences.Selected"/> form. Grants nothing but the form: no department membership, no ticket access.</summary>
+internal sealed class RequestFormAudienceUser
+{
+    public Guid FormId { get; set; }
+
+    public Guid DepartmentId { get; set; }
+
+    public Guid UserId { get; set; }
+
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
 /// <summary>A department's structured way of creating a normal ticket (not a service catalogue item: no approvals, no fulfilment workflow).</summary>
 internal sealed class RequestForm
 {
@@ -30,6 +51,9 @@ internal sealed class RequestForm
 
     /// <summary>Shown in the requester portal. Inactive or hidden forms accept no submissions.</summary>
     public bool VisibleToRequesters { get; set; } = true;
+
+    /// <summary>Who may discover, read and submit the form (<see cref="FormAudiences"/>). Separate from department membership, which only governs internal helpdesk access.</summary>
+    public string Audience { get; set; } = FormAudiences.Selected;
 
     public int SortOrder { get; set; }
 
