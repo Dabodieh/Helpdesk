@@ -12,7 +12,7 @@ The session limit interrupted the review. Only four of the ten specialist review
 | Frontend / UX Engineer | Completed | UX |
 | SRE / Production Operations Engineer | Completed | SRE |
 | QA / Reliability Engineer | Completed | QA |
-| Lead Architect / Technical Lead | **Did not complete** (rate-limited) | ARC |
+| Lead Architect / Technical Lead | **Completed later (section 18)** | ARC |
 | ITSM Product & Service Desk Lead | **Did not complete** (rate-limited; no findings returned) | ITSM |
 | Backend / Domain Engineer | **Completed later (section 17)** | BE |
 | Microsoft 365 / Messaging Engineer | **Completed later (section 16)** | MSG |
@@ -26,7 +26,7 @@ Completed specialists also returned their findings as text (the findings files i
 - **Security / Privacy (highest priority gap; now reviewed, see section 15, which supersedes this bullet):** Department isolation on read and write paths, IDOR/BOLA, non-disclosure, Internal Note leakage paths, requester identity and audience enforcement, attachment security, XSS/sanitisation, audit completeness, logging privacy, and the new `article-links` and `queue-types` endpoints. Several UX/QA findings below ask for server-side confirmation (UX-009, UX-012, QA-004) that nobody has yet done.
 - **Messaging (Graph/Exchange; now reviewed, see section 16, which supersedes this bullet):** inbound sync, subscriptions, delta, threading, outbound state machine, uncertain-send reconciliation, NDR/loop suppression, mailbox health. D-16 evidence status was not re-assessed (it stays OPEN: simulator evidence only).
 - **Backend / Domain (now reviewed, see section 17, which supersedes this bullet):** concurrency, data integrity, constraints, indexes, Hangfire job idempotency, SLA job correctness, migrations.
-- **Architecture:** module boundaries, outbox/transaction design, SignalR boundary, ADR gaps.
+- **Architecture (now reviewed, see section 18, which supersedes this bullet):** module boundaries, outbox/transaction design, SignalR boundary, ADR gaps.
 - **ITSM product:** ticket lifecycle semantics, queue/assignment clarity, SLA semantics as users see them, requester language, admin discoverability.
 - **Data / Reporting:** dashboard and SLA metric semantics, history capture for future reports.
 
@@ -786,3 +786,128 @@ Production blockers from this review: **0** new (MSG-001 and MSG-002 stay blocke
 - **SEC-003 (abuse controls):** portal create and reply have no per-account limit, and participants have no limit (BE-001); both belong in the same gate.
 - **SRE-005:** the missing outbox age and failure signals are the operational side of BE-005.
 - **UX-016 / UX-003:** the client-side keys and the Knowledge publish retry have no backend defect; the server rejects stale versions correctly.
+
+
+---
+
+# 18. Lead Architect review (added after the Backend section)
+
+Specialist: Lead Architect / Technical Lead (AGENTS.md section 7). Baseline: commit `081f660`. Method: single agent, read-only. I checked the module graph (project references, the architecture tests), the cross-module contracts and the raw SQL and foreign keys that cross schemas, the three after-commit mechanisms, the migration runner, Hangfire and SignalR wiring, the ADR set against what has been built, and the places where the same business rule is written more than once. I did not re-run the other reviews; section 18.2 uses their findings as evidence.
+
+**Result in one line:** the modular monolith is healthy and should not be restructured. The module graph is a clean one-way DAG enforced by tests, the contracts are inverted correctly, and the concurrency and idempotency tools are used consistently. Nearly every serious finding in this report traces to **four patterns applied unevenly**, not to a wrong architecture. Fixing those four patterns, each in its own small place, would resolve about fifteen findings.
+
+Counts for this section (new architectural findings; nothing here is a production blocker of its own, the blockers it explains are listed in 18.2):
+
+| Severity | Count |
+|---|---|
+| Critical | 0 |
+| High | 0 |
+| Medium | 4 (ARC-001 to ARC-004: systemic root causes that consolidate earlier findings; they add no new defect, see note) |
+| Low | 5 (ARC-005 to ARC-009: new) |
+| Polish | 0 |
+| **Total** | **9** |
+
+*Note on counting.* ARC-001 to ARC-004 are included so the root causes appear in the report's severity list, but each is the parent of existing findings (shown in 18.2). When totals across the report are used for planning, count them as four decisions about patterns, not four additional defects. Production blockers from this section: **0 new**; Decisions required: **0 new** (the decisions already listed under MSG-002, BE-004, BE-006, BE-007 and SEC-012 settle ARC-001 to ARC-004).
+
+## 18.1 Strengths of the current architecture (do not disturb)
+
+- **Module graph.** A one-way DAG: Audit and SharedKernel at the bottom, then Identity, Organisation, Attachments, Knowledge, Mail, and Ticketing at the top; the Host alone references everything. Mail does not reference Ticketing: it defines the interfaces it needs (`IInboundTicketSink`, `IDeliveryStateSink`, outbound contracts) and Ticketing implements them. Knowledge defines `IRequesterAudience`, implemented in Ticketing. The architecture tests enforce this (no use of another module's internals, only contracts and the registration class are public, contracts expose no persistence entities, only the Host references all modules, the project reference DAG).
+- **Authorisation structure.** Three declared patterns (department route permission, resource permission through a resolver, authenticated-only) and architecture tests that pin every endpoint's declaration, the reviewed anonymous list, the authenticated-only list, CSRF exemptions, and every `IgnoreDepartmentScope()` call site.
+- **Atomicity where it matters.** Ticket change plus audit entry plus SLA clocks plus notification-outbox row plus outbound mail row commit together (audit and mail writes use the caller's transaction by design, ADR-013). Realtime is advisory and rebuilt from REST.
+- **Concurrency model.** One consistent toolkit: `xmin` version tokens at the API, `SELECT … FOR UPDATE` for ticket mutations (sorted lock order for merge), advisory locks for mailbox sync, atomic `UPDATE … WHERE state = …` claims for the outbound sender and the notification outbox, `FOR UPDATE SKIP LOCKED` for the SLA monitor, deterministic keys for automation and unique indexes for idempotency.
+- **Notification outbox.** Staged by a `SaveChanges` interceptor in the same transaction as the qualifying change, claimed and recorded in one transaction, drained by a fast path and a recurring job. The interceptor's limit (it sees only EF-tracked changes) is documented in the code, and today no path writes status, assignee, priority or public messages by raw SQL or `ExecuteUpdate`, so the limit holds.
+- **Shared read definitions.** The queue filters and the dashboard use one set of predicates (`QueuePredicates`), so a dashboard figure equals the queue it links to; SLA business-time arithmetic is a pure, deterministic class.
+- **Hangfire use.** Jobs are thin entry points into module-owned runners; all logic and idempotency live in the modules, so the scheduler stays replaceable.
+- **SignalR boundary.** Server-decided groups, one client-callable method, content-free payloads, separate note group, separate requester group, periodic re-check of access.
+- **Migration ownership.** Each module owns its DbContext, schema and migrations; an explicit order number per module and a runner (`ModuleMigrationRunner`); migrations are off at startup by default.
+- **Time handling.** `TimeProvider` is injected throughout; UK time is handled in the SLA calendar and in the Knowledge overdue check.
+
+## 18.2 Root-cause map: which findings share one cause, and which are local
+
+| Root cause | Findings it explains | Systemic or local | One fix that resolves several |
+|---|---|---|---|
+| **RC-1. After-commit side effects are durable in some places and best-effort in others.** Durable: notification outbox, mail outbox, delivery-state re-report. Not durable: automation dispatch, SLA breach follow-up, hub access refresh (re-checked every minute), realtime publish (advisory by design). | BE-004, BE-005, BE-015, SRE-005; QA-001 is the client-side mirror | Systemic for automation and SLA follow-up; the rest is local to the outbox | Reuse the existing outbox pattern for automation and SLA follow-up (one small intent table drained by the existing recurring job, keeping the deterministic keys), and add attempt count and last error to the outbox row. Resolves BE-004 and BE-005, and makes BE-015 a one-line change (store the message id). Not a general event framework. |
+| **RC-2. Nothing defines who is a party to a ticket.** The requester, the participants (a bag of addresses with no provenance), message authors and merged tickets' requesters are decided separately by inbound mail, the portal, merge and outbound Cc. | MSG-002, SEC-006, MSG-003, BE-001, SEC-004, BE-002 | Systemic | One rule in one service: a correlated message attaches only from the requester or an existing participant; participants record who added them, are capped and removable; a merge across different requesters is handled by an explicit rule. Resolves MSG-002/SEC-006 and BE-001, and narrows MSG-003 and SEC-004/BE-002 to the same decision. |
+| **RC-3. The send outcome crosses the Mail/Ticketing boundary as a status plus a magic string.** Mail has explicit `Uncertain` and bounce handling; Ticketing's delivery state has five values and encodes "uncertain" and "bounced" as `Failed` plus a code string. | MSG-001, BE-009, MSG-007, and the UI-only retry guard | Partly systemic. The MSG-001 defect itself is local (retry keeps the draft id) | Local fix first: a retry of an already-submitted message clears the draft id and is recorded as a deliberate re-send. Then the systemic step: give uncertain and bounced their own states, so the string checks disappear (see ARC-001). |
+| **RC-4. Isolation outside the scope-filtered Ticketing set rests on convention, and administrative permissions pass for a Platform Admin without membership.** | SEC-001, SEC-005, SEC-012, QA-007 | Systemic, but small in extent: two endpoints are affected today | State one rule: any field derived from ticket or mail content is returned only to a caller who holds `tickets.read` in that department; administrative permission alone returns configuration only. Fix the two endpoints, and extend the existing endpoint-authorisation test with a non-member Platform Admin probe of every administrative endpoint. Resolves SEC-001, SEC-005 and the structural half of SEC-012 and QA-007. |
+| **RC-5. Lifecycle rules decided once and never re-evaluated.** SLA policy chosen at creation before routing; first-response clock independent of status; lifecycle timestamps overwritten on reopen. | BE-006, BE-007, BE-014 | Local to the SLA and ticket-lifecycle code; all three need product decisions, not design work | One working session on three decisions; the code change is then small and in one module. |
+| **RC-6. Client-initiated writes at the edges lack replay and staleness protection while the core is strict.** | BE-003, BE-010, QA-004, UX-016 | Local, repeated | Optional client message id as the unique source reference (the mechanism already exists for portal creation); optional per-row versions for bulk. |
+| **RC-7. Production hosting is not yet a deliverable.** | SRE-001, 002, 003, 005, 006, 007, 010, 011, SEC-011 | Systemic, outside the application code | The deployment work already planned. |
+| **RC-8. Decisions are recorded in dense bullets, not ADRs.** | DOC-001 to DOC-004, ARC-006, ARC-007 | Systemic in process, cheap to fix | Write the missing ADRs (ARC-006). |
+
+**What is local, not systemic:** MSG-001's defect, BE-008 (SLA sort), BE-013, BE-012, BE-011, BE-016, SEC-002, SEC-003, SEC-007 to SEC-010, SEC-013, MSG-004 to MSG-006, MSG-008 to MSG-012, all UX, QA and DOC items. These need a local fix each and no design change.
+
+**Blocker explanation.** Of the blockers outside hosting, MSG-002 traces to RC-2, MSG-001 to RC-3 and SEC-001 to RC-4. MSG-004, SEC-002 and SEC-003 have no architectural cause: they are a missing verification step and decision (who may register a mailbox), the attachment-scanning gate (D-08) and the abuse-controls gate.
+
+## 18.3 Medium (systemic)
+
+### ARC-001: The mail send outcome is encoded as strings across three layers
+- **Specialist / category:** Lead Architect / Architecture. **Severity:** Medium. **Confidence:** High.
+- **Evidence:** the same literal `outcome_uncertain` is defined three times inside `MailErrors.cs` plus the exception text in `OutboundMail.cs:460`, used as a business predicate in SQL (`QueuePredicates.cs:34`, `DeliveryError == "outcome_uncertain"` to separate "failed" from "uncertain" for the dashboard and the queue filter), and as a UI rule in `Conversation.tsx:66,110` (hide Retry) and `errors.ts:5`. Ticketing's `DeliveryState` has `None, NotDelivered, Pending, Sent, Failed` and a CHECK constraint on those five. A bounce is `Failed` with `ndr_delivery_failed`. The only server-side guard against retrying an uncertain message is incidental: the Mail module's own state check (`state = 'Failed'`) does not match its `Uncertain` row.
+- **Impact:** rules that must agree live in a status in one module, a code string in another, a SQL predicate in a third place and the browser. That is the structural reason MSG-001 (bounce retry becomes Sent), BE-009 (no transition rules) and MSG-007 (forged bounce) exist, and a future change to the code string would silently break a dashboard figure and a button.
+- **Smallest recommended fix:** fix MSG-001 locally first. Then add explicit `Uncertain` and `Bounced` values to the delivery state (one migration widening the CHECK constraint) and compare on those, not strings. Do not add a new abstraction.
+- **Decision required:** No. **Production blocker:** No (MSG-001 is the blocker).
+- **Related:** MSG-001, BE-009, MSG-007, QA-002.
+
+### ARC-002: Isolation outside the Ticketing scope filter is by convention, and content can ride on administrative endpoints
+- **Category:** Architecture / Authorization. **Severity:** Medium. **Confidence:** High.
+- **Evidence:** only ten Ticketing entities carry the department scope query filter (Ticket, Message, Requester, TicketSla, SlaEvent, TicketFieldValue, TicketFollower, TicketLink, TicketParticipant, CannedResponse). Everything else in Ticketing (for example `AutomationExecution`, `SavedView`, request forms), and every query in Mail, Knowledge and Audit, relies on each query repeating `DepartmentId == …`. The architecture tests pin where the scope bypass is called and which endpoints declare which permission, but nothing asserts what an administrative endpoint may return. `PermissionKind.Administrative` grants a Platform Admin access to any department without membership (`PermissionAuthorizationHandler.cs:44-48`), so any administrative endpoint that returns content-derived data (SEC-001, SEC-005) leaks to that role.
+- **Impact:** the pattern that caused two confirmed leaks can recur with the next administrative endpoint. Nothing detects it.
+- **Smallest recommended fix:** write down the rule (content-derived fields need `tickets.read` by membership; administrative permission returns configuration), fix SEC-001 and SEC-005, and extend `EndpointAuthorizationTests` with one test that signs in as a non-member Platform Admin and calls every GET under an administrative permission, asserting the response contains none of the fields classified as content. No new filter layer for Mail or Knowledge.
+- **Decision required:** No (the SEC-012 decision on the Platform Admin boundary comes first). **Production blocker:** No (SEC-001 is the blocker).
+- **Related:** SEC-001, SEC-005, SEC-012, QA-007, D-02.
+
+### ARC-003: "Who is a party to a ticket" has no single owner
+- **Category:** Architecture / Data Integrity. **Severity:** Medium. **Confidence:** High.
+- **Evidence:** the requester is a column; participants are an unattributed set of addresses (`ticket_participants`: address, name, created time, no source and no author); message authors are any requester row of the department (no constraint ties them to the ticket's parties); inbound mail, the portal, merge and outbound Cc each decide independently who counts (`MailBridge.cs:302-311`, `PortalRequestService.cs:224-230`, `TicketMerge.cs`, `TicketService.cs:462-470`). ADR-015 says CC participants get no portal access, but nothing says who may become one.
+- **Impact:** the rule exists only as habit, so each new path (portal reply, mail correlation, merge, the planned participant features) can add a party without the others noticing. This produced MSG-002, BE-001 and BE-002, and it will produce the next one.
+- **Smallest recommended fix:** one small domain service with three questions (may this sender attach? who may be added as a participant, from what? what happens to parties on merge?), called from the mail bridge, the merge service and the Cc builder, plus provenance on participants. Do not create a participant framework or a roles system.
+- **Decision required:** No new decision (settled by the MSG-002 and SEC-004/BE-002 decisions). **Production blocker:** No (MSG-002 is the blocker).
+- **Related:** MSG-002, SEC-006, MSG-003, BE-001, SEC-004, BE-002.
+
+### ARC-004: Durable intent is applied to some after-commit work and not to the rest
+- **Category:** Architecture / Reliability. **Severity:** Medium. **Confidence:** High.
+- **Evidence:** the notification outbox, the mail outbox and the delivery re-report all store intent in the same transaction and are drained or re-reported by a recurring job. Automation dispatch and the SLA monitor's follow-up run after commit with no stored intent (`TicketLifecycle.cs:39-52, 115-127`), and the automation lease only resumes an execution that is delivered again (BE-004). The notification outbox has no attempt tracking or dead-letter state (BE-005). The code comment already warns against turning the outbox into "a general event framework", which is the right instinct and should stay.
+- **Impact:** a restart between commit and dispatch silently loses routing or escalation rules; there is no record that anything was lost.
+- **Smallest recommended fix:** see RC-1: extend the same pattern (a small intent row in the same transaction, the existing job to drain it, deterministic keys already in place) to automation triggers and SLA follow-up, and add attempts and last error to the outbox row.
+- **Decision required:** No new decision (BE-004 holds it). **Production blocker:** No.
+- **Related:** BE-004, BE-005, BE-015, SRE-005.
+
+## 18.4 Low (new)
+
+### ARC-005: "Open work" is restated in four other files besides the shared predicate
+- **Category:** Maintainability / Reporting. **Confidence:** High. **Evidence:** the shared `QueuePredicates.Backlog` (Open or Pending, not merged) is used by the queue filters and the dashboard only. The same expression is restated in `RequesterHistoryService.cs` (its own `ActiveStatuses` array and four uses), `TicketProjection.cs:56`, `RequesterIdentityAdmin.cs:127`, and `TicketQueryService.cs:144, 319, 330`. **Impact:** a future change (for example whether Pending counts as open) updates some screens and not others, and Historical Reports would add a seventh definition. **Fix:** reuse `QueuePredicates` in those places when they are next touched; do not move code now. **Decision:** No. **Blocker:** No. **Related:** Data/Reporting review (not yet run), BE-007.
+
+### ARC-006: Significant decisions since ADR-015 are recorded in long bullets, not ADRs
+- **Category:** Documentation / Architecture governance. **Confidence:** High. **Evidence:** project rules require an ADR for significant changes to shared contracts, auth, permissions or database architecture. Not covered by an ADR: the notification outbox via a `SaveChanges` interceptor; the requester identity-link model and the form audiences (ADR-015 was amended inline with parenthetical notes); presence and mentions (the realtime boundary); the server-side per-user preference table; the Knowledge reply-link contract between two modules; the meaning of administrative permission for Platform Admins (D-02 says "no automatic access", `PERMISSIONS.md` describes the mechanism); help topics. They live in single-line bullets in `TICKETING.md` of several hundred words. **Impact:** reviewers cannot see what was decided, when, or what was rejected; amendments inside an accepted ADR blur history. **Fix:** a short ADR for each of the first four, no more than a page each, written from the existing text. **Decision:** No. **Blocker:** No.
+
+### ARC-007: Cross-schema database coupling and migration order are accepted in practice but not written down or tested
+- **Category:** Architecture / Deployment. **Confidence:** High. **Evidence:** Ticketing migrations create foreign keys into `organisation.departments`, `organisation.teams`, `organisation.department_memberships`, `identity.users` and `mail.mailboxes`; Ticketing code inserts into `mail.messages` on its own connection (ADR-013 states this); one connection string and one database role serve every module. The runner orders modules by an integer; my own scratch-database run showed that migrating Ticketing first fails for want of the `organisation` schema. SRE-007 found the documented order lists three of eight modules. **Impact:** "modules own their schema" is true for tables, but not for deployment, restore or rollback: a Down migration of Organisation or Mail cannot run while Ticketing exists, and a single-module restore is not possible. That is acceptable for a modular monolith, as long as it is stated. **Fix:** one paragraph (in the ADR for ARC-006 or in ADR-001) stating one database, one role, hard cross-schema keys, the order and that rollback is by restore; one test that the registered migration orders satisfy the foreign key dependencies. **Decision:** No. **Blocker:** No. **Related:** SRE-007.
+
+### ARC-008: A cross-module contract carries a security precondition only in prose
+- **Category:** Architecture / Security (latent). **Confidence:** High. **Evidence:** `IReplyLinkArticles.SearchAsync(departmentId, query)` (Refinement 10) returns every article a *linked requester* of that department could open, for any caller. Its comment says the caller has already established the link; the signature does not require it. Today the single caller (`ReplyLinkService`) does. **Impact:** a future caller that omits the check offers requester-only articles to an unlinked requester. **Fix:** make the precondition part of the call (for example pass the linked user id and have Knowledge apply the audience rule itself), when the contract is next touched. **Decision:** No. **Blocker:** No.
+
+### ARC-009: Maintainability: one very large service and an unchecked client contract
+- **Category:** Maintainability. **Confidence:** Medium. **Evidence:** `TicketService.cs` is 999 lines covering creation, update, assignment, messaging, delivery retry, attachments, bulk, activity and projection helpers; `Macros.cs` (738), `MailboxService.cs` (533), `TicketQueryService.cs` (504) and `PortalRequestService.cs` (478) are the next largest. The web client's response shapes are hand-written Zod schemas; `ARCHITECTURE.md` says types are generated from OpenAPI, but no generator exists (DOC-002), and nothing checks a schema against the server DTO. **Impact:** no defect today; new rules (for example the party rule) will be added in whichever file is nearest, and a server field rename is caught only by tests that happen to render it. **Fix:** do not refactor now. Split `TicketService` along existing seams (messages, bulk) only when a change forces it; correct the documentation about generated types, or add a contract test for the highest-traffic DTOs. **Decision:** No. **Blocker:** No.
+
+## 18.5 Questions the Architect had to answer (AGENTS.md section 7)
+
+- **Are modules genuinely separated?** Yes at the code level and enforced by tests; at the database level they share one database, one role and hard foreign keys, deliberately (ARC-007).
+- **Are post-commit operations safe?** Safe for notifications and mail; not for automation and SLA follow-up (ARC-004).
+- **Is durable work actually durable?** The outbox and mail queue are; the recurring jobs are idempotent. See RC-1 for the gaps.
+- **Are transaction boundaries correct?** Yes for ticket changes. Two edges stretch them: the portal reply (message, then attachments, BE-003) and the SLA monitor (commit, then dispatch, BE-004).
+- **Are failure and retry semantics explicit?** Mostly. The outbound sender is the model case. Gaps: no attempt tracking on the notification outbox (BE-005), no automatic reconcile of uncertain sends (MSG-008), retry of a submitted message (MSG-001).
+- **Are shared predicates used consistently?** For the queue and the dashboard, yes; elsewhere no (ARC-005).
+- **Can reporting drift from queue semantics?** Yes, through ARC-005 and the first-response rule (BE-007), unless the definitions are fixed before Historical Reports starts.
+- **Duplicate mechanisms?** Several idempotency keys of different shapes (source reference, unique unread notification, automation trigger key, atomic claim), but each fits its job. `ITicketEvents.PublishAsync` also drains the notification outbox, so a method named "publish" has a side effect that a reader would not expect; harmless, worth knowing.
+- **Are old abstractions still necessary / are new ones justified?** The mail provider interface is still justified (a simulator and Graph). No new abstraction is recommended in this review.
+- **Circular dependencies?** None at project level. Ticketing references Knowledge (it calls `IReplyLinkArticles`) and also implements Knowledge's `IRequesterAudience`; the project reference runs one way, and the interface is implemented in the opposite direction, which is the intended inversion.
+- **Reversible migrations?** Each module's migrations have Down methods; the two newest were exercised up/down/up. Cross-module reversal is by restore (ARC-007).
+- **Data states the application cannot represent or recover from?** A participant that should be removed (BE-001); a message marked Sent after a bounce (MSG-001); a notification that cannot be processed and stays queued (BE-005).
+
+## 18.6 Could not be verified
+
+- Behaviour with more than one application instance (presence and the hub's connection registry are in memory; there is no backplane): SRE-008 stands, nothing was run.
+- That the migration order numbers satisfy every foreign key dependency from a clean database in the production role (only the two newest migrations and one scratch-database cycle were run, for earlier work).
+- Performance of the shared predicates on large tables, and the cost of the in-request outbox drain after a long backlog.
+- Whether the scope filter's omission on the entities listed in ARC-002 hides any other administrative endpoint that returns content: I checked the administrative endpoints I could identify (mail attention, automation history, requester identities, mailboxes, forms, knowledge, members, audit); the proposed probe test would check them all.
