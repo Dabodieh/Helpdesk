@@ -12,6 +12,9 @@ export const viewFilterSchema = z.object({
   q: z.string().nullish(),
   sort: z.string().nullish(),
   sla: z.string().nullish(),
+  typeId: z.string().nullish(),
+  send: z.string().nullish(),
+  noTeam: z.boolean().nullish(),
 })
 export type ViewFilter = z.infer<typeof viewFilterSchema>
 

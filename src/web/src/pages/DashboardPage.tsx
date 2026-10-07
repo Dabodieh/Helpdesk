@@ -38,9 +38,9 @@ function Content({ d }: { d: Dashboard }) {
           <Figure label="SLA overdue" value={d.sla.overdue} to={queue(id, { sla: 'breached' })} tone="bad" />
           <Figure label="Due soon" hint={`within ${d.sla.dueSoonWindowMinutes / 60} h`} value={d.sla.dueSoon} to={queue(id, { sla: 'duesoon' })} tone="warn" />
           <Figure label="Unassigned" value={d.backlog.unassigned} to={queue(id, { assignee: 'none' })} tone="warn" />
-          <Figure label="Awaiting first response" hint="(human reply)" value={d.backlog.awaitingFirstResponse} tone="warn" />
-          <Figure label="Replies not sent" value={d.sends.failedTickets} tone="bad" hint="(email failed)" />
-          <Figure label="Send outcome uncertain" value={d.sends.uncertainTickets} tone="warn" hint="(administrator to check)" />
+          <Figure label="Awaiting first response" hint="(human reply)" value={d.backlog.awaitingFirstResponse} to={queue(id, { sla: 'awaitingresponse' })} tone="warn" />
+          <Figure label="Replies not sent" value={d.sends.failedTickets} to={queue(id, { send: 'failed' })} tone="bad" hint="(email failed)" />
+          <Figure label="Send outcome uncertain" value={d.sends.uncertainTickets} to={queue(id, { send: 'uncertain' })} tone="warn" hint="(administrator to check)" />
         </ul>
       </section>
 

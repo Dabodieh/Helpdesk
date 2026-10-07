@@ -503,3 +503,21 @@ internal sealed class MessageMention
 
     public DateTimeOffset CreatedAt { get; set; }
 }
+
+/// <summary>
+/// One user's queue preferences (own row, no department data): the optional queue columns and their order (null = the standard set), and the default landing
+/// queue OR saved view. Preferences grant nothing: a stored view id is re-checked as the owner's on every read and a vanished or foreign view is simply ignored.
+/// </summary>
+internal sealed class UserQueuePreference
+{
+    public Guid UserId { get; set; }
+
+    /// <summary>JSON array of column keys in display order, or null for the standard columns.</summary>
+    public string? ColumnsJson { get; set; }
+
+    public string? DefaultQueue { get; set; }
+
+    public Guid? DefaultViewId { get; set; }
+
+    public DateTimeOffset UpdatedAt { get; set; }
+}

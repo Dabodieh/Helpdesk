@@ -2,10 +2,12 @@ import { useInfiniteQuery } from '@tanstack/react-query'
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { listTickets } from '../api/tickets'
+import type { QueueColumn } from '../api/queuePrefs'
 import type { Queue, TicketListItem } from '../api/ticketSchemas'
 import { useMe } from '../auth'
 import { formatDateTime, timeAgo } from '../lib/format'
 import { DEFAULT_SORT, hasCustomFilters, parseFilters, QUEUE_TITLES, withParam, type Mode } from '../lib/filters'
+import { useQueuePrefs, visibleColumns } from '../hooks/useQueuePrefs'
 import { usePref } from '../lib/prefs'
 import { isActivatable, useShortcuts } from '../lib/shortcuts'
 import { livePolling } from '../queries'
@@ -15,6 +17,7 @@ import { Icon } from './icons'
 import { SlaBadge } from './Sla'
 import { PriorityMark, StatusPill } from './Pills'
 import QueueFilters from './QueueFilters'
+import QueuePrefsMenu from './QueuePrefsMenu'
 import { RequesterName } from './RequesterDrawer'
 
 type Props = {
@@ -63,6 +66,8 @@ export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
   const searchRef = useRef<HTMLInputElement>(null)
   const filters = useMemo(() => parseFilters(queue, params, mode, me.id), [queue, params, mode, me.id])
   const enabled = mode !== 'search' || !!filters.q
+  const { prefs } = useQueuePrefs()
+  const [prefsOpen, setPrefsOpen] = useState(false)
   const [density, setDensity] = usePref('helpdesk.density', ['comfortable', 'compact'] as const, 'comfortable')
 
   const list = useInfiniteQuery({
@@ -164,6 +169,80 @@ export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
   const sort = filters.sort
   const setSort = (next: string) => setParams((p) => withParam(p, 'sort', next === DEFAULT_SORT ? null : next), { replace: true })
   const allChecked = items.length > 0 && items.every((t) => checked.has(t.id))
+  const columns = visibleColumns(prefs)
+  const sortHeader = (cls: string, label: string, on: boolean, dir: 'ascending' | 'descending' | 'none', arrow: string, toggle: () => void) => (
+    <th scope="col" className={cls} aria-sort={dir}>
+      <button type="button" className="th-sort" onClick={toggle}>
+        {label} {on && <span aria-hidden="true">{arrow}</span>}
+      </button>
+    </th>
+  )
+  const headerCell = (c: QueueColumn) => {
+    switch (c) {
+      case 'requester':
+        return <th scope="col" className="col-requester">Requester</th>
+      case 'status':
+        return <th scope="col" className="col-status">Status</th>
+      case 'priority':
+        return sortHeader('col-prio', 'Priority', sort === 'priority_desc', sort === 'priority_desc' ? 'descending' : 'none', '↓', () => setSort(sort === 'priority_desc' ? DEFAULT_SORT : 'priority_desc'))
+      case 'sla':
+        return sortHeader('col-sla', 'SLA', sort === 'sla_due_asc', sort === 'sla_due_asc' ? 'ascending' : 'none', '↑', () => setSort(sort === 'sla_due_asc' ? DEFAULT_SORT : 'sla_due_asc'))
+      case 'team':
+        return <th scope="col" className="col-team">Team</th>
+      case 'assignee':
+        return <th scope="col" className="col-assignee">Assignee</th>
+      case 'updated':
+        return sortHeader(
+          'col-age',
+          'Updated',
+          sort === 'updated_desc' || sort === 'updated_asc',
+          sort === 'updated_desc' ? 'descending' : sort === 'updated_asc' ? 'ascending' : 'none',
+          sort === 'updated_desc' ? '↓' : '↑',
+          () => setSort(sort === 'updated_desc' ? 'updated_asc' : 'updated_desc'),
+        )
+    }
+  }
+  const bodyCell = (c: QueueColumn, t: TicketListItem) => {
+    switch (c) {
+      case 'requester':
+        return (
+          <td className="col-requester">
+            <RequesterName requesterId={t.requester.id} name={t.requester.displayName} />
+          </td>
+        )
+      case 'status':
+        return (
+          <td className="col-status">
+            {t.mergedInto ? <span className="badge off">Merged into {t.mergedInto}</span> : <StatusPill status={t.status} />}
+            <span className="sla-inline">
+              <SlaBadge sla={t.sla} />
+            </span>
+          </td>
+        )
+      case 'priority':
+        return (
+          <td className="col-prio">
+            <PriorityMark priority={t.priority} />
+          </td>
+        )
+      case 'sla':
+        return (
+          <td className="col-sla">
+            <SlaBadge sla={t.sla} />
+          </td>
+        )
+      case 'team':
+        return <td className="col-team">{t.team?.name ?? <span className="muted">None</span>}</td>
+      case 'assignee':
+        return <td className="col-assignee">{t.assignee?.displayName ?? <span className="muted">Unassigned</span>}</td>
+      case 'updated':
+        return (
+          <td className="col-age" title={formatDateTime(t.updatedAt)}>
+            {timeAgo(t.updatedAt)}
+          </td>
+        )
+    }
+  }
 
   return (
     <section className="queue-pane" aria-label={title} data-density={density}>
@@ -182,7 +261,13 @@ export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
           <Icon name="density" />
           <span className="sr-only">{density === 'compact' ? 'Comfortable rows' : 'Compact rows'}</span>
         </button>
+        {mode === 'queue' && (
+          <button type="button" className="ghost" aria-haspopup="dialog" onClick={() => setPrefsOpen(true)}>
+            Columns &amp; default
+          </button>
+        )}
       </div>
+      {prefsOpen && <QueuePrefsMenu queue={queue} onClose={() => setPrefsOpen(false)} />}
       <QueueFilters mode={mode} searchRef={searchRef} filters={filters} />
       {checkedItems.length > 0 && <BulkBar tickets={checkedItems} onClear={() => setChecked(new Set())} />}
       <div className="queue-scroll" id="queue-list" tabIndex={-1}>
@@ -231,34 +316,9 @@ export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
                 <th scope="col" className="col-subject">
                   Subject
                 </th>
-                <th scope="col" className="col-requester">
-                  Requester
-                </th>
-                <th scope="col" className="col-status">
-                  Status
-                </th>
-                <th scope="col" className="col-prio" aria-sort={sort === 'priority_desc' ? 'descending' : 'none'}>
-                  <button type="button" className="th-sort" onClick={() => setSort(sort === 'priority_desc' ? DEFAULT_SORT : 'priority_desc')}>
-                    Priority {sort === 'priority_desc' && <span aria-hidden="true">↓</span>}
-                  </button>
-                </th>
-                <th scope="col" className="col-sla" aria-sort={sort === 'sla_due_asc' ? 'ascending' : 'none'}>
-                  <button type="button" className="th-sort" onClick={() => setSort(sort === 'sla_due_asc' ? DEFAULT_SORT : 'sla_due_asc')}>
-                    SLA {sort === 'sla_due_asc' && <span aria-hidden="true">↑</span>}
-                  </button>
-                </th>
-                <th scope="col" className="col-team">
-                  Team
-                </th>
-                <th scope="col" className="col-assignee">
-                  Assignee
-                </th>
-                <th scope="col" className="col-age" aria-sort={sort === 'updated_desc' ? 'descending' : sort === 'updated_asc' ? 'ascending' : 'none'}>
-                  <button type="button" className="th-sort" onClick={() => setSort(sort === 'updated_desc' ? 'updated_asc' : 'updated_desc')}>
-                    Updated{' '}
-                    {(sort === 'updated_desc' || sort === 'updated_asc') && <span aria-hidden="true">{sort === 'updated_desc' ? '↓' : '↑'}</span>}
-                  </button>
-                </th>
+                {columns.map((c) => (
+                  <Fragment key={c}>{headerCell(c)}</Fragment>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -303,26 +363,9 @@ export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
                         </span>
                       )}
                     </td>
-                    <td className="col-requester">
-                      <RequesterName requesterId={t.requester.id} name={t.requester.displayName} />
-                    </td>
-                    <td className="col-status">
-                      {t.mergedInto ? <span className="badge off">Merged into {t.mergedInto}</span> : <StatusPill status={t.status} />}
-                      <span className="sla-inline">
-                        <SlaBadge sla={t.sla} />
-                      </span>
-                    </td>
-                    <td className="col-prio">
-                      <PriorityMark priority={t.priority} />
-                    </td>
-                    <td className="col-sla">
-                      <SlaBadge sla={t.sla} />
-                    </td>
-                    <td className="col-team">{t.team?.name ?? <span className="muted">None</span>}</td>
-                    <td className="col-assignee">{t.assignee?.displayName ?? <span className="muted">Unassigned</span>}</td>
-                    <td className="col-age" title={formatDateTime(t.updatedAt)}>
-                      {timeAgo(t.updatedAt)}
-                    </td>
+                    {columns.map((c) => (
+                      <Fragment key={c}>{bodyCell(c, t)}</Fragment>
+                    ))}
                   </tr>
                 )
               })}

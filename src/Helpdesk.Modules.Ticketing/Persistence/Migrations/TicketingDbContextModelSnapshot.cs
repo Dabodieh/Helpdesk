@@ -1850,6 +1850,37 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                     b.ToTable("ticket_type_fields", "ticketing");
                 });
 
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.UserQueuePreference", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<string>("ColumnsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("columns");
+
+                    b.Property<string>("DefaultQueue")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("default_queue");
+
+                    b.Property<Guid?>("DefaultViewId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("default_view_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("user_queue_preferences", "ticketing", t =>
+                        {
+                            t.HasCheckConstraint("ck_user_queue_preferences_default", "default_queue IS NULL OR default_view_id IS NULL");
+                        });
+                });
+
             modelBuilder.Entity("Helpdesk.Modules.Ticketing.Portal.HelpTopic", b =>
                 {
                     b.Property<Guid>("Id")

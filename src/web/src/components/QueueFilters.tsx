@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
+import { listQueueTypes } from '../api/queuePrefs'
 import type { TicketFilters } from '../api/tickets'
 import { PRIORITIES, STATUSES } from '../api/ticketSchemas'
 import { useMe } from '../auth'
@@ -26,6 +28,7 @@ export default function QueueFilters({
   const deptParam = params.get('dept') ?? ''
   const scopeDept = deptParam || (departments.length === 1 ? departments[0]!.departmentId : undefined)
   const { teams, members } = useDirectory(scopeDept)
+  const types = useQuery({ queryKey: ['queue-types', scopeDept], queryFn: () => listQueueTypes(scopeDept!), enabled: !!scopeDept, staleTime: 60_000, retry: false })
 
   // The search box edits local text; the URL (and so the query) follows after a short pause.
   const urlQ = params.get('q') ?? ''
@@ -44,7 +47,13 @@ export default function QueueFilters({
     setParams((p) => withParam(p, 'q', debounced || null), { replace: true })
   }, [debounced, setParams])
 
-  const defaultStatuses = mode === 'search' ? STATUSES : ACTIVE_STATUSES
+  // A Type that no longer exists (for example in an old saved view) is dropped from the filter instead of silently showing nothing.
+  const typeParam = params.get('type')
+  useEffect(() => {
+    if (typeParam && types.isSuccess && !types.data.some((t) => t.id === typeParam)) setParams((p) => withParam(p, 'type', null), { replace: true })
+  }, [typeParam, types.isSuccess, types.data, setParams])
+
+  const defaultStatuses =mode === 'search' ? STATUSES : ACTIVE_STATUSES
   const rawStatus = params.get('status')
   const selected = new Set<string>(rawStatus === null ? defaultStatuses : rawStatus === '' ? [] : rawStatus.split(',').map((s) => s.trim()))
   function toggleStatus(s: string) {
@@ -111,6 +120,7 @@ export default function QueueFilters({
             <option value="approaching">Approaching</option>
             <option value="duesoon">Due within 4 hours</option>
             <option value="paused">Paused</option>
+            <option value="awaitingresponse">Awaiting first response</option>
           </select>
         </label>
         {departments.length > 1 && (
@@ -119,7 +129,7 @@ export default function QueueFilters({
             <select
               value={deptParam}
               onChange={(e) =>
-                setParams((p) => withParam(withParam(withParam(p, 'dept', e.target.value || null), 'team', null), 'assignee', null), { replace: true })
+                setParams((p) => withParam(withParam(withParam(withParam(p, 'dept', e.target.value || null), 'team', null), 'assignee', null), 'type', null), { replace: true })
               }
             >
               <option value="">All</option>
@@ -140,11 +150,33 @@ export default function QueueFilters({
             onChange={(e) => set('team', e.target.value)}
           >
             <option value="">Any</option>
+            <option value="none">No team</option>
             {teams.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name}
               </option>
             ))}
+          </select>
+        </label>
+        {scopeDept && (types.data?.length ?? 0) > 0 && (
+          <label className="fsel">
+            <span>Type</span>
+            <select value={params.get('type') ?? ''} onChange={(e) => set('type', e.target.value)}>
+              <option value="">Any</option>
+              {types.data!.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <label className="fsel">
+          <span>Email sending</span>
+          <select value={params.get('send') ?? ''} onChange={(e) => set('send', e.target.value)}>
+            <option value="">Any</option>
+            <option value="failed">Reply not sent</option>
+            <option value="uncertain">Send outcome uncertain</option>
           </select>
         </label>
         <label className="fsel">

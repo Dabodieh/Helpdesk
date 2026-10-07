@@ -3332,3 +3332,23 @@ table.compact th {
   background: var(--accent);
   flex: none;
 }
+
+.column-prefs {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.column-prefs li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.15rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.dialog-actions.start {
+  justify-content: flex-start;
+}

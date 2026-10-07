@@ -25,6 +25,14 @@ internal static class QueuePredicates
     public static Expression<Func<Ticket, bool>> SlaApproaching(TicketingDbContext db, DateTimeOffset now) =>
         t => db.TicketSlas.Any(s => s.TicketId == t.Id && s.NextWarnAt != null && s.NextWarnAt <= now && s.NextDueAt > now);
 
+    /// <summary>A first-response target exists and no human has answered yet (an acknowledgement is not a ticket message, so it never counts).</summary>
+    public static Expression<Func<Ticket, bool>> AwaitingFirstResponse(TicketingDbContext db) =>
+        t => db.TicketSlas.Any(s => s.TicketId == t.Id && s.FirstResponseTargetMinutes != null && s.FirstResponseMetAt == null);
+
+    /// <summary>An agent reply whose email did not go out: a confirmed failure, or (uncertain) a send whose outcome is unknown.</summary>
+    public static Expression<Func<Ticket, bool>> SendProblem(TicketingDbContext db, bool uncertain) =>
+        t => db.Messages.Any(m => m.TicketId == t.Id && m.DeliveryState == DeliveryState.Failed && (m.DeliveryError == "outcome_uncertain") == uncertain);
+
     /// <summary>A deadline within <see cref="DueSoonWindow"/> that has not passed.</summary>
     public static Expression<Func<Ticket, bool>> SlaDueSoon(TicketingDbContext db, DateTimeOffset now)
     {

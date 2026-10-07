@@ -8,7 +8,9 @@ export type Priority = (typeof PRIORITIES)[number]
 export const QUEUES = ['my', 'team', 'unassigned', 'all', 'following'] as const
 export type Queue = (typeof QUEUES)[number]
 export const SORTS = ['updated_desc', 'updated_asc', 'created_desc', 'created_asc', 'priority_desc', 'sla_due_asc'] as const
-export const SLA_FILTERS = ['breached', 'approaching', 'duesoon', 'paused'] as const
+export const SLA_FILTERS = ['breached', 'approaching', 'duesoon', 'paused', 'awaitingresponse'] as const
+export const SEND_FILTERS = ['failed', 'uncertain'] as const
+export type SendFilter = (typeof SEND_FILTERS)[number]
 export type SlaFilter = (typeof SLA_FILTERS)[number]
 export type Sort = (typeof SORTS)[number]
 

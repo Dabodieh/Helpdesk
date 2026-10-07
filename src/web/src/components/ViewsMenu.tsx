@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { fieldErrors } from '../api/errors'
+import { useQueuePrefs } from '../hooks/useQueuePrefs'
 import type { TicketFilters } from '../api/tickets'
 import { createView, deleteView, listViews, updateView, type SavedView } from '../api/views'
 import { describeFilter, toViewFilter, viewLocation } from '../lib/filters'
@@ -15,6 +16,7 @@ export default function ViewsMenu({ filters, onClose }: { filters: TicketFilters
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const activeView = params.get('view')
+  const { prefs, save: savePrefs, update: updatePrefs } = useQueuePrefs()
   const views = useQuery({ queryKey: ['views'], queryFn: listViews })
   const [name, setName] = useState('')
   const [pin, setPin] = useState(true)
@@ -81,6 +83,16 @@ export default function ViewsMenu({ filters, onClose }: { filters: TicketFilters
                 >
                   <Icon name="star" />
                 </button>
+                <button
+                  type="button"
+                  className="ghost"
+                  aria-pressed={prefs?.defaultViewId === v.id}
+                  disabled={savePrefs.isPending}
+                  onClick={() => updatePrefs(prefs?.defaultViewId === v.id ? { defaultViewId: null } : { defaultViewId: v.id, defaultQueue: null })}
+                  title="Open this view when you sign in"
+                >
+                  {prefs?.defaultViewId === v.id ? 'Default view' : `Make ${v.name} my default`}
+                </button>
                 {v.id === activeView && (
                   <button type="button" className="ghost" disabled={overwrite.isPending} onClick={() => overwrite.mutate(v)} title="Replace this view’s filters with the ones showing now">
                     Update to current filters
@@ -93,7 +105,7 @@ export default function ViewsMenu({ filters, onClose }: { filters: TicketFilters
             ))}
           </ul>
         )}
-        <ErrorNotice error={togglePin.error ?? remove.error ?? overwrite.error} />
+        <ErrorNotice error={togglePin.error ?? remove.error ?? overwrite.error ?? savePrefs.error} />
       </div>
       <form className="dialog-form" onSubmit={submit} aria-label="Save current filters as a view">
         <h3>Save the current filters</h3>

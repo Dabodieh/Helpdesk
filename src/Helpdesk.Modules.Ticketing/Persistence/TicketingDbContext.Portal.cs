@@ -8,6 +8,8 @@ internal sealed partial class TicketingDbContext
 {
     public DbSet<Portal.HelpTopic> HelpTopics => Set<Portal.HelpTopic>();
 
+    public DbSet<UserQueuePreference> UserQueuePreferences => Set<UserQueuePreference>();
+
     public DbSet<Notification> Notifications => Set<Notification>();
 
     public DbSet<TicketNotifyState> TicketNotifyStates => Set<TicketNotifyState>();
@@ -34,6 +36,17 @@ internal sealed partial class TicketingDbContext
 
     private void ConfigurePortal(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<UserQueuePreference>(e =>
+        {
+            e.ToTable("user_queue_preferences", t => t.HasCheckConstraint("ck_user_queue_preferences_default", "default_queue IS NULL OR default_view_id IS NULL"));
+            e.HasKey(x => x.UserId);
+            e.Property(x => x.UserId).HasColumnName("user_id").ValueGeneratedNever();
+            e.Property(x => x.ColumnsJson).HasColumnName("columns").HasColumnType("jsonb");
+            e.Property(x => x.DefaultQueue).HasColumnName("default_queue").HasMaxLength(16);
+            e.Property(x => x.DefaultViewId).HasColumnName("default_view_id");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+        });
+
         modelBuilder.Entity<Portal.HelpTopic>(e =>
         {
             e.ToTable("help_topics", t => t.HasCheckConstraint("ck_help_topics_name", "length(btrim(name)) BETWEEN 1 AND 100"));

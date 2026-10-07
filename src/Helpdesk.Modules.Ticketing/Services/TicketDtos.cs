@@ -136,6 +136,8 @@ internal sealed record BulkItemDto(Guid TicketId, string? Reference, string Outc
 internal sealed record BulkResultDto(IReadOnlyList<BulkItemDto> Results, int Updated, int Unchanged, int Failed);
 
 /// <summary>Query string of <c>GET /api/tickets</c> (bound by the endpoint).</summary>
+internal sealed record QueueTypeDto(Guid Id, string Name);
+
 internal sealed record TicketListQuery(
     string? Queue,
     Guid? DepartmentId,
@@ -150,4 +152,6 @@ internal sealed record TicketListQuery(
     int? Limit,
     Guid? View = null,
     string? Sla = null,
-    Guid? TypeId = null);
+    Guid? TypeId = null,
+    string? Send = null,
+    bool? NoTeam = null);

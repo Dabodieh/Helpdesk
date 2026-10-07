@@ -85,6 +85,17 @@ internal static class TicketEndpoints
             .RequireAuthenticatedOnly()
             .WithTags("Tickets");
 
+        app.MapGet("/api/departments/{departmentId:guid}/queue-types", async (Guid departmentId, TicketQueryService queries, CancellationToken ct) =>
+                TypedResults.Ok(await queries.ActiveTypesAsync(departmentId, ct)))
+            .RequirePermission(PermissionCodes.TicketsRead)
+            .WithTags("Tickets");
+
+        // Personal queue preferences (own row only; never any department data): columns and their order, and the default queue or saved view.
+        app.MapGet("/api/me/queue-preferences", async (QueuePreferencesService prefs, CancellationToken ct) => TypedResults.Ok(await prefs.GetAsync(ct)))
+            .RequireAuthenticatedOnly().WithTags("Views");
+        app.MapPut("/api/me/queue-preferences", async (QueuePreferencesRequest body, QueuePreferencesService prefs, CancellationToken ct) => TypedResults.Ok(await prefs.SetAsync(body, ct)))
+            .RequireAuthenticatedOnly().WithTags("Views");
+
         app.MapGet("/api/tickets/queue-counts", async (TicketQueryService queries, CancellationToken ct) =>
                 TypedResults.Ok(await queries.QueueCountsAsync(ct)))
             .RequireAuthenticatedOnly()

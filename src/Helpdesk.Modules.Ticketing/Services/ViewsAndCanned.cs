@@ -21,7 +21,10 @@ internal sealed record ViewFilter(
     string[]? Priority,
     string? Q,
     string? Sort,
-    string? Sla = null);
+    string? Sla = null,
+    Guid? TypeId = null,
+    string? Send = null,
+    bool? NoTeam = null);
 
 internal sealed record SavedViewDto(Guid Id, string Name, ViewFilter Filter, bool IsPinned, string Version);
 
@@ -204,8 +207,14 @@ internal sealed class SavedViewService(TicketingDbContext db, ICurrentUser curre
             errors["filter.sla"] = [$"sla must be one of {string.Join(", ", TicketQueryService.SlaFilters)}."];
         }
 
+        var send = filter.Send?.Trim().ToLowerInvariant();
+        if (!string.IsNullOrEmpty(send) && !TicketQueryService.SendFilters.Contains(send))
+        {
+            errors["filter.send"] = [$"send must be one of {string.Join(", ", TicketQueryService.SendFilters)}."];
+        }
+
         return new ViewFilter(queue, filter.DepartmentId, filter.TeamId, filter.AssigneeUserId, filter.Unassigned == true ? true : null, status, priority,
-            string.IsNullOrEmpty(q) ? null : q, sort, string.IsNullOrEmpty(sla) ? null : sla);
+            string.IsNullOrEmpty(q) ? null : q, sort, string.IsNullOrEmpty(sla) ? null : sla, filter.TypeId, string.IsNullOrEmpty(send) ? null : send, filter.NoTeam == true ? true : null);
     }
 
     private SavedViewDto ToDto(SavedView v) =>

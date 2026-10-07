@@ -58,8 +58,7 @@ internal sealed class DepartmentDashboardService(
         var pending = await backlog.CountAsync(t => t.Status == TicketStatus.Pending, ct);
         var unassigned = await backlog.CountAsync(t => t.AssigneeUserId == null, ct);
         // Only the human response counts: an acknowledgement is not a ticket message, so it can never satisfy first response.
-        var awaiting = await backlog.CountAsync(
-            t => db.TicketSlas.Any(s => s.TicketId == t.Id && s.FirstResponseTargetMinutes != null && s.FirstResponseMetAt == null), ct);
+        var awaiting = await backlog.Where(QueuePredicates.AwaitingFirstResponse(db)).CountAsync(ct);
         var overdue = await backlog.Where(breached).CountAsync(ct);
         var dueSoon = await backlog.Where(QueuePredicates.SlaDueSoon(db, now)).CountAsync(ct);
 
@@ -93,8 +92,8 @@ internal sealed class DepartmentDashboardService(
         var people = await users.GetManyAsync([.. oldestRows.Select(r => r.AssigneeUserId).OfType<Guid>().Distinct()], ct);
         string? TeamName(Guid? id) => id is { } t && teams.TryGetValue(t, out var info) && info.DepartmentId == departmentId ? info.Name : null;
 
-        var failedTickets = await FailedSendTicketsAsync(backlog, uncertain: false, ct);
-        var uncertainTickets = await FailedSendTicketsAsync(backlog, uncertain: true, ct);
+        var failedTickets = await backlog.Where(QueuePredicates.SendProblem(db, uncertain: false)).CountAsync(ct);
+        var uncertainTickets = await backlog.Where(QueuePredicates.SendProblem(db, uncertain: true)).CountAsync(ct);
 
         IReadOnlyList<MailboxHealthInfo>? mailboxes = null;
         if (await authorizer.CheckAsync(PermissionCodes.DepartmentMailboxesManage, departmentId, ct) == AccessOutcome.Allowed)
@@ -115,10 +114,4 @@ internal sealed class DepartmentDashboardService(
             new DashboardSendsDto(failedTickets, uncertainTickets),
             mailboxes);
     }
-
-    /// <summary>Backlog tickets with an agent reply whose email did not go out: confirmed failures, or (uncertain) sends whose outcome is unknown.</summary>
-    private Task<int> FailedSendTicketsAsync(IQueryable<Ticket> backlog, bool uncertain, CancellationToken ct) =>
-        db.Messages.AsNoTracking()
-            .Where(m => m.DeliveryState == DeliveryState.Failed && (m.DeliveryError == "outcome_uncertain") == uncertain && backlog.Any(t => t.Id == m.TicketId))
-            .Select(m => m.TicketId).Distinct().CountAsync(ct);
 }

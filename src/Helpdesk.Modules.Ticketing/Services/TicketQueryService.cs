@@ -25,7 +25,10 @@ internal sealed class TicketQueryService(
     TimeProvider clock)
 {
     /// <summary>Values of the <c>sla</c> list filter. Breached: past its deadline and unmet; approaching: inside its warning window; duesoon: due within four hours; paused: resolution clock paused.</summary>
-    public static readonly string[] SlaFilters = ["breached", "approaching", "duesoon", "paused"];
+    public static readonly string[] SlaFilters = ["breached", "approaching", "duesoon", "paused", "awaitingresponse"];
+
+    /// <summary>Values of the <c>send</c> list filter: tickets with an agent reply whose email failed, or whose send outcome is uncertain.</summary>
+    public static readonly string[] SendFilters = ["failed", "uncertain"];
 
 
     public const int DefaultLimit = 50;
@@ -50,7 +53,7 @@ internal sealed class TicketQueryService(
             query = query with
             {
                 Queue = f.Queue, DepartmentId = f.DepartmentId, Status = f.Status, Priority = f.Priority, TeamId = f.TeamId,
-                AssigneeUserId = f.AssigneeUserId, Unassigned = f.Unassigned, Q = f.Q, Sort = f.Sort, Sla = f.Sla,
+                AssigneeUserId = f.AssigneeUserId, Unassigned = f.Unassigned, Q = f.Q, Sort = f.Sort, Sla = f.Sla, TypeId = f.TypeId, Send = f.Send, NoTeam = f.NoTeam,
             };
         }
 
@@ -96,6 +99,12 @@ internal sealed class TicketQueryService(
         if (!string.IsNullOrEmpty(slaFilter) && !SlaFilters.Contains(slaFilter))
         {
             errors["sla"] = [$"sla must be one of {string.Join(", ", SlaFilters)}."];
+        }
+
+        var sendFilter = query.Send?.Trim().ToLowerInvariant();
+        if (!string.IsNullOrEmpty(sendFilter) && !SendFilters.Contains(sendFilter))
+        {
+            errors["send"] = [$"send must be one of {string.Join(", ", SendFilters)}."];
         }
 
         TicketValidation.ThrowIfAny(errors);
@@ -161,6 +170,16 @@ internal sealed class TicketQueryService(
             tickets = tickets.Where(t => t.AssigneeUserId == null);
         }
 
+        if (query.NoTeam == true)
+        {
+            tickets = tickets.Where(t => t.TeamId == null);
+        }
+
+        if (sendFilter is "failed" or "uncertain")
+        {
+            tickets = tickets.Where(QueuePredicates.SendProblem(db, uncertain: sendFilter == "uncertain"));
+        }
+
         if (query.TypeId is { } filterType)
         {
             tickets = tickets.Where(t => t.TicketTypeId == filterType);
@@ -180,6 +199,9 @@ internal sealed class TicketQueryService(
                 break;
             case "paused":
                 tickets = tickets.Where(t => db.TicketSlas.Any(s => s.TicketId == t.Id && s.ResolutionPausedAt != null));
+                break;
+            case "awaitingresponse":
+                tickets = tickets.Where(QueuePredicates.AwaitingFirstResponse(db));
                 break;
         }
 
@@ -275,6 +297,14 @@ internal sealed class TicketQueryService(
         var length = Math.Min(body.Length - start, 150);
         var text = string.Join(' ', body.Substring(start, length).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
         return (start > 0 ? "…" : "") + text + (start + length < body.Length ? "…" : "");
+    }
+
+    /// <summary>Active ticket types of one department for the queue's quick Type filter (tickets.read on that department; ids and names only).</summary>
+    public async Task<IReadOnlyList<QueueTypeDto>> ActiveTypesAsync(Guid departmentId, CancellationToken ct)
+    {
+        await scope.EnsureLoadedAsync(ct);
+        return await db.TicketTypes.AsNoTracking().Where(t => t.DepartmentId == departmentId && t.IsActive).OrderBy(t => t.SortOrder).ThenBy(t => t.Name)
+            .Select(t => new QueueTypeDto(t.Id, t.Name)).ToListAsync(ct);
     }
 
     public async Task<QueueCountsDto> QueueCountsAsync(CancellationToken ct)

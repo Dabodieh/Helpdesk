@@ -1,5 +1,5 @@
 import type { TicketFilters } from '../api/tickets'
-import { PRIORITIES, QUEUES, SLA_FILTERS, SORTS, STATUSES, type Priority, type Queue, type Sort, type Status } from '../api/ticketSchemas'
+import { PRIORITIES, QUEUES, SEND_FILTERS, SLA_FILTERS, SORTS, STATUSES, type Priority, type Queue, type Sort, type Status } from '../api/ticketSchemas'
 import type { ViewFilter } from '../api/views'
 
 export type Mode = 'queue' | 'search' | 'ticket'
@@ -37,7 +37,10 @@ export function parseFilters(queue: Queue, params: URLSearchParams, mode: Mode, 
     statuses: statuses.length ? statuses : ACTIVE_STATUSES,
     priorities: list<Priority>(params.get('priority'), PRIORITIES),
     departmentId: params.get('dept') || undefined,
-    teamId: params.get('team') || undefined,
+    teamId: params.get('team') && params.get('team') !== 'none' ? params.get('team')! : undefined,
+    noTeam: params.get('team') === 'none' ? true : undefined,
+    typeId: params.get('type') || undefined,
+    send: SEND_FILTERS.find((v) => v === params.get('send')),
     assigneeUserId: assignee && assignee !== 'none' ? (assignee === 'me' ? meId : assignee) : undefined,
     unassigned: assignee === 'none' ? true : undefined,
     q: q.length >= 2 ? q : undefined,
@@ -48,7 +51,7 @@ export function parseFilters(queue: Queue, params: URLSearchParams, mode: Mode, 
 
 /** Is any filter different from the defaults for this mode? (drives "Reset filters") */
 export function hasCustomFilters(params: URLSearchParams) {
-  return ['status', 'priority', 'dept', 'team', 'assignee', 'q', 'sla', 'sort', 'view'].some((k) => params.has(k))
+  return ['status', 'priority', 'dept', 'team', 'assignee', 'q', 'sla', 'send', 'type', 'sort', 'view'].some((k) => params.has(k))
 }
 
 /** Set or clear one URL parameter. */
@@ -79,6 +82,9 @@ export function toViewFilter(f: TicketFilters): ViewFilter {
     priority: f.priorities.length > 0 ? f.priorities : null,
     q: f.q ?? null,
     sla: f.sla ?? null,
+    typeId: f.typeId ?? null,
+    send: f.send ?? null,
+    noTeam: f.noTeam ?? null,
     sort: f.sort,
   }
 }
@@ -91,7 +97,10 @@ export function viewLocation(v: { id: string; filter: ViewFilter }): string {
   p.set('status', (f.status ?? []).join(','))
   if (f.priority?.length) p.set('priority', f.priority.join(','))
   if (f.departmentId) p.set('dept', f.departmentId)
-  if (f.teamId) p.set('team', f.teamId)
+  if (f.noTeam) p.set('team', 'none')
+  else if (f.teamId) p.set('team', f.teamId)
+  if (f.typeId) p.set('type', f.typeId)
+  if (f.send) p.set('send', f.send)
   if (f.unassigned) p.set('assignee', 'none')
   else if (f.assigneeUserId) p.set('assignee', f.assigneeUserId)
   if (f.q) p.set('q', f.q)
@@ -109,6 +118,9 @@ export function describeFilter(v: { filter: ViewFilter }): string {
   if (f.status?.length) bits.push(f.status.join(' + '))
   if (f.priority?.length) bits.push(`${f.priority.join(' / ')} priority`)
   if (f.unassigned) bits.push('Unassigned')
+  if (f.noTeam) bits.push('No team')
+  if (f.send) bits.push(f.send === 'failed' ? 'Reply not sent' : 'Send uncertain')
+  if (f.sla === 'awaitingresponse') bits.push('Awaiting first response')
   if (f.q) bits.push(`“${f.q}”`)
   return bits.join(' · ') || 'Everything visible to you'
 }

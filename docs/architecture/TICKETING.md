@@ -86,6 +86,8 @@ Phase 4 added a SignalR hub (`/hubs/tickets`) that announces *that* a ticket cha
 
 ## Phase 4 additions
 - **Saved views:** personal, owner-only, structured validated filter, executed as the normal scoped list (`?view=`).
+- **Personal queue preferences:** `ticketing.user_queue_preferences` (one row per account, no department data): optional queue columns and their order (`requester,status,priority,sla,team,assignee,updated`; Ref and Subject always shown; null = standard set) and a default landing queue OR one of the user's own saved views. `GET/PUT /api/me/queue-preferences`. Preferences grant nothing: a deleted or foreign default view reads back as none and the client falls back to My Queue; unknown column keys are dropped. Pinned views are the existing `SavedView.IsPinned`.
+- **Extra queue filters** (also in saved views, one definition shared with the department dashboard in `QueuePredicates`): `sla=awaitingresponse`, `send=failed|uncertain` (agent reply whose email failed / outcome uncertain), `noTeam=true`, `typeId` (picker from `GET /api/departments/{id}/queue-types`, tickets.read). Age-bucket filtering is not implemented (open design decision); merged-source search is unchanged (the source ticket shows its canonical link).
 - **Bulk change:** up to 100 tickets; per-ticket transaction, authorization, validation, audit (`bulk: true`) and event; partial failure reported per ticket, never as an HTTP error.
 - **Canned responses:** personal and department scope, plain text, insert-only; department scope needs `department.canned.manage`.
 
