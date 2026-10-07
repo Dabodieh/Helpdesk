@@ -246,6 +246,11 @@ internal sealed class MicrosoftGraphMailProvider : IMailProvider
                 ["toRecipients"] = Recipients(content.To),
                 ["ccRecipients"] = Recipients(content.Cc),
             };
+            if (content.ReplyTo is { } replyToAddress)
+            {
+                message["replyTo"] = Recipients([replyToAddress]);
+            }
+
             message = new JsonObject { ["message"] = message };
         }
         else
@@ -259,6 +264,10 @@ internal sealed class MicrosoftGraphMailProvider : IMailProvider
                 ["ccRecipients"] = Recipients(content.Cc),
                 ["internetMessageHeaders"] = new JsonArray(new JsonObject { ["name"] = "x-helpdesk-token", ["value"] = content.Token }),
             };
+            if (content.ReplyTo is { } replyToAddress)
+            {
+                message["replyTo"] = Recipients([replyToAddress]);
+            }
         }
 
         using var response = await SendAsync(HttpMethod.Post, path, message, immutableIds: true, cancellationToken);

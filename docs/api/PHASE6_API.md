@@ -58,3 +58,9 @@ All routes are ticket-id routes (`{ticket}` = id or reference); the department c
 - `GET /api/tickets/{ticket}/macros?q=` (`tickets.read`): active macros of the ticket's department that the caller may run, filtered by name or description; each carries a `summary` (the preview text).
 - `POST /api/tickets/{ticket}/macros/{macroId}/run` `{version}` (`tickets.read`, then the permissions of the actions, else 403): `{ticket, draft:{body, cannedResponseId, title}|null, noteAdded}`. Errors: 404 (foreign or missing), `409 inactive`, `409 ticket_merged`, `409 canned_unavailable`, `409 version_conflict`, 400 (invalid final state), 403. Nothing is applied on any error. It never sends email.
 - Activity: `ticket.macro_run`; macro administration is audited as `macro.created` and `macro.updated`.
+
+## Email identity (refinement 7)
+- `GET|PUT /api/departments/{d}/signature/me` (`tickets.reply`; a foreign department is 404): the caller's own signature for the department `{departmentId, departmentName, html|null, updatedAt, placeholders}`; `PUT {html}` sanitises, validates placeholders (400 on unknown ones) and stores; blank clears. `POST .../signature/me/preview {html}` returns the resolved sanitised HTML; nothing is stored or sent.
+- `GET|PUT /api/departments/{d}/auto-reply` and `POST .../auto-reply/preview` (`department.mailboxes.manage`): `{configured, enabled, forEmail, forPortal, subject, body, placeholders, version}`; `PUT` takes the `version` once a row exists. Defaults (no row) are disabled with starter text.
+- `GET /api/departments/{d}/outbound-mailboxes` (`tickets.create`): active mailboxes a hand-made ticket can use; `POST .../tickets` accepts `mailboxId` (an active mailbox of the department, else 400 like a missing one).
+- Mailbox resources no longer have `signature`.

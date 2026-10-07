@@ -2753,3 +2753,34 @@ fieldset.choice {
   text-transform: none;
   letter-spacing: 0;
 }
+
+/* Email identity */
+.richtext {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  max-width: 40rem;
+}
+.richtext-bar {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-bottom: 1px solid var(--border);
+}
+.richtext-area {
+  min-height: 7rem;
+  padding: 0.5rem 0.6rem;
+}
+.richtext-area:focus-visible {
+  outline: 2px solid var(--accent);
+}
+.signature-editor,
+.auto-reply {
+  display: grid;
+  gap: 0.6rem;
+  max-width: 44rem;
+}
+.signature-editor iframe.formatted {
+  width: 100%;
+  min-height: 7rem;
+}

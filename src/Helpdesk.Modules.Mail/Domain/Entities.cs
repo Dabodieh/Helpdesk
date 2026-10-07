@@ -50,7 +50,7 @@ internal sealed class Mailbox
     /// <summary>Provider's id for the mailbox (Graph: the user object id, preferred over the UPN in resource paths). Null = use the address.</summary>
     public string? ProviderRef { get; set; }
 
-    /// <summary>Plain-text department signature appended to replies.</summary>
+    /// <summary>Legacy column, no longer used: there is no department footer. Replies carry only the sending agent's own signature (Ticketing).</summary>
     public string? Signature { get; set; }
 
     public bool IsActive { get; set; } = true;

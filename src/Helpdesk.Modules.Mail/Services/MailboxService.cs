@@ -22,16 +22,15 @@ internal sealed record MailboxDto(
     string Provider,
     bool IsActive,
     bool IsDefault,
-    string? Signature,
     string Version,
     SubscriptionDto Subscription,
     DateTimeOffset? LastSyncAt,
     string? LastSyncError,
     int AttentionCount);
 
-internal sealed record CreateMailboxRequest(string? Address, string? DisplayName, string? Signature, string? ProviderRef, bool? IsDefault);
+internal sealed record CreateMailboxRequest(string? Address, string? DisplayName, string? ProviderRef, bool? IsDefault);
 
-internal sealed record UpdateMailboxRequest(string? Version, string? DisplayName, string? Signature, bool? IsActive, bool? IsDefault);
+internal sealed record UpdateMailboxRequest(string? Version, string? DisplayName, bool? IsActive, bool? IsDefault);
 
 internal sealed record AttentionItemDto(
     Guid Id,
@@ -89,7 +88,6 @@ internal sealed partial class MailboxService(
         }
 
         ValidateDisplayName(errors, request.DisplayName);
-        ValidateSignature(errors, request.Signature);
         if (request.ProviderRef is { Length: > 128 })
         {
             errors["providerRef"] = ["providerRef must be at most 128 characters."];
@@ -113,7 +111,6 @@ internal sealed partial class MailboxService(
             DisplayName = request.DisplayName!.Trim(),
             Provider = options.Value.Provider.ToLowerInvariant(),
             ProviderRef = string.IsNullOrWhiteSpace(request.ProviderRef) ? null : request.ProviderRef.Trim(),
-            Signature = string.IsNullOrWhiteSpace(request.Signature) ? null : request.Signature.Trim(),
             IsActive = true,
             CreatedAt = now,
             UpdatedAt = now,
@@ -156,10 +153,9 @@ internal sealed partial class MailboxService(
             ValidateDisplayName(errors, request.DisplayName);
         }
 
-        ValidateSignature(errors, request.Signature);
-        if (request.DisplayName is null && request.Signature is null && request.IsActive is null && request.IsDefault is null)
+        if (request.DisplayName is null && request.IsActive is null && request.IsDefault is null)
         {
-            errors["body"] = ["Provide at least one of displayName, signature, isActive, isDefault."];
+            errors["body"] = ["Provide at least one of displayName, isActive, isDefault."];
         }
 
         ThrowIfAny(errors);
@@ -179,16 +175,6 @@ internal sealed partial class MailboxService(
         {
             actions.Add((MailAuditActions.MailboxUpdated, new { displayName = mailbox.DisplayName }, new { displayName = request.DisplayName.Trim() }));
             mailbox.DisplayName = request.DisplayName.Trim();
-        }
-
-        if (request.Signature is not null)
-        {
-            var signature = string.IsNullOrWhiteSpace(request.Signature) ? null : request.Signature.Trim();
-            if (signature != mailbox.Signature)
-            {
-                actions.Add((MailAuditActions.MailboxUpdated, new { signatureChanged = true }, new { signatureChanged = true }));
-                mailbox.Signature = signature;
-            }
         }
 
         if (request.IsActive is { } active && active != mailbox.IsActive)
@@ -312,7 +298,7 @@ internal sealed partial class MailboxService(
 
     private static MailboxDto ToDto(Mailbox m, int attention) =>
         new(
-            m.Id, m.DepartmentId, m.Address, m.DisplayName, m.Provider, m.IsActive, m.IsDefault, m.Signature, ConcurrencyVersion.ToToken(m.Version),
+            m.Id, m.DepartmentId, m.Address, m.DisplayName, m.Provider, m.IsActive, m.IsDefault, ConcurrencyVersion.ToToken(m.Version),
             new SubscriptionDto(m.Sync?.SubscriptionState ?? SubscriptionStates.None, m.Sync?.SubscriptionExpiresAt),
             m.Sync?.LastSyncAt, m.Sync?.LastSyncError, attention);
 
@@ -321,14 +307,6 @@ internal sealed partial class MailboxService(
         if (string.IsNullOrWhiteSpace(value) || value.Trim().Length > 200 || value.Contains('\0', StringComparison.Ordinal))
         {
             errors["displayName"] = ["displayName is required and at most 200 characters."];
-        }
-    }
-
-    private static void ValidateSignature(Dictionary<string, string[]> errors, string? value)
-    {
-        if (value is not null && (value.Length > 4000 || value.Contains('\0', StringComparison.Ordinal)))
-        {
-            errors["signature"] = ["signature must be at most 4000 characters."];
         }
     }
 
@@ -369,12 +347,16 @@ internal sealed class MailboxDirectory(MailDbContext db) : IMailboxDirectory
         var chosen = active.FirstOrDefault(m => m.Id == ticketMailboxId)
             ?? active.FirstOrDefault(m => m.IsDefault)
             ?? (active.Count == 1 ? active[0] : null);
-        return chosen is null ? null : new ReplyMailbox(chosen.Id, chosen.Address, chosen.DisplayName);
+        return chosen is null ? null : new ReplyMailbox(chosen.Id, chosen.Address, chosen.DisplayName, chosen.IsDefault);
     }
+
+    public async Task<IReadOnlyList<ReplyMailbox>> ListActiveAsync(Guid departmentId, CancellationToken cancellationToken = default) =>
+        await db.Mailboxes.AsNoTracking().Where(m => m.DepartmentId == departmentId && m.IsActive).OrderByDescending(m => m.IsDefault).ThenBy(m => m.DisplayName)
+            .Select(m => new ReplyMailbox(m.Id, m.Address, m.DisplayName, m.IsDefault)).ToListAsync(cancellationToken);
 
     public async Task<IReadOnlyDictionary<Guid, ReplyMailbox>> GetManyAsync(Guid departmentId, IReadOnlyCollection<Guid> mailboxIds, CancellationToken cancellationToken = default) =>
         mailboxIds.Count == 0
             ? new Dictionary<Guid, ReplyMailbox>()
             : await db.Mailboxes.AsNoTracking().Where(m => m.DepartmentId == departmentId && mailboxIds.Contains(m.Id))
-                .ToDictionaryAsync(m => m.Id, m => new ReplyMailbox(m.Id, m.Address, m.DisplayName), cancellationToken);
+                .ToDictionaryAsync(m => m.Id, m => new ReplyMailbox(m.Id, m.Address, m.DisplayName, m.IsDefault), cancellationToken);
 }

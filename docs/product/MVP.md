@@ -8,7 +8,7 @@ The MVP is the **central technical proof**: the full email loop, correctly isola
 3. A department admin configures a mailbox (Microsoft Graph, shared mailbox) for that department.
 4. An email arrives at the mailbox; the system identifies the department from the mailbox, and creates a ticket (idempotent: duplicate webhook/delta events create nothing new).
 5. An agent with access to that department sees the ticket; an agent without access cannot see it or learn it exists (404, not 403, for object lookups; absent from lists/search/counts).
-6. The agent sends a public reply; it is sent from that department's mailbox identity with its signature.
+6. The agent sends a public reply; it is sent from the ticket's mailbox identity with the sending agent's own signature.
 7. The requester replies; the reply is threaded onto the same ticket via standards-based headers (not subject number alone).
 8. All state changes are in the audit log.
 

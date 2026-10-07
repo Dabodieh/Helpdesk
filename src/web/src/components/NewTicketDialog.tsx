@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { fieldErrors } from '../api/errors'
 import { canTicket } from '../api/permissions'
+import { listOutboundMailboxes } from '../api/emailIdentity'
 import { createTicket, lookupRequesters } from '../api/tickets'
 import { PRIORITIES, type Priority, type RequesterLookup, type TicketDetail } from '../api/ticketSchemas'
 import { useMe } from '../auth'
@@ -24,6 +25,7 @@ export default function NewTicketDialog({ onClose, onCreated }: { onClose: () =>
   const [teamId, setTeamId] = useState('')
   const [assignee, setAssignee] = useState('')
   const [touched, setTouched] = useState(false)
+  const [mailboxId, setMailboxId] = useState('')
 
   const canAssignAny = canTicket(me, 'tickets.assign.any', departmentId)
   const canAssignSelf = canTicket(me, 'tickets.assign.self', departmentId)
@@ -36,6 +38,8 @@ export default function NewTicketDialog({ onClose, onCreated }: { onClose: () =>
     enabled: !!departmentId && !chosen && term.length >= 2,
   })
 
+  // The mailbox is the ticket's sender identity for good. With one choice (or none) nothing is asked; the server picks the default.
+  const mailboxes = useQuery({ queryKey: ['outbound-mailboxes', departmentId], queryFn: () => listOutboundMailboxes(departmentId), enabled: !!departmentId })
   const create = useMutation({
     mutationFn: () =>
       createTicket(departmentId, {
@@ -45,6 +49,7 @@ export default function NewTicketDialog({ onClose, onCreated }: { onClose: () =>
         priority,
         teamId: teamId || undefined,
         assigneeUserId: assignee || undefined,
+        mailboxId: mailboxId || undefined,
       }),
     onSuccess: async (t) => {
       await qc.invalidateQueries({ queryKey: ['tickets'] })
@@ -80,11 +85,26 @@ export default function NewTicketDialog({ onClose, onCreated }: { onClose: () =>
                   setChosen(null)
                   setTeamId('')
                   setAssignee('')
+                  setMailboxId('')
                 }}
               >
                 {departments.map((d) => (
                   <option key={d.departmentId} value={d.departmentId}>
                     {d.departmentName}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Field>
+        )}
+        {(mailboxes.data?.length ?? 0) > 1 && (
+          <Field label="Send replies from" hint="Fixed for this ticket once it is created.">
+            {(p) => (
+              <select {...p} value={mailboxId} onChange={(e) => setMailboxId(e.target.value)}>
+                <option value="">Default ({mailboxes.data!.find((m) => m.isDefault)?.name ?? mailboxes.data![0].name})</option>
+                {mailboxes.data!.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name} &lt;{m.address}&gt;
                   </option>
                 ))}
               </select>

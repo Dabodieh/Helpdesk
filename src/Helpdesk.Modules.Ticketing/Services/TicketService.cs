@@ -45,6 +45,7 @@ internal sealed class TicketService(
     TicketLifecycle lifecycle,
     TicketTypesService types,
     FieldCatalog catalog,
+    SignatureService signatures,
     TimeProvider clock)
 {
     public const int DefaultMessageLimit = 100;
@@ -82,6 +83,20 @@ internal sealed class TicketService(
 
         await ValidateTeamAsync(departmentId, request.TeamId, ct);
         await ValidateAssigneeAsync(departmentId, request.AssigneeUserId, ct);
+
+        // The mailbox is the ticket's sender identity for good: an explicit choice must be an active mailbox of THIS department (foreign, missing and inactive answer
+        // alike); otherwise the department's default (or only) active mailbox is stored now.
+        Guid? mailboxId;
+        if (request.MailboxId is { } requestedMailbox)
+        {
+            mailboxId = (await mailboxes.ListActiveAsync(departmentId, ct)).Any(m => m.MailboxId == requestedMailbox)
+                ? requestedMailbox
+                : throw new RequestValidationException("mailboxId", "Choose an active mailbox of this department.");
+        }
+        else
+        {
+            mailboxId = (await mailboxes.FindReplyMailboxAsync(departmentId, null, ct))?.MailboxId;
+        }
 
         // Explicit type must be an active type of this department; otherwise the department default (if any). Fields are collected and validated (required enforced)
         // only when the caller submits them; a create that submits none leaves details to be completed on the ticket.
@@ -137,6 +152,7 @@ internal sealed class TicketService(
                 LastPublicActivityAt = now,
                 Source = TicketSources.Agent,
                 TicketTypeId = typeId,
+                MailboxId = mailboxId,
             };
             var first = new Message
             {
@@ -371,6 +387,10 @@ internal sealed class TicketService(
 
         // A public reply leaves from the ticket's mailbox (or the department default); with no active mailbox it is only recorded.
         var replyMailbox = kind == MessageKind.Public ? await mailboxes.FindReplyMailboxAsync(ticket.DepartmentId, ticket.MailboxId, ct) : null;
+        // The sending agent's signature for THIS department, resolved now (null = none configured: the reply goes out without one). Never for notes.
+        var signatureHtml = replyMailbox is null
+            ? null
+            : await signatures.ResolveForSendAsync(ticket.DepartmentId, (await organisation.FindDepartmentAsync(ticket.DepartmentId, ct))?.Name ?? "", replyMailbox, ct);
         var now = clock.GetUtcNowMicroseconds();
         var message = new Message
         {
@@ -421,7 +441,7 @@ internal sealed class TicketService(
             outboundId = await outbox.QueueReplyAsync(
                 new OutboundReplyRequest(
                     ticket.DepartmentId, replyMailbox.MailboxId, ticket.Id, message.Id, ticket.Reference, ticket.Subject,
-                    new MailParticipant(ticket.Requester.Email, ticket.Requester.DisplayName), cc, message.Body, current.UserId), db, ct);
+                    new MailParticipant(ticket.Requester.Email, ticket.Requester.DisplayName), cc, message.Body, current.UserId, signatureHtml), db, ct);
         }
 
         var messageChanges = new List<TicketChange>();

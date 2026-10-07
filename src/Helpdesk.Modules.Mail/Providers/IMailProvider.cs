@@ -39,7 +39,8 @@ internal sealed record OutboundContent(
     string BodyHtml,
     IReadOnlyList<EmailAddress> To,
     IReadOnlyList<EmailAddress> Cc,
-    string Token);
+    string Token,
+    EmailAddress? ReplyTo = null);
 
 /// <param name="InternetMessageId">What the provider reports for the draft; Exchange may rewrite it on submission (E-12), so the sent copy is looked up afterwards.</param>
 internal sealed record DraftResult(string DraftId, string? InternetMessageId);

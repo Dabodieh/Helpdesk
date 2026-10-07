@@ -6,6 +6,7 @@ import { canInDepartment } from '../api/permissions'
 import type { Department } from '../api/schemas'
 import { useMe } from '../auth'
 import { formatDateTime } from '../lib/format'
+import AutoReplySection from './AutoReplySection'
 import { ActiveBadge, ErrorNotice, Field, Loading } from './common'
 import Dialog from './Dialog'
 
@@ -26,13 +27,11 @@ function CreateMailbox({ departmentId, onClose }: { departmentId: string; onClos
   const qc = useQueryClient()
   const [address, setAddress] = useState('')
   const [displayName, setDisplayName] = useState('')
-  const [signature, setSignature] = useState('')
   const create = useMutation({
-    mutationFn: () => createMailbox(departmentId, { address: address.trim(), displayName: displayName.trim(), signature: signature.trim() || undefined }),
+    mutationFn: () => createMailbox(departmentId, { address: address.trim(), displayName: displayName.trim() }),
     onSuccess: async () => {
       setAddress('')
       setDisplayName('')
-      setSignature('')
       await qc.invalidateQueries({ queryKey: ['mailboxes', departmentId] })
       onClose()
     },
@@ -50,9 +49,6 @@ function CreateMailbox({ departmentId, onClose }: { departmentId: string; onClos
       </Field>
       <Field label="Sender name" error={server.displayName} hint="Shown as the sender of replies.">
         {(p) => <input {...p} value={displayName} maxLength={200} required onChange={(e) => setDisplayName(e.target.value)} />}
-      </Field>
-      <Field label="Signature (optional)" error={server.signature} hint="Plain text appended to every reply.">
-        {(p) => <textarea {...p} rows={3} value={signature} maxLength={4000} onChange={(e) => setSignature(e.target.value)} />}
       </Field>
       <ErrorNotice error={create.error} />
       <div className="dialog-actions">
@@ -72,10 +68,9 @@ function MailboxRow({ departmentId, mailbox: m }: { departmentId: string; mailbo
   const qc = useQueryClient()
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(m.displayName)
-  const [signature, setSignature] = useState(m.signature ?? '')
   const refresh = () => qc.invalidateQueries({ queryKey: ['mailboxes', departmentId] })
   const patch = useMutation({
-    mutationFn: (b: { displayName?: string; signature?: string; isActive?: boolean; isDefault?: boolean }) =>
+    mutationFn: (b: { displayName?: string; isActive?: boolean; isDefault?: boolean }) =>
       updateMailbox(departmentId, m.id, { ...b, version: m.version }),
     onSuccess: () => setEditing(false),
     onSettled: refresh,
@@ -123,14 +118,11 @@ function MailboxRow({ departmentId, mailbox: m }: { departmentId: string; mailbo
                 aria-label={`Edit ${m.address}`}
                 onSubmit={(e) => {
                   e.preventDefault()
-                  patch.mutate({ displayName: name.trim(), signature })
+                  patch.mutate({ displayName: name.trim() })
                 }}
               >
-                <Field label="Sender name" error={server.displayName}>
+                <Field label="Display name (the From name of replies)" error={server.displayName} hint="Replies always leave from this mailbox address, whichever agent sends them.">
                   {(p) => <input {...p} value={name} maxLength={200} required onChange={(e) => setName(e.target.value)} />}
-                </Field>
-                <Field label="Signature" error={server.signature}>
-                  {(p) => <textarea {...p} rows={3} value={signature} maxLength={4000} onChange={(e) => setSignature(e.target.value)} />}
                 </Field>
                 <button type="submit" className="primary" disabled={patch.isPending}>
                   Save
@@ -214,7 +206,7 @@ export default function MailboxesSection({ department }: { department: Departmen
           </button>
         </div>
         <p className="muted">
-          Email sent to these shared mailboxes becomes tickets of this department. Replies leave from the ticket's mailbox, or the default one.
+          Email sent to these shared mailboxes becomes tickets of this department. A ticket keeps the mailbox it arrived at (or was created with) as its sender for good; replies are sent from it with that address as Reply-To, whichever agent or team handles the ticket.
         </p>
         {q.isPending && <Loading label="Loading mailboxes" />}
         {q.isError && <ErrorNotice error={q.error} onRetry={() => void q.refetch()} />}
@@ -242,6 +234,7 @@ export default function MailboxesSection({ department }: { department: Departmen
         )}
         {adding && <CreateMailbox departmentId={department.id} onClose={() => setAdding(false)} />}
       </section>
+      <AutoReplySection department={department} />
       <section aria-labelledby="attention-h">
         <h2 id="attention-h">Mail needing attention</h2>
         <p className="muted">Messages that could not be processed or sent, and mail that was ignored on purpose (automatic replies, mailing lists, loops).</p>

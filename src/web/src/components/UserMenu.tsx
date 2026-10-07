@@ -58,6 +58,9 @@ export default function UserMenu({ onSignOut, onHelp }: { onSignOut: () => void;
           <Link to="/portal" onClick={() => setOpen(false)}>
             Requester portal
           </Link>
+          <Link to="/profile" onClick={() => setOpen(false)}>
+            My profile
+          </Link>
           <Link to="/responses" onClick={() => setOpen(false)}>
             My canned responses
           </Link>

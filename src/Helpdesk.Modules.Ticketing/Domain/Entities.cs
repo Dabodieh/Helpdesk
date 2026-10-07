@@ -374,6 +374,43 @@ internal sealed class Macro
     public uint Version { get; set; }
 }
 
+/// <summary>
+/// An agent's own email signature for one department (sanitised HTML with placeholders). Tied to the department membership by a cascading foreign key (migration),
+/// so it cannot outlive the membership and never grants access.
+/// </summary>
+internal sealed class AgentSignature
+{
+    public Guid DepartmentId { get; set; }
+
+    public Guid UserId { get; set; }
+
+    public string SignatureHtml { get; set; } = "";
+
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
+/// <summary>Department-level acknowledgement of new tickets. Absent or disabled = nothing is sent. The sender is the ticket's mailbox; no agent signature.</summary>
+internal sealed class DepartmentAutoReply
+{
+    public Guid DepartmentId { get; set; }
+
+    public bool Enabled { get; set; }
+
+    public bool ForEmail { get; set; } = true;
+
+    public bool ForPortal { get; set; }
+
+    public string SubjectTemplate { get; set; } = "";
+
+    public string BodyTemplate { get; set; } = "";
+
+    public DateTimeOffset CreatedAt { get; set; }
+
+    public DateTimeOffset UpdatedAt { get; set; }
+
+    public uint Version { get; set; }
+}
+
 internal static class TicketLinkTypes
 {
     /// <summary>Symmetric; stored once with the smaller id first.</summary>

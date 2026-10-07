@@ -80,3 +80,5 @@
 - (Refinement 4) Clean up follower rows when a user is deactivated (only membership removal cascades today; the list already ignores inactive users); team-level followers; follow from the bulk bar.
 
 - (Refinement 5) Macro usage statistics and "last run"; personal (per-agent) macros and macro folders; macro actions for followers, links, tags and mentions; a dry-run of a macro against a ticket showing the concrete before/after (the preview is the configured action list today); keyboard shortcut to run a macro; one browser flow (admin creates macro, agent runs it, reply stays an unsent draft) is covered by API and Vitest tests only.
+
+- (Refinement 7) Per-mailbox acknowledgement overrides; HTML acknowledgement templates; a stable Entra-backed person identity for requesters; job title on the agent profile (and `{{agent.jobTitle}}`); drop the unused legacy `mailboxes.signature` column; an `Auto-Submitted: auto-replied` style header on acknowledgements once Graph custom-header support is validated (D-16); rate limit per requester for acknowledgements.

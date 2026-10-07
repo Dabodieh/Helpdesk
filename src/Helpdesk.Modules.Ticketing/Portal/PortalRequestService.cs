@@ -75,6 +75,9 @@ internal sealed class PortalRequestService(
     ICurrentUser current,
     FieldCatalog catalog,
     TicketTypesService types,
+    Helpdesk.Modules.Mail.Contracts.IMailboxDirectory mailboxes,
+    Helpdesk.Modules.Mail.Contracts.IMailOutbox outbox,
+    AutoReplyService autoReplies,
     TimeProvider clock)
 {
     public const int DefaultLimit = 20;
@@ -338,6 +341,7 @@ internal sealed class PortalRequestService(
 
         var now = clock.GetUtcNowMicroseconds();
         Ticket ticket;
+        Guid? acknowledgement = null;
         TicketChange[] createdChange = [new TicketChange(ChangeKind.Created)];
         await using (var tx = await db.Database.BeginTransactionAsync(ct))
         {
@@ -360,6 +364,7 @@ internal sealed class PortalRequestService(
                 Source = TicketSources.Portal,
                 RequestFormId = form.Id,
                 TicketTypeId = typeId,
+                MailboxId = (await mailboxes.FindReplyMailboxAsync(form.DepartmentId, null, ct))?.MailboxId, // the department sender identity is fixed on the ticket now
             };
             var first = new Message
             {
@@ -398,7 +403,13 @@ internal sealed class PortalRequestService(
             await audit.WriteAsync(TicketAuditActions.MessageAdded, TicketingAudit.TicketObject, ticket.Id, form.DepartmentId, null,
                 new { messageId = first.Id, kind = first.Kind.ToString(), authorType = first.AuthorType.ToString() }, ct);
             await lifecycle.BeforeCommitAsync(ticket, requester.EmailNormalised, createdChange, ct);
+            acknowledgement = await autoReplies.QueueForNewTicketAsync(ticket, requester, department.Name, TicketSources.Portal, ct);
             await tx.CommitAsync(ct);
+        }
+
+        if (acknowledgement is { } queued)
+        {
+            await outbox.NotifyQueuedAsync(queued, ct);
         }
 
         await events.PublishAsync(form.DepartmentId, ticket.Id, ticket.Reference, TicketEventKinds.Created, current.UserId, ct);

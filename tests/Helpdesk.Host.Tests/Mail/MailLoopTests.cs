@@ -49,7 +49,7 @@ public sealed class MailLoopTests(HelpdeskFixture fixture) : IClassFixture<Helpd
         Assert.Empty(await hr.Agent.TicketsAsync(hr, subject));
         (await it.Agent.GetTicketAsync(ticketId)).Expect(HttpStatusCode.OK);
 
-        // 6: the agent's public reply leaves from THAT department's mailbox, with its signature, and is reported as sent.
+        // 6: the agent's public reply leaves from THAT department's mailbox, without any department footer (only an agent's own signature is ever appended), and is reported as sent.
         var reply = (await it.Agent.PostMessageAsync(ticketId, "Public", "We have sent an engineer.")).Expect(HttpStatusCode.Created);
         Assert.Equal("Pending", reply.Json.GetProperty("message").Str("deliveryState"));
         await fixture.DispatchAsync();
@@ -57,7 +57,7 @@ public sealed class MailLoopTests(HelpdeskFixture fixture) : IClassFixture<Helpd
         Assert.Empty(fixture.Fake().SentMail(hrBox.Address));
         Assert.Equal(requester, Assert.Single(sent.To).Address);
         Assert.Contains("We have sent an engineer.", sent.BodyHtml, StringComparison.Ordinal);
-        Assert.Contains("IT Service Desk", sent.BodyHtml, StringComparison.Ordinal);
+        Assert.DoesNotContain("IT Service Desk", sent.BodyHtml, StringComparison.Ordinal); // there is no department footer feature
         Assert.Contains($"[hd:{sent.Token}]", sent.BodyHtml, StringComparison.Ordinal);
         Assert.NotNull(sent.InReplyTo); // a reply to the inbound mail (Exchange threading assumed, runbook E-23)
         var messages = await it.Agent.MessagesAsync(ticketId);

@@ -58,7 +58,6 @@ public sealed class MailAdminApiTests(HelpdeskFixture fixture) : IClassFixture<H
 
         Assert.Contains("address", (await a.Admin.Client.PostAsync(url, new { address = "not-an-address", displayName = "x" })).Expect(HttpStatusCode.BadRequest).Json.GetProperty("errors").EnumerateObject().Select(p => p.Name));
         Assert.Contains("displayName", (await a.Admin.Client.PostAsync(url, new { address = MailKit.NewAddress(), displayName = "  " })).Expect(HttpStatusCode.BadRequest).Json.GetProperty("errors").EnumerateObject().Select(p => p.Name));
-        Assert.Contains("signature", (await a.Admin.Client.PostAsync(url, new { address = MailKit.NewAddress(), displayName = "x", signature = new string('s', 4001) })).Expect(HttpStatusCode.BadRequest).Json.GetProperty("errors").EnumerateObject().Select(p => p.Name));
 
         // One mailbox belongs to exactly one department: the same address (any case) is refused everywhere.
         (await a.Admin.Client.PostAsync(url, new { address = box.Address.ToUpperInvariant(), displayName = "dup" })).ExpectCode(HttpStatusCode.Conflict, "duplicate");

@@ -32,6 +32,14 @@ internal static class PeopleUpsert
             ON CONFLICT (department_id, email_normalised) DO NOTHING
             """,
             ct);
+        // Display name policy: the sender's name is presentation metadata, never identity (the address is). A real name from the message (not empty, not just the address)
+        // replaces the stored one, so the newest useful name wins; an empty or address-only name never overwrites a meaningful one.
+        if (!string.IsNullOrWhiteSpace(displayName) && !string.Equals(name, trimmed, StringComparison.OrdinalIgnoreCase) && !name.Contains('@', StringComparison.Ordinal))
+        {
+            await db.Database.ExecuteSqlAsync(
+                $"UPDATE ticketing.requesters SET display_name = {name} WHERE department_id = {departmentId} AND email_normalised = {normalised} AND display_name <> {name}", ct);
+        }
+
         var requester = await db.Requesters.AsNoTracking().IgnoreDepartmentScope().SingleAsync(r => r.DepartmentId == departmentId && r.EmailNormalised == normalised, ct);
         return (requester, inserted == 1);
     }
@@ -61,7 +69,9 @@ internal static class PeopleUpsert
 /// idempotent on <c>SourceRef</c> through the unique message index, so a retry after a crash returns the earlier result instead of
 /// creating a second ticket or message. Uses the named scope bypass and always filters by department itself.
 /// </summary>
-internal sealed class InboundTicketSink(TicketingDbContext db, TicketingAudit audit, IOrganisationDirectory organisation, ITicketEvents events, TicketLifecycle lifecycle, TimeProvider clock) : IInboundTicketSink
+internal sealed class InboundTicketSink(
+    TicketingDbContext db, TicketingAudit audit, IOrganisationDirectory organisation, ITicketEvents events, TicketLifecycle lifecycle, AutoReplyService autoReplies, IMailOutbox outbox, TimeProvider clock)
+    : IInboundTicketSink
 {
     public async Task<InboundTicketResult> CreateTicketAsync(InboundTicketRequest request, CancellationToken cancellationToken = default)
     {
@@ -188,7 +198,15 @@ internal sealed class InboundTicketSink(TicketingDbContext db, TicketingAudit au
 
         TicketChange[] createdChange = [new TicketChange(ChangeKind.Created)];
         await lifecycle.BeforeCommitAsync(ticket, requester.EmailNormalised, createdChange, cancellationToken);
+
+        // The department acknowledgement (if enabled for email) is queued in THIS transaction: a replayed message finds the ticket and never gets here, and a lost race rolls this back.
+        var acknowledgement = await autoReplies.QueueForNewTicketAsync(ticket, requester, department.Name, TicketSources.Email, cancellationToken);
         await tx.CommitAsync(cancellationToken);
+        if (acknowledgement is { } queued)
+        {
+            await outbox.NotifyQueuedAsync(queued, cancellationToken);
+        }
+
         await events.PublishAsync(request.DepartmentId, ticket.Id, ticket.Reference, TicketEventKinds.Created, null, cancellationToken);
         await lifecycle.AfterCommitAsync(ticket, createdChange, Provenances.Email, cancellationToken);
         return new InboundTicketResult(ticket.Id, ticket.Reference, first.Id, Created: true, Reopened: false);

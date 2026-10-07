@@ -23,6 +23,10 @@ internal sealed partial class TicketingDbContext(DbContextOptions<TicketingDbCon
 
     public DbSet<Macro> Macros => Set<Macro>();
 
+    public DbSet<AgentSignature> AgentSignatures => Set<AgentSignature>();
+
+    public DbSet<DepartmentAutoReply> DepartmentAutoReplies => Set<DepartmentAutoReply>();
+
     public DbSet<TicketFollower> TicketFollowers => Set<TicketFollower>();
 
     public DbSet<SavedView> SavedViews => Set<SavedView>();
@@ -243,6 +247,37 @@ internal sealed partial class TicketingDbContext(DbContextOptions<TicketingDbCon
             e.HasIndex(x => new { x.DepartmentId, x.IsActive, x.SortOrder }).HasDatabaseName("ix_macros_department_active");
 
             // No scope filter (like automation rules): administration is authorised per department by its endpoint filter; the run path filters by the ticket's department itself.
+        });
+
+        modelBuilder.Entity<AgentSignature>(e =>
+        {
+            // The membership foreign key (user_id, department_id) to organisation.department_memberships (cascade) is added in the migration.
+            e.ToTable("agent_signatures", t => t.HasCheckConstraint("ck_agent_signatures_length", "char_length(signature_html) <= 8000"));
+            e.HasKey(x => new { x.DepartmentId, x.UserId });
+            e.Property(x => x.DepartmentId).HasColumnName("department_id");
+            e.Property(x => x.UserId).HasColumnName("user_id");
+            e.Property(x => x.SignatureHtml).HasColumnName("signature_html");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            e.HasIndex(x => x.UserId).HasDatabaseName("ix_agent_signatures_user");
+        });
+
+        modelBuilder.Entity<DepartmentAutoReply>(e =>
+        {
+            e.ToTable("department_auto_replies", t =>
+            {
+                t.HasCheckConstraint("ck_auto_replies_subject", "length(btrim(subject_template)) BETWEEN 1 AND 200");
+                t.HasCheckConstraint("ck_auto_replies_body", "length(btrim(body_template)) BETWEEN 1 AND 5000");
+            });
+            e.HasKey(x => x.DepartmentId);
+            e.Property(x => x.DepartmentId).HasColumnName("department_id").ValueGeneratedNever();
+            e.Property(x => x.Enabled).HasColumnName("enabled");
+            e.Property(x => x.ForEmail).HasColumnName("for_email");
+            e.Property(x => x.ForPortal).HasColumnName("for_portal");
+            e.Property(x => x.SubjectTemplate).HasColumnName("subject_template").HasMaxLength(200);
+            e.Property(x => x.BodyTemplate).HasColumnName("body_template").HasMaxLength(5000);
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            e.Property(x => x.Version).HasColumnName("xmin").HasColumnType("xid").IsRowVersion();
         });
 
         modelBuilder.Entity<TicketFollower>(e =>

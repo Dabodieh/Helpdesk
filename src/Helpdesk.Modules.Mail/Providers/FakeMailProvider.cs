@@ -33,7 +33,8 @@ internal sealed record FakeSent(
     IReadOnlyList<EmailAddress> To,
     IReadOnlyList<EmailAddress> Cc,
     string Token,
-    DateTimeOffset SentAt);
+    DateTimeOffset SentAt,
+    EmailAddress? ReplyTo = null);
 
 /// <summary>
 /// In-process mailbox simulator behind <see cref="IMailProvider"/>: drives the complete email loop without a tenant (integration
@@ -313,7 +314,7 @@ internal sealed class FakeMailProvider : IMailProvider
             state.Sent.Add(new FakeSent(
                 mailbox.Address, draftId, draft.InternetMessageId, draft.InReplyTo, draft.References, draft.ConversationId,
                 draft.Content.ReplyToProviderMessageId is null ? draft.Content.Subject : (draft.Content.Subject.StartsWith("Re:", StringComparison.OrdinalIgnoreCase) ? draft.Content.Subject : "Re: " + draft.Content.Subject),
-                draft.Content.BodyHtml, draft.Content.To, draft.Content.Cc, draft.Content.Token, DateTimeOffset.UtcNow));
+                draft.Content.BodyHtml, draft.Content.To, draft.Content.Cc, draft.Content.Token, DateTimeOffset.UtcNow, draft.Content.ReplyTo));
             return Task.CompletedTask;
         }
     }

@@ -21,7 +21,7 @@ public sealed record MailParticipant(string Address, string? Name);
 // ---- Called by Ticketing (Ticketing depends on Mail.Contracts, never the other way round) -------------------------------------
 
 /// <param name="Name">Display name of the mailbox (the From name of replies).</param>
-public sealed record ReplyMailbox(Guid MailboxId, string Address, string Name);
+public sealed record ReplyMailbox(Guid MailboxId, string Address, string Name, bool IsDefault = false);
 
 public interface IMailboxDirectory
 {
@@ -30,6 +30,9 @@ public interface IMailboxDirectory
     /// default active mailbox. Null when the department has none (the reply is then recorded but not sent). Never crosses departments.
     /// </summary>
     Task<ReplyMailbox?> FindReplyMailboxAsync(Guid departmentId, Guid? ticketMailboxId, CancellationToken cancellationToken = default);
+
+    /// <summary>The department's active mailboxes (the choices when a ticket is created by hand). Never another department's.</summary>
+    Task<IReadOnlyList<ReplyMailbox>> ListActiveAsync(Guid departmentId, CancellationToken cancellationToken = default);
 
     Task<IReadOnlyDictionary<Guid, ReplyMailbox>> GetManyAsync(Guid departmentId, IReadOnlyCollection<Guid> mailboxIds, CancellationToken cancellationToken = default);
 }
@@ -44,7 +47,20 @@ public sealed record OutboundReplyRequest(
     MailParticipant To,
     IReadOnlyList<MailParticipant> Cc,
     string BodyText,
-    Guid? ActorUserId);
+    Guid? ActorUserId,
+    string? SignatureHtml = null);
+
+/// <summary>
+/// The automatic acknowledgement of a new ticket: from the ticket's mailbox, no agent signature, no ticket message. The subject is used as given
+/// (single line); the body is plain text.
+/// </summary>
+public sealed record OutboundAutoReplyRequest(Guid DepartmentId, Guid MailboxId, Guid TicketId, string TicketReference, MailParticipant To, string Subject, string BodyText);
+
+/// <summary>The one allow-list HTML sanitiser of the application's email model (also used for agent signatures).</summary>
+public interface IEmailHtmlSanitiser
+{
+    string Sanitise(string html);
+}
 
 public interface IMailOutbox
 {
@@ -54,6 +70,9 @@ public interface IMailOutbox
     /// Call <see cref="NotifyQueuedAsync"/> after the commit.
     /// </summary>
     Task<Guid> QueueReplyAsync(OutboundReplyRequest request, DbContext caller, CancellationToken cancellationToken = default);
+
+    /// <summary>Queues an automatic acknowledgement on the caller's open transaction (so it commits with the ticket it acknowledges). Same mailbox rule as replies.</summary>
+    Task<Guid> QueueAutoReplyAsync(OutboundAutoReplyRequest request, DbContext caller, CancellationToken cancellationToken = default);
 
     /// <summary>Asks the scheduler to send soon (a periodic dispatcher also picks queued rows up, so a lost nudge is harmless).</summary>
     Task NotifyQueuedAsync(Guid outboundId, CancellationToken cancellationToken = default);

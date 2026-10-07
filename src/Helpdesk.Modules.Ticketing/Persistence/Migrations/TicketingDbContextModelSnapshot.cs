@@ -23,6 +23,36 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.AgentSignature", b =>
+                {
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("department_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<string>("SignatureHtml")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("signature_html");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("DepartmentId", "UserId");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_agent_signatures_user");
+
+                    b.ToTable("agent_signatures", "ticketing", t =>
+                        {
+                            t.HasCheckConstraint("ck_agent_signatures_length", "char_length(signature_html) <= 8000");
+                        });
+                });
+
             modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.AutomationExecution", b =>
                 {
                     b.Property<Guid>("Id")
@@ -346,6 +376,60 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                             t.HasCheckConstraint("ck_canned_scope_shape", "(scope = 'Personal' AND owner_user_id IS NOT NULL AND department_id IS NULL) OR (scope = 'Department' AND department_id IS NOT NULL AND owner_user_id IS NULL)");
 
                             t.HasCheckConstraint("ck_canned_title", "length(btrim(title)) BETWEEN 1 AND 120");
+                        });
+                });
+
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.DepartmentAutoReply", b =>
+                {
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("department_id");
+
+                    b.Property<string>("BodyTemplate")
+                        .IsRequired()
+                        .HasMaxLength(5000)
+                        .HasColumnType("character varying(5000)")
+                        .HasColumnName("body_template");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<bool>("ForEmail")
+                        .HasColumnType("boolean")
+                        .HasColumnName("for_email");
+
+                    b.Property<bool>("ForPortal")
+                        .HasColumnType("boolean")
+                        .HasColumnName("for_portal");
+
+                    b.Property<string>("SubjectTemplate")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("subject_template");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("DepartmentId");
+
+                    b.ToTable("department_auto_replies", "ticketing", t =>
+                        {
+                            t.HasCheckConstraint("ck_auto_replies_body", "length(btrim(body_template)) BETWEEN 1 AND 5000");
+
+                            t.HasCheckConstraint("ck_auto_replies_subject", "length(btrim(subject_template)) BETWEEN 1 AND 200");
                         });
                 });
 

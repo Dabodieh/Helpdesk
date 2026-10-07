@@ -8,6 +8,7 @@ import DepartmentPage from './pages/DepartmentPage'
 import DepartmentsPage from './pages/DepartmentsPage'
 import Landing from './pages/Landing'
 import RequesterPage from './pages/RequesterPage'
+import ProfilePage from './pages/ProfilePage'
 import ResponsesPage from './pages/ResponsesPage'
 import PortalHome from './pages/portal/PortalHome'
 import { KnowledgeArticle, KnowledgeHome } from './pages/portal/PortalKnowledge'
@@ -57,6 +58,7 @@ export function AppRoutes() {
         <Route path="search/:ticket?" element={<WorkspacePage mode="search" />} />
         <Route path="requesters/:requesterId" element={<RequesterPage />} />
         <Route path="responses" element={<ResponsesPage />} />
+        <Route path="profile" element={<ProfilePage />} />
         <Route path="admin" element={<AdminLayout />}>
           <Route index element={<DepartmentsPage />} />
           <Route path="departments/:departmentId" element={<DepartmentPage />} />

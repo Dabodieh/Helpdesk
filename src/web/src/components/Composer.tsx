@@ -1,5 +1,6 @@
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
+import { getSignature } from '../api/emailIdentity'
 import { postMessage } from '../api/tickets'
 import { canTicket } from '../api/permissions'
 import { STATUSES, type TicketDetail } from '../api/ticketSchemas'
@@ -41,6 +42,8 @@ export default function Composer({
   const [text, setText] = useState(() => getDraft(ticket.id))
   const [statusAfter, setStatusAfter] = useState('')
   const area = useRef<HTMLTextAreaElement>(null)
+  // Only to tell the agent what will be appended; the server resolves the real signature when the reply is sent.
+  const signature = useQuery({ queryKey: ['signature', ticket.departmentId], queryFn: () => getSignature(ticket.departmentId), enabled: canReply, retry: false, staleTime: 60_000 })
 
   // A closed ticket cannot take public replies: fall back to a note.
   const effectiveMode: ComposerMode = mode === 'Public' && publicBlocked && canNote ? 'Internal' : mode
@@ -155,6 +158,11 @@ ${draft}` : draft
             Public reply to <span className="composer-recipient">{ticket.requester.displayName} &lt;{ticket.requester.email}&gt;</span>
             {ticket.participants.length > 0 ? ` (Cc ${ticket.participants.length})` : ''} — emailed from the department mailbox; with no active mailbox it is only recorded.
           </span>
+        </p>
+      )}
+      {!internal && signature.data && (
+        <p className="small muted composer-signature">
+          {signature.data.html ? `Your ${signature.data.departmentName} signature is added when you send.` : `No ${signature.data.departmentName} signature set: this reply goes out without one (My profile).`}
         </p>
       )}
       <textarea

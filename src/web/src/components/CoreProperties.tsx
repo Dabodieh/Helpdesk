@@ -132,6 +132,12 @@ export default function CoreProperties({ ticket: t, routeRef, onProblem }: { tic
       ) : (
         <ReadOnly label="Team">{t.team?.name ?? <span className="muted">No team</span>}</ReadOnly>
       )}
+      {t.mailbox && (
+        <ReadOnly label="Replies sent from">
+          {t.mailbox.name}<br />
+          <span className="muted small">{t.mailbox.address}</span>
+        </ReadOnly>
+      )}
       {!assigneeLocked ? (
         <Control label="Assignee" value={t.assignee?.id ?? ''} disabled={busy} onChange={(v) => assign.mutate({ teamId: t.team?.id ?? null, assigneeUserId: v || null })}>
           {(canAssignAny || t.assignee?.id === me.id || !t.assignee) && <option value="">Unassigned</option>}

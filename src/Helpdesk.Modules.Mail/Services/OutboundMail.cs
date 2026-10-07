@@ -25,10 +25,10 @@ internal sealed class MailOutbox(IMailJobScheduler scheduler, TimeProvider clock
     private const string InsertSql = """
         INSERT INTO mail.messages
             (id, mailbox_id, department_id, direction, state, subject, from_address, from_name, to_addresses, cc_addresses, occurred_at,
-             body_text, headers, ticket_id, ticket_message_id, ticket_reference, outbound_token, reply_to_message_id, requested_by_user_id,
+             body_text, body_html_original, headers, ticket_id, ticket_message_id, ticket_reference, outbound_token, reply_to_message_id, requested_by_user_id,
              attempts, next_attempt_at, created_at, updated_at)
         SELECT @id, mb.id, mb.department_id, 'Outbound', 'Queued', @subject, mb.address, mb.display_name, @to::jsonb, @cc::jsonb, @now,
-               @body, jsonb_build_object(), @ticket_id, @ticket_message_id, @reference, @token,
+               @body, @html, jsonb_build_object(), @ticket_id, @ticket_message_id, @reference, @token,
                (SELECT m.id FROM mail.messages m
                  WHERE m.mailbox_id = mb.id AND m.department_id = mb.department_id AND m.ticket_id = @ticket_id
                    AND m.direction = 'Inbound' AND m.provider_message_id IS NOT NULL AND m.state IN ('Ticketed','Completed')
@@ -50,6 +50,16 @@ internal sealed class MailOutbox(IMailJobScheduler scheduler, TimeProvider clock
         var id = Guid.CreateVersion7();
         var now = clock.GetUtcNowMicroseconds();
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+
+        // What is stored is what is sent: the agent's text plus the signature resolved at THIS moment (sanitised once, here). Later edits of the signature never reach it.
+        var signature = string.IsNullOrWhiteSpace(request.SignatureHtml) ? null : MailText.SanitiseHtml(request.SignatureHtml).Trim();
+        if (signature is { Length: 0 })
+        {
+            signature = null;
+        }
+
+        var html = MailText.TextToHtml(request.BodyText) + (signature is null ? "" : "<div style=\"margin-top:16px\">-- <br>\n" + signature + "</div>");
+        var text = signature is null ? request.BodyText : request.BodyText + "\n\n-- \n" + MailText.HtmlToText(signature);
         var inserted = await caller.Database.ExecuteSqlRawAsync(
             InsertSql,
             [
@@ -58,7 +68,8 @@ internal sealed class MailOutbox(IMailJobScheduler scheduler, TimeProvider clock
                 new NpgsqlParameter("to", NpgsqlDbType.Text) { Value = JsonSerializer.Serialize(new[] { request.To }, Json) },
                 new NpgsqlParameter("cc", NpgsqlDbType.Text) { Value = JsonSerializer.Serialize(request.Cc, Json) },
                 new NpgsqlParameter("now", now),
-                new NpgsqlParameter("body", request.BodyText),
+                new NpgsqlParameter("body", text),
+                new NpgsqlParameter("html", html),
                 new NpgsqlParameter("ticket_id", request.TicketId),
                 new NpgsqlParameter("ticket_message_id", request.TicketMessageId),
                 new NpgsqlParameter("reference", request.TicketReference),
@@ -75,6 +86,49 @@ internal sealed class MailOutbox(IMailJobScheduler scheduler, TimeProvider clock
         }
 
         return id;
+    }
+
+    private const string AutoReplySql = """
+        INSERT INTO mail.messages
+            (id, mailbox_id, department_id, direction, state, subject, from_address, from_name, to_addresses, cc_addresses, occurred_at,
+             body_text, body_html_original, headers, flags, ticket_id, ticket_message_id, ticket_reference, outbound_token, reply_to_message_id, requested_by_user_id,
+             attempts, next_attempt_at, created_at, updated_at)
+        SELECT @id, mb.id, mb.department_id, 'Outbound', 'Queued', @subject, mb.address, mb.display_name, @to::jsonb, '[]'::jsonb, @now,
+               @body, @html, jsonb_build_object(), 'auto_reply', @ticket_id, NULL, @reference, @token, NULL, NULL, 0, @now, @now, @now
+        FROM mail.mailboxes mb
+        WHERE mb.id = @mailbox_id AND mb.department_id = @department_id AND mb.is_active
+        """;
+
+    public async Task<Guid> QueueAutoReplyAsync(OutboundAutoReplyRequest request, DbContext caller, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(caller);
+        if (caller.Database.CurrentTransaction is null)
+        {
+            throw new InvalidOperationException("IMailOutbox requires the caller to run inside an explicit transaction.");
+        }
+
+        var id = Guid.CreateVersion7();
+        var now = clock.GetUtcNowMicroseconds();
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+        var subject = request.Subject.ReplaceLineEndings(" ").Trim();
+        var inserted = await caller.Database.ExecuteSqlRawAsync(
+            AutoReplySql,
+            [
+                new NpgsqlParameter("id", id),
+                new NpgsqlParameter("subject", subject.Length > 998 ? subject[..998] : subject),
+                new NpgsqlParameter("to", NpgsqlDbType.Text) { Value = JsonSerializer.Serialize(new[] { request.To }, Json) },
+                new NpgsqlParameter("now", now),
+                new NpgsqlParameter("body", request.BodyText),
+                new NpgsqlParameter("html", MailText.TextToHtml(request.BodyText)),
+                new NpgsqlParameter("ticket_id", request.TicketId),
+                new NpgsqlParameter("reference", request.TicketReference),
+                new NpgsqlParameter("token", token),
+                new NpgsqlParameter("mailbox_id", request.MailboxId),
+                new NpgsqlParameter("department_id", request.DepartmentId),
+            ],
+            cancellationToken);
+        return inserted == 1 ? id : throw new InvalidOperationException("The mailbox is not an active mailbox of the department.");
     }
 
     public Task NotifyQueuedAsync(Guid outboundId, CancellationToken cancellationToken = default)
@@ -164,10 +218,11 @@ internal sealed class OutboundSender(
                     var content = new OutboundContent(
                         replyTo,
                         replyTo is null ? OutboundSubject(message) : message.Subject,
-                        BuildHtml(message, mailbox),
+                        BuildHtml(message),
                         Parse(message.ToJson),
                         Parse(message.CcJson),
-                        message.OutboundToken!);
+                        message.OutboundToken!,
+                        new EmailAddress(mailbox.Address, null)); // Reply-To is always the helpdesk mailbox, never an agent's own address
                     var draft = await provider.CreateDraftAsync(mref, content, ct);
 
                     // Persist the draft id (and the id the provider reports) BEFORE sending: a crash after the send must not send twice.
@@ -257,19 +312,19 @@ internal sealed class OutboundSender(
         // The reference is a human-recognition hint only; inbound threading never relies on it.
         // Single line always (a ticket subject entered in the web UI may contain line breaks; never let them reach a mail header).
         var single = message.Subject.ReplaceLineEndings(" ").Trim();
+        if (message.Flags is { } flags && flags.Contains("auto_reply", StringComparison.Ordinal))
+        {
+            return single; // an acknowledgement uses its template subject exactly
+        }
+
         var subject = single.StartsWith("Re:", StringComparison.OrdinalIgnoreCase) ? single : "Re: " + single;
         return message.TicketReference is { } reference && !subject.Contains(reference, StringComparison.OrdinalIgnoreCase) ? $"{subject} [{reference}]" : subject;
     }
 
-    private static string BuildHtml(MailMessage message, Mailbox mailbox)
+    private static string BuildHtml(MailMessage message)
     {
-        var text = message.BodyText ?? "";
-        if (!string.IsNullOrWhiteSpace(mailbox.Signature))
-        {
-            text += "\n\n-- \n" + mailbox.Signature.Trim();
-        }
-
-        var html = new StringBuilder(MailText.TextToHtml(text));
+        // The HTML stored when the message was queued is what is sent (agent text + the signature of the sending agent at that moment). There is no department footer.
+        var html = new StringBuilder(message.BodyHtmlOriginal ?? MailText.TextToHtml(message.BodyText ?? ""));
         html.Append("<p style=\"color:#777;font-size:11px;margin-top:16px\">");
         if (message.TicketReference is { } reference)
         {

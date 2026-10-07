@@ -96,6 +96,7 @@ export type NewTicket = {
   priority?: Priority
   teamId?: string
   assigneeUserId?: string
+  mailboxId?: string
 }
 
 export function createTicket(departmentId: string, input: NewTicket) {

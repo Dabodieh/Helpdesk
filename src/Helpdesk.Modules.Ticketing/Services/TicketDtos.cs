@@ -113,7 +113,8 @@ internal sealed record CreateTicketRequest(
     Guid? TeamId,
     Guid? AssigneeUserId,
     Guid? TicketTypeId = null,
-    Dictionary<string, System.Text.Json.JsonElement>? Fields = null);
+    Dictionary<string, System.Text.Json.JsonElement>? Fields = null,
+    Guid? MailboxId = null);
 
 internal sealed record UpdateTicketRequest(string? Version, string? Subject, string? Status, string? Priority);
 

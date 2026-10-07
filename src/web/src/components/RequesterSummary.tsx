@@ -12,7 +12,9 @@ export default function RequesterSummary({ ticket: t }: { ticket: TicketDetail }
         <strong>{t.requester.openTicketCount}</strong> open · <strong>{t.requester.totalTicketCount}</strong> total ·{' '}
         <Link to={`/requesters/${encodeURIComponent(t.requester.id)}`}>View history</Link>
       </p>
-      {t.participants.length > 0 && <p className="muted small">Cc: {t.participants.map((p) => p.displayName || p.email).join(', ')}</p>}
+      {t.participants.length > 0 && <p className="muted small">
+          Cc: <span>{t.participants.map((p) => p.displayName || p.email).join(', ')}</span>
+        </p>}
     </section>
   )
 }

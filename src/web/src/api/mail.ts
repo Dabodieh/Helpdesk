@@ -9,7 +9,6 @@ export const mailboxSchema = z.object({
   provider: z.string(),
   isActive: z.boolean(),
   isDefault: z.boolean(),
-  signature: z.string().nullable(),
   version: z.string(),
   subscription: z.object({ state: z.string(), expiresAt: z.string().nullable() }),
   lastSyncAt: z.string().nullable(),
@@ -42,13 +41,13 @@ export const listMailboxes = (departmentId: string) =>
 
 export const createMailbox = (
   departmentId: string,
-  body: { address: string; displayName: string; signature?: string; isDefault?: boolean },
+  body: { address: string; displayName: string; isDefault?: boolean },
 ) => api('POST', `${base(departmentId)}/mailboxes`, { body, schema: mailboxSchema })
 
 export const updateMailbox = (
   departmentId: string,
   mailboxId: string,
-  body: { version: string; displayName?: string; signature?: string; isActive?: boolean; isDefault?: boolean },
+  body: { version: string; displayName?: string; isActive?: boolean; isDefault?: boolean },
 ) => api('PATCH', `${base(departmentId)}/mailboxes/${encodeURIComponent(mailboxId)}`, { body, schema: mailboxSchema })
 
 export const listAttention = (departmentId: string, cursor: string | null) =>

@@ -158,6 +158,7 @@ const deptRoutes = (me = adminMe) => ({
   'GET /api/departments/d1/teams': () => [],
   'GET /api/departments/d1/members': () => [],
   'GET /api/departments/d1/mailboxes': () => [MAILBOX],
+  'GET /api/departments/d1/auto-reply': () => ({ departmentId: 'd1', configured: false, enabled: false, forEmail: true, forPortal: false, subject: 'Subject {{ticket.reference}}', body: 'Body', placeholders: ['ticket.reference'], version: '' }),
   'GET /api/departments/d1/mail/attention': () =>
     page([
       { id: 'x1', mailboxId: 'mb1', direction: 'Inbound', state: 'Failed', ignoreReason: null, occurredAt: '2026-10-05T09:00:00Z', address: 'a@client.test', subject: 'Broken mail', lastError: 'TransientProviderException', attempts: 5, ticketId: null },

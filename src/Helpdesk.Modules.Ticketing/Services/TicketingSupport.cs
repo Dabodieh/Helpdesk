@@ -40,6 +40,10 @@ internal static class TicketAuditActions
     public const string MessageAdded = "ticket.message_added";
     public const string MergedIn = "ticket.merged_in";
     public const string MergedInto = "ticket.merged_into";
+    public const string SignatureChanged = "agent_signature.changed";
+    public const string AutoReplyChanged = "auto_reply.changed";
+    public const string AutoReplyQueued = "ticket.auto_reply_queued";
+    public const string AutoReplyFailed = "ticket.auto_reply_failed";
     public const string MacroCreated = "macro.created";
     public const string MacroUpdated = "macro.updated";
     public const string MacroRun = "ticket.macro_run";

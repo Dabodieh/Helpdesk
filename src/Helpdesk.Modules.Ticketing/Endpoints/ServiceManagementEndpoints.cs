@@ -22,6 +22,7 @@ internal static class ServiceManagementEndpoints
         MapSlaPolicies(app);
         MapAutomation(app);
         MapMacros(app);
+        MapEmailIdentity(app);
 
         app.MapGet("/api/tickets/{ticket}/sla", async (string ticket, SlaReadService sla, CancellationToken ct) =>
                 await sla.GetAsync(ticket, ct) is { } dto ? Results.Ok(dto) : Results.NoContent())
@@ -69,6 +70,33 @@ internal static class ServiceManagementEndpoints
         g.MapPut("order", async (Guid departmentId, ReorderRequest body, SlaPolicyService service, CancellationToken ct) =>
                 TypedResults.Ok(await service.ReorderAsync(departmentId, body, ct)))
             .RequirePermission(PermissionCodes.DepartmentSlaManage);
+    }
+
+    private static void MapEmailIdentity(IEndpointRouteBuilder app)
+    {
+        // The caller's OWN signature for a department where they can reply (a foreign department is a 404). Nobody edits somebody else's.
+        var sig = app.MapGroup("/api/departments/{departmentId:guid}/signature/me").WithTags("Email identity");
+        sig.MapGet("", async (Guid departmentId, SignatureService service, CancellationToken ct) => TypedResults.Ok(await service.GetAsync(departmentId, ct)))
+            .RequirePermission(PermissionCodes.TicketsReply);
+        sig.MapPut("", async (Guid departmentId, SignatureRequest body, SignatureService service, CancellationToken ct) => TypedResults.Ok(await service.PutAsync(departmentId, body, ct)))
+            .RequirePermission(PermissionCodes.TicketsReply);
+        sig.MapPost("preview", async (Guid departmentId, SignatureRequest body, SignatureService service, CancellationToken ct) => TypedResults.Ok(await service.PreviewAsync(departmentId, body, ct)))
+            .RequirePermission(PermissionCodes.TicketsReply);
+
+        // Department acknowledgement settings live with the mailboxes (department.mailboxes.manage).
+        var auto = app.MapGroup("/api/departments/{departmentId:guid}/auto-reply").WithTags("Email identity");
+        auto.MapGet("", async (Guid departmentId, AutoReplyService service, CancellationToken ct) => TypedResults.Ok(await service.GetAsync(departmentId, ct)))
+            .RequirePermission(PermissionCodes.DepartmentMailboxesManage);
+        auto.MapPut("", async (Guid departmentId, AutoReplyRequest body, AutoReplyService service, CancellationToken ct) => TypedResults.Ok(await service.PutAsync(departmentId, body, ct)))
+            .RequirePermission(PermissionCodes.DepartmentMailboxesManage);
+        auto.MapPost("preview", async (Guid departmentId, AutoReplyPreviewRequest body, AutoReplyService service, CancellationToken ct) => TypedResults.Ok(await service.PreviewAsync(departmentId, body, ct)))
+            .RequirePermission(PermissionCodes.DepartmentMailboxesManage);
+
+        // The mailboxes a ticket created by hand can use (its sender identity for good).
+        app.MapGet("/api/departments/{departmentId:guid}/outbound-mailboxes", async (Guid departmentId, Helpdesk.Modules.Mail.Contracts.IMailboxDirectory mailboxes, CancellationToken ct) =>
+                TypedResults.Ok((await mailboxes.ListActiveAsync(departmentId, ct)).Select(m => new { id = m.MailboxId, address = m.Address, name = m.Name, isDefault = m.IsDefault })))
+            .RequirePermission(PermissionCodes.TicketsCreate)
+            .WithTags("Email identity");
     }
 
     private static void MapMacros(IEndpointRouteBuilder app)

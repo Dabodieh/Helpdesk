@@ -7,15 +7,15 @@ Extends `PHASE1_API.md` and `PHASE2_API.md` (same conventions: camelCase JSON, G
 
 ## Mailbox administration (department-scoped, `department.mailboxes.manage`)
 ```
-Mailbox { id, departmentId, address, displayName, provider ("graph"|"fake"), isActive, isDefault, signature|null, version,
+Mailbox { id, departmentId, address, displayName, provider ("graph"|"fake"), isActive, isDefault, version,
           subscription { state ("None"|"Active"|"Failed"), expiresAt|null }, lastSyncAt|null, lastSyncError|null, attentionCount }
 ```
 | Method & path | Notes |
 |---|---|
 | `GET /api/departments/{d}/mailboxes` | default first |
-| `POST /api/departments/{d}/mailboxes` `{ address, displayName, signature?, providerRef?, isDefault? }` | 201. `address` is unique installation-wide (409 `duplicate`), because a mailbox belongs to exactly one department. The first mailbox of a department becomes its default. Creating tries to create the webhook subscription (its state is visible) and starts a first sync. `providerRef` = Graph user object id (preferred over the address in resource paths). |
+| `POST /api/departments/{d}/mailboxes` `{ address, displayName, providerRef?, isDefault? }` | 201. `address` is unique installation-wide (409 `duplicate`), because a mailbox belongs to exactly one department. The first mailbox of a department becomes its default. Creating tries to create the webhook subscription (its state is visible) and starts a first sync. `providerRef` = Graph user object id (preferred over the address in resource paths). |
 | `GET /api/departments/{d}/mailboxes/{id}` | |
-| `PATCH /api/departments/{d}/mailboxes/{id}` `{ version, displayName?, signature?, isActive?, isDefault? }` | at least one field; 409 `version_conflict`; only an active mailbox can be default (409 `inactive`); deactivating clears the default flag. Audited (`mailbox.*`, category `mail`); signature text is never put in the audit event. |
+| `PATCH /api/departments/{d}/mailboxes/{id}` `{ version, displayName?, isActive?, isDefault? }` | at least one field; 409 `version_conflict`; only an active mailbox can be default (409 `inactive`); deactivating clears the default flag. Audited (`mailbox.*`, category `mail`); signature text is never put in the audit event. |
 | `GET /api/departments/{d}/mail/attention?cursor=&limit=` | `{ items: [{ id, mailboxId, direction, state ("Failed"|"Ignored"), ignoreReason|null, occurredAt, address, subject, lastError|null, attempts, ticketId|null }], nextCursor }`, newest first (limit default 50, max 100). Nothing is dropped silently: failed and deliberately ignored mail is listed here. |
 | `POST /api/departments/{d}/mail/{mailMessageId}/retry` | 204; only `Failed` mail (inbound or outbound) of this department, else 404. |
 
