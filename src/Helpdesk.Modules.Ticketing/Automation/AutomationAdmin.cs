@@ -3,6 +3,7 @@ using Helpdesk.Modules.Ticketing.Domain;
 using Helpdesk.Modules.Ticketing.Persistence;
 using Helpdesk.Modules.Ticketing.Services;
 using Helpdesk.Modules.Ticketing.Sla;
+using Helpdesk.SharedKernel.Authorization;
 using Helpdesk.SharedKernel.Database;
 using Helpdesk.SharedKernel.Errors;
 using Helpdesk.SharedKernel.Paging;
@@ -43,6 +44,7 @@ internal sealed class AutomationAdminService(
     TicketResolver resolver,
     TicketingAudit audit,
     RuleReferenceChecker references,
+    IAuthorizer authorizer,
     TimeProvider clock)
 {
     public const int MaxRules = 100;
@@ -170,6 +172,10 @@ internal sealed class AutomationAdminService(
 
     public async Task<PageDto<ExecutionDto>> HistoryAsync(Guid departmentId, Guid? ruleId, string? ticketReference, string? state, bool? matchedOnly, string? cursor, int? limit, CancellationToken ct)
     {
+        // Executions name tickets, requester domains and condition traces: Department content. The administrative permission on the route also lets through a Platform
+        // Admin without a membership, so ticket read by membership is required here as well (a non-member answers 404, like the department dashboard).
+        await authorizer.RequireAsync(PermissionCodes.TicketsRead, departmentId, ct);
+
         var take = limit ?? DefaultHistoryLimit;
         if (take is < 1 or > 100)
         {

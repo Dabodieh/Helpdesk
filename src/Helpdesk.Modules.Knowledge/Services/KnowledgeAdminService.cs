@@ -53,7 +53,7 @@ internal sealed record VersionRequest(string? Version);
 /// Knowledge administration (permission department.knowledge.manage, enforced by the endpoint filter; every query also filters by the department).
 /// Editing writes the draft slot only; publishing is an explicit step that copies the draft to the published slot, so public content never changes half-edited.
 /// </summary>
-internal sealed partial class KnowledgeAdminService(KnowledgeDbContext db, KnowledgeAudit audit, IOrganisationDirectory organisation, IUserDirectory users, ICurrentUser current, TimeProvider clock)
+internal sealed partial class KnowledgeAdminService(KnowledgeDbContext db, KnowledgeAudit audit, IOrganisationDirectory organisation, IUserDirectory users, ICurrentUser current, IAuthorizer authorizer, TimeProvider clock)
 {
     public const int MaxCategories = 50;
     public const int MaxBody = 50_000;
@@ -61,6 +61,13 @@ internal sealed partial class KnowledgeAdminService(KnowledgeDbContext db, Knowl
 
     [GeneratedRegex("[^a-z0-9]+")]
     private static partial Regex NonSlug();
+
+    /// <summary>
+    /// Article drafts are Department content. department.knowledge.manage is administrative, so a Platform Admin without a membership passes the route; reading or changing an
+    /// article (every article method returns its content) therefore also needs ticket read by membership (404 without one, like the department dashboard). Categories and
+    /// the owner list are configuration and stay available to the administrative permission alone.
+    /// </summary>
+    private Task RequireContentAsync(Guid departmentId, CancellationToken ct) => authorizer.RequireAsync(PermissionCodes.TicketsRead, departmentId, ct);
 
     // ----- categories -----
 
@@ -147,6 +154,7 @@ internal sealed partial class KnowledgeAdminService(KnowledgeDbContext db, Knowl
 
     public async Task<IReadOnlyList<ArticleListItemDto>> ListArticlesAsync(Guid departmentId, string? status, Guid? categoryId, string? q, int? page, string? review, CancellationToken ct)
     {
+        await RequireContentAsync(departmentId, ct);
         var query = db.Articles.AsNoTracking().Where(a => a.DepartmentId == departmentId);
         if (!string.IsNullOrWhiteSpace(status))
         {
@@ -207,6 +215,7 @@ internal sealed partial class KnowledgeAdminService(KnowledgeDbContext db, Knowl
     /// <summary>Sets who owns the article and its review date. Saving a new date is how an article is marked as reviewed.</summary>
     public async Task<ArticleAdminDto> SetMaintenanceAsync(Guid departmentId, Guid id, MaintenanceRequest request, CancellationToken ct)
     {
+        await RequireContentAsync(departmentId, ct);
         var errors = new Dictionary<string, string[]>();
         var version = ParseVersion(errors, request.Version);
         DateOnly? reviewOn = null;
@@ -259,11 +268,15 @@ internal sealed partial class KnowledgeAdminService(KnowledgeDbContext db, Knowl
 
     private static bool IsOverdue(KnowledgeArticle a, DateOnly today) => a.Status == ArticleStatuses.Published && a.ReviewOn is { } d && d < today;
 
-    public async Task<ArticleAdminDto> GetArticleAsync(Guid departmentId, Guid id, CancellationToken ct) =>
-        await ToAdminAsync(await db.Articles.AsNoTracking().SingleOrDefaultAsync(a => a.Id == id && a.DepartmentId == departmentId, ct) ?? throw new NotFoundException(), ct);
+    public async Task<ArticleAdminDto> GetArticleAsync(Guid departmentId, Guid id, CancellationToken ct)
+    {
+        await RequireContentAsync(departmentId, ct);
+        return await ToAdminAsync(await db.Articles.AsNoTracking().SingleOrDefaultAsync(a => a.Id == id && a.DepartmentId == departmentId, ct) ?? throw new NotFoundException(), ct);
+    }
 
     public async Task<ArticleAdminDto> CreateArticleAsync(Guid departmentId, ArticleRequest request, CancellationToken ct)
     {
+        await RequireContentAsync(departmentId, ct);
         var errors = new Dictionary<string, string[]>();
         var slot = ValidateSlot(errors, request, creating: true);
         var visibility = ValidateVisibility(errors, request.Visibility) ?? ArticleVisibility.Everyone;
@@ -300,6 +313,7 @@ internal sealed partial class KnowledgeAdminService(KnowledgeDbContext db, Knowl
     /// <summary>Saves the DRAFT. A published article keeps serving its published content until Publish is called.</summary>
     public async Task<ArticleAdminDto> SaveDraftAsync(Guid departmentId, Guid id, ArticleRequest request, CancellationToken ct)
     {
+        await RequireContentAsync(departmentId, ct);
         var errors = new Dictionary<string, string[]>();
         var version = ParseVersion(errors, request.Version);
         var slot = ValidateSlot(errors, request, creating: false);
@@ -346,6 +360,7 @@ internal sealed partial class KnowledgeAdminService(KnowledgeDbContext db, Knowl
 
     private async Task<ArticleAdminDto> ChangeStateAsync(Guid departmentId, Guid id, VersionRequest request, bool publish, CancellationToken ct)
     {
+        await RequireContentAsync(departmentId, ct);
         var errors = new Dictionary<string, string[]>();
         var version = ParseVersion(errors, request.Version);
         ThrowIfAny(errors);

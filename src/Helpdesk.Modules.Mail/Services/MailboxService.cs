@@ -4,6 +4,7 @@ using Helpdesk.Modules.Mail.Contracts;
 using Helpdesk.Modules.Mail.Domain;
 using Helpdesk.Modules.Mail.Persistence;
 using Helpdesk.Modules.Organisation.Contracts;
+using Helpdesk.SharedKernel.Authorization;
 using Helpdesk.SharedKernel.Database;
 using Helpdesk.SharedKernel.Errors;
 using Helpdesk.SharedKernel.Paging;
@@ -71,6 +72,7 @@ internal sealed partial class MailboxService(
     IMailJobScheduler scheduler,
     IOptions<MailOptions> options,
     OutboundSender sender,
+    IAuthorizer authorizer,
     TimeProvider clock)
 {
     private const int MaxLimit = 100;
@@ -240,7 +242,11 @@ internal sealed partial class MailboxService(
         return await GetAsync(departmentId, mailboxId, ct);
     }
 
-    /// <summary>Failed and ignored mail of the department, newest first (nothing is dropped silently; this is the visible list).</summary>
+    /// <summary>
+    /// Failed and ignored mail of the department, newest first (nothing is dropped silently; this is the visible list). The sender address, the subject and the ticket link are
+    /// Department content: they are returned only to a caller who also holds tickets.read in this department by membership. Any other caller (for example a Platform Admin
+    /// without a membership, whom the administrative permission lets through) gets the operational fields only, with those three left empty.
+    /// </summary>
     public async Task<AttentionPage> AttentionAsync(Guid departmentId, string? cursor, int? limit, CancellationToken ct)
     {
         var take = limit ?? 50;
@@ -269,9 +275,10 @@ internal sealed partial class MailboxService(
             rows.RemoveAt(take);
         }
 
+        var content = await authorizer.CheckAsync(PermissionCodes.TicketsRead, departmentId, ct) == AccessOutcome.Allowed;
         var items = rows.Select(m => new AttentionItemDto(
-            m.Id, m.MailboxId, m.Direction, m.State, m.IgnoreReason, m.OccurredAt, m.FromAddress, m.Subject.Length > 200 ? m.Subject[..200] : m.Subject,
-            m.LastError, m.Attempts, m.TicketId, m.Direction == MessageDirections.Outbound ? MailErrors.Category(m.LastError) : null)).ToList();
+            m.Id, m.MailboxId, m.Direction, m.State, m.IgnoreReason, m.OccurredAt, content ? m.FromAddress : "", content ? (m.Subject.Length > 200 ? m.Subject[..200] : m.Subject) : "",
+            m.LastError, m.Attempts, content ? m.TicketId : null, m.Direction == MessageDirections.Outbound ? MailErrors.Category(m.LastError) : null)).ToList();
         var next = more ? Cursor.Encode(string.Create(CultureInfo.InvariantCulture, $"{rows[^1].CreatedAt.UtcTicks}|{rows[^1].Id}")) : null;
         return new AttentionPage(items, next);
     }
@@ -282,6 +289,10 @@ internal sealed partial class MailboxService(
     /// </summary>
     public async Task<RetryOutcomeDto?> RetryAsync(Guid departmentId, Guid mailMessageId, bool acceptDuplicateRisk, CancellationToken ct)
     {
+        // Re-queuing re-sends or re-processes correspondence: Department content. The administrative permission on the route also lets a Platform Admin without a membership
+        // through, so ticket read by membership is required as well (404 without one).
+        await authorizer.RequireAsync(PermissionCodes.TicketsRead, departmentId, ct);
+
         var message = await db.Messages.AsNoTracking()
             .Where(m => m.Id == mailMessageId && m.DepartmentId == departmentId && (m.State == MessageStates.Failed || m.State == MessageStates.Uncertain))
             .Select(m => new { m.Direction, m.MailboxId, m.ProviderMessageId, m.State }).SingleOrDefaultAsync(ct) ?? throw new NotFoundException();
