@@ -1,13 +1,12 @@
 import { QueryClientProvider, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { BrowserRouter, NavLink, Outlet, Route, Routes, useLocation } from 'react-router-dom'
+import { BrowserRouter, Navigate, NavLink, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { setUnauthorizedHandler } from './api/http'
 import { createQueryClient, endSession } from './queryClient'
 import RequireAuth from './components/RequireAuth'
 import DashboardPage from './pages/DashboardPage'
 import DepartmentPage from './pages/DepartmentPage'
 import DepartmentsPage from './pages/DepartmentsPage'
-import AdminHubPage from './pages/AdminHubPage'
 import Landing from './pages/Landing'
 import RequesterPage from './pages/RequesterPage'
 import ProfilePage from './pages/ProfilePage'
@@ -31,7 +30,6 @@ function AdminLayout() {
         <h2>Administration</h2>
         <span className="rail-heading">Organisation</span>
         <nav aria-label="Administration">
-          <NavLink to="/admin" end>Settings hub</NavLink>
           <NavLink to="/admin/departments" end>Departments</NavLink>
           <span className="rail-heading">Platform</span>
           <NavLink to="/admin/status">System status</NavLink>
@@ -72,7 +70,7 @@ export function AppRoutes() {
         <Route path="responses" element={<ResponsesPage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="admin" element={<AdminLayout />}>
-          <Route index element={<AdminHubPage />} />
+          <Route index element={<Navigate to="departments" replace />} />
           <Route path="departments" element={<DepartmentsPage />} />
           <Route path="departments/:departmentId" element={<DepartmentPage />} />
           <Route path="status" element={<StatusPage />} />

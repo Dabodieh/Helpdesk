@@ -58,7 +58,7 @@ export default function DepartmentPage() {
       <PageHeader
         crumbs={
           <>
-            <Link to="/admin">Administration</Link> / <Link to="/admin/departments">Departments</Link> / {d.name}
+            Administration / <Link to="/admin/departments">Departments</Link> / {d.name}
           </>
         }
         title={
@@ -102,7 +102,7 @@ export default function DepartmentPage() {
         label="Department administration"
         vertical
         sidebarHeader={<div className="department-context">
-          <Link to="/admin">← Settings hub</Link>
+          <Link to="/admin/departments">← All departments</Link>
           <DepartmentSelect departments={choices} value={d.id} disabled={departments.isPending || departments.isError} onChange={id => { const next = new URLSearchParams(searchParams); next.delete('find'); setEditing(false); void navigate(`/admin/departments/${id}?${next}`) }} />
           {departments.isError && <button type="button" className="ghost" onClick={() => void departments.refetch()}>Retry department list</button>}
           <SettingsSearch value={filter} onChange={find} label="Search department settings" />

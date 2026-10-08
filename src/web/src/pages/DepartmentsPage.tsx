@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { fieldErrors } from '../api/errors'
 import { createDepartment, listDepartments } from '../api/organisation'
 import { canPlatform, hasAnyPermission } from '../api/permissions'
+import { allowedSettings, settingHref } from '../lib/adminSettings'
 import { DEPARTMENT_KEY, ROLE_LABEL } from '../api/schemas'
 import { useMe } from '../auth'
 import { ActiveBadge, ErrorNotice, Field, Loading, PageHeader } from '../components/common'
@@ -78,7 +79,7 @@ export default function DepartmentsPage() {
   return (
     <>
       <PageHeader
-        crumbs={<><Link to="/admin">Administration</Link> / Departments</>}
+        crumbs="Administration / Departments"
         title="Departments"
         subtitle="Manage department structure, access and service configuration."
         actions={
@@ -98,7 +99,7 @@ export default function DepartmentsPage() {
         </p>
       )}
       <section aria-labelledby="depts-h">
-        <h2 id="depts-h" className="section-title">
+        <h2 id="depts-h" className="sr-only">
           Departments
         </h2>
         {list.isPending && <Loading />}
@@ -111,6 +112,12 @@ export default function DepartmentsPage() {
         )}
         {list.data && list.data.length > 0 && (
           <>
+            <ul className="department-stats" aria-label="Department summary">
+              <li><strong>{list.data.length}</strong><span>Departments</span></li>
+              <li><strong>{list.data.filter(d => d.isActive).length}</strong><span>Active</span></li>
+              <li><strong>{list.data.filter(d => !d.isActive).length}</strong><span>Inactive</span></li>
+              <li><strong>{list.data.filter(d => d.myRole === 'DepartmentAdmin').length}</strong><span>You administer</span></li>
+            </ul>
             <div className="admin-filters">
               <label className="search-control"><Icon name="search" /><input aria-label="Find a department" placeholder="Find a department…" value={search} onChange={e => setSearch(e.target.value)} /></label>
               <select aria-label="Department status" value={status} onChange={e => setStatus(e.target.value)}><option value="all">All statuses</option><option value="active">Active</option><option value="inactive">Inactive</option></select>
@@ -120,7 +127,7 @@ export default function DepartmentsPage() {
               <table className="department-table" aria-label="Departments">
                 <thead><tr><th>Department</th><th>Prefix</th><th>Status</th><th>Your access</th><th><span className="sr-only">Manage</span></th></tr></thead>
                 <tbody>{visible.map(d => <tr key={d.id}>
-                  <td><div className="department-cell"><span className="department-icon"><Icon name="team" /></span><div><Link to={`/admin/departments/${d.id}`} className="dept-link">{d.name}</Link>{d.description && <p className="muted small">{d.description}</p>}</div></div></td>
+                  <td><div className="department-cell"><span className="department-icon"><Icon name="team" /></span><div><Link to={`/admin/departments/${d.id}`} className="dept-link">{d.name}</Link>{d.description && <p className="muted small">{d.description}</p>}<p className="department-shortcuts">{allowedSettings(me, d.id).filter(x => ['members', 'mailboxes', 'types', 'sla', 'automations'].includes(x.id)).map(x => <Link key={x.id} to={settingHref(x, d.id)}>{x.title}</Link>)}</p></div></div></td>
                   <td><code className="key-chip">{d.key}</code></td><td><ActiveBadge active={d.isActive} /></td>
                   <td className="muted small">{d.myRole ? ROLE_LABEL[d.myRole] ?? d.myRole : 'Metadata only'}</td>
                   <td><Link to={`/admin/departments/${d.id}`} className="row-action" aria-label={`Manage ${d.name}`}>Manage →</Link></td>

@@ -154,7 +154,7 @@ test('landing: a platform admin without ticket access goes to Administration wit
     'GET /api/departments': () => [],
   })
   renderApp('/')
-  expect(await screen.findByRole('heading', { name: 'Administration', level: 1 })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: 'Departments', level: 1 })).toBeInTheDocument()
   expect(screen.getByText(/You have no access to tickets/)).toBeInTheDocument()
   expect(screen.getByRole('link', { name: /Administration/ })).toBeInTheDocument()
   expect(screen.queryByRole('link', { name: /My Queue/ })).not.toBeInTheDocument()
