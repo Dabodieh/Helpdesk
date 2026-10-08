@@ -25,9 +25,23 @@ internal static class QueuePredicates
     public static Expression<Func<Ticket, bool>> SlaApproaching(TicketingDbContext db, DateTimeOffset now) =>
         t => db.TicketSlas.Any(s => s.TicketId == t.Id && s.NextWarnAt != null && s.NextWarnAt <= now && s.NextDueAt > now);
 
-    /// <summary>A first-response target exists and no human has answered yet (an acknowledgement is not a ticket message, so it never counts).</summary>
+    /// <summary>
+    /// Awaiting first response (D26): no public message by a human agent yet. It is read from the message stream and is independent of any SLA policy, so a department
+    /// without SLA configuration still sees its unanswered tickets. An acknowledgement is not a ticket message, so it can never satisfy it.
+    /// </summary>
     public static Expression<Func<Ticket, bool>> AwaitingFirstResponse(TicketingDbContext db) =>
-        t => db.TicketSlas.Any(s => s.TicketId == t.Id && s.FirstResponseTargetMinutes != null && s.FirstResponseMetAt == null);
+        t => !db.Messages.Any(m => m.TicketId == t.Id && m.Kind == MessageKind.Public && m.AuthorType == AuthorType.Agent);
+
+    /// <summary>The SLA-specific counterpart, labelled as such: a first-response target exists and its clock has not been met or stopped.</summary>
+    public static Expression<Func<Ticket, bool>> SlaFirstResponsePending(TicketingDbContext db) =>
+        t => db.TicketSlas.Any(s => s.TicketId == t.Id && s.FirstResponseTargetMinutes != null && s.FirstResponseMetAt == null && s.FirstResponseDueAt != null);
+
+    /// <summary>Created in a period (D27): every ticket raised in it counts, a ticket merged away later included (it was raised).</summary>
+    public static Expression<Func<Ticket, bool>> CreatedBetween(DateTimeOffset from, DateTimeOffset to) =>
+        t => t.CreatedAt >= from && t.CreatedAt < to;
+
+    /// <summary>Duplicates merged away: reported as their own volume, never as current backlog or independent work (D27). The complement of <see cref="Backlog"/>'s merge rule.</summary>
+    public static readonly Expression<Func<Ticket, bool>> MergedAway = t => t.MergedIntoTicketId != null;
 
     /// <summary>An agent reply whose email did not go out: a confirmed failure, or (uncertain) a send whose outcome is unknown.</summary>
     public static Expression<Func<Ticket, bool>> SendProblem(TicketingDbContext db, bool uncertain) =>

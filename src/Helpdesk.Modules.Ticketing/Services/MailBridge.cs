@@ -199,7 +199,7 @@ internal sealed class InboundTicketSink(
 
         await audit.WriteSystemAsync(
             TicketAuditActions.Created, TicketingAudit.TicketObject, ticket.Id, request.DepartmentId, null,
-            new { reference = ticket.Reference, status = ticket.Status.ToString(), priority = ticket.Priority.ToString(), teamId = (Guid?)null, assigneeUserId = (Guid?)null, source = MessageSources.Email, mailboxId = request.MailboxId },
+            TicketingAudit.CreatedPayload(ticket, TicketSources.Email),
             cancellationToken);
         await audit.WriteSystemAsync(
             TicketAuditActions.MessageAdded, TicketingAudit.TicketObject, ticket.Id, request.DepartmentId, null,

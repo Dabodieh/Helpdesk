@@ -13,20 +13,85 @@ using Npgsql;
 namespace Helpdesk.Modules.Ticketing.Services;
 
 /// <summary>Writes ticketing-category audit events on the Ticketing DbContext's current transaction. Never receives message bodies.</summary>
-internal sealed class TicketingAudit(IAuditWriter writer, TicketingDbContext db, ICurrentUser current)
+internal sealed class TicketingAudit(IAuditWriter writer, TicketingDbContext db, ICurrentUser current, TimeProvider clock)
 {
     public const string TicketObject = "ticket";
     public const string RequesterObject = "requester";
     public const string CannedObject = "canned_response";
 
-    public Task WriteAsync(string action, string objectType, Guid objectId, Guid departmentId, object? previous, object? next, CancellationToken ct) =>
-        writer.WriteAsync(new AuditEntry(
+    public async Task WriteAsync(string action, string objectType, Guid objectId, Guid departmentId, object? previous, object? next, CancellationToken ct)
+    {
+        await writer.WriteAsync(new AuditEntry(
             AuditCategories.Ticketing, action, objectType, objectId, departmentId, current.UserId, current.DisplayName, previous, next), db, ct);
+        await RecordLifecycleAsync(action, objectType, objectId, departmentId, previous, next, ct);
+    }
 
     /// <summary>Change made by the system (ingestion): no actor, source <c>system</c>.</summary>
-    public Task WriteSystemAsync(string action, string objectType, Guid objectId, Guid departmentId, object? previous, object? next, CancellationToken ct) =>
-        writer.WriteAsync(new AuditEntry(
+    public async Task WriteSystemAsync(string action, string objectType, Guid objectId, Guid departmentId, object? previous, object? next, CancellationToken ct)
+    {
+        await writer.WriteAsync(new AuditEntry(
             AuditCategories.Ticketing, action, objectType, objectId, departmentId, null, null, previous, next, AuditSources.System), db, ct);
+        await RecordLifecycleAsync(action, objectType, objectId, departmentId, previous, next, ct);
+    }
+
+    /// <summary>
+    /// The content-free lifecycle record (decision D7b): the same ticket facts as the audit stream, but ONLY ids, enumerations and the time. No actor, no subject text,
+    /// no address, no body. It is what historical reporting reads, so reports survive any later anonymisation or deletion of the audit detail. Written in the audit
+    /// write's own transaction.
+    /// </summary>
+    private async Task RecordLifecycleAsync(string action, string objectType, Guid objectId, Guid departmentId, object? previous, object? next, CancellationToken ct)
+    {
+        if (objectType != TicketObject || LifecycleKind(action, previous, next) is not { } fact)
+        {
+            return;
+        }
+
+        await db.Database.ExecuteSqlAsync(
+            $"INSERT INTO ticketing.ticket_lifecycle_events (id, ticket_id, department_id, kind, from_value, to_value, occurred_at) VALUES ({Guid.CreateVersion7()}, {objectId}, {departmentId}, {fact.Kind}, {fact.From}, {fact.To}, {ClockExtensions.GetUtcNowMicroseconds(clock)})",
+            ct);
+    }
+
+    private static (string Kind, string? From, string? To)? LifecycleKind(string action, object? previous, object? next)
+    {
+        static string? Pick(object? value, string property)
+        {
+            if (value is null)
+            {
+                return null;
+            }
+
+            var element = System.Text.Json.JsonSerializer.SerializeToElement(value);
+            return element.ValueKind == System.Text.Json.JsonValueKind.Object && element.TryGetProperty(property, out var p) && p.ValueKind != System.Text.Json.JsonValueKind.Null
+                ? p.ToString()
+                : null;
+        }
+
+        return action switch
+        {
+            TicketAuditActions.Created => ("created", null, Pick(next, "source") ?? "agent"),
+            TicketAuditActions.StatusChanged => ("status", Pick(previous, "status"), Pick(next, "status")),
+            TicketAuditActions.PriorityChanged => ("priority", Pick(previous, "priority"), Pick(next, "priority")),
+            TicketAuditActions.TeamChanged => ("team", Pick(previous, "teamId"), Pick(next, "teamId")),
+            TicketAuditActions.AssigneeChanged => ("assignee", Pick(previous, "assigneeUserId"), Pick(next, "assigneeUserId")),
+            TicketAuditActions.MessageAdded => ("message", null, $"{Pick(next, "kind")}:{Pick(next, "authorType")}"),
+            TicketAuditActions.MergedInto => ("merged", null, null),
+            _ => null,
+        };
+    }
+
+    /// <summary>One shape for the creation event of every channel (agent, portal, email), so history needs no special cases (DATA-004).</summary>
+    public static object CreatedPayload(Ticket ticket, string source) => new
+    {
+        reference = ticket.Reference,
+        source,
+        status = ticket.Status.ToString(),
+        priority = ticket.Priority.ToString(),
+        teamId = ticket.TeamId,
+        assigneeUserId = ticket.AssigneeUserId,
+        ticketTypeId = ticket.TicketTypeId,
+        mailboxId = ticket.MailboxId,
+        formId = ticket.RequestFormId,
+    };
 }
 
 internal static class TicketAuditActions

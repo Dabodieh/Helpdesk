@@ -178,16 +178,7 @@ internal sealed partial class TicketService(
 
             await SaveAsync(ct);
 
-            await audit.WriteAsync(TicketAuditActions.Created, TicketingAudit.TicketObject, ticket.Id, departmentId, null,
-                new
-                {
-                    reference = ticket.Reference,
-                    status = ticket.Status.ToString(),
-                    priority = ticket.Priority.ToString(),
-                    teamId = ticket.TeamId,
-                    assigneeUserId = ticket.AssigneeUserId,
-                    ticketTypeId = ticket.TicketTypeId,
-                }, ct);
+            await audit.WriteAsync(TicketAuditActions.Created, TicketingAudit.TicketObject, ticket.Id, departmentId, null, TicketingAudit.CreatedPayload(ticket, TicketSources.Agent), ct);
             await audit.WriteAsync(TicketAuditActions.MessageAdded, TicketingAudit.TicketObject, ticket.Id, departmentId, null,
                 new { messageId = first.Id, kind = first.Kind.ToString(), authorType = first.AuthorType.ToString() }, ct);
             await lifecycle.BeforeCommitAsync(ticket, requester.EmailNormalised, createdChange, ct);

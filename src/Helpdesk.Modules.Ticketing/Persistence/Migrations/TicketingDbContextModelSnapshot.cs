@@ -1597,6 +1597,51 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                     b.ToTable("ticket_followers", "ticketing");
                 });
 
+            modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.TicketLifecycleEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("department_id");
+
+                    b.Property<string>("FromValue")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("from_value");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("kind");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<Guid>("TicketId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ticket_id");
+
+                    b.Property<string>("ToValue")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("to_value");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DepartmentId", "OccurredAt")
+                        .HasDatabaseName("ix_ticket_lifecycle_department_time");
+
+                    b.HasIndex("TicketId", "OccurredAt")
+                        .HasDatabaseName("ix_ticket_lifecycle_ticket_time");
+
+                    b.ToTable("ticket_lifecycle_events", "ticketing");
+                });
+
             modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.TicketLink", b =>
                 {
                     b.Property<Guid>("Id")

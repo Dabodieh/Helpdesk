@@ -41,6 +41,28 @@ internal static class DeliveryErrors
     public const string MailboxUnavailable = "mailbox_unavailable";
 }
 
+/// <summary>
+/// One content-free fact about a ticket's life (D7b): created, status, priority, team, assignee, message or merged, with ids and enumerations only. Written next to the audit
+/// event, kept apart from personal data (no actor, subject or address) and deliberately without foreign keys, so historical reporting reads it and survives any later
+/// anonymisation or deletion of audit detail or tickets.
+/// </summary>
+internal sealed class TicketLifecycleEvent
+{
+    public Guid Id { get; set; }
+
+    public Guid TicketId { get; set; }
+
+    public Guid DepartmentId { get; set; }
+
+    public string Kind { get; set; } = "";
+
+    public string? FromValue { get; set; }
+
+    public string? ToValue { get; set; }
+
+    public DateTimeOffset OccurredAt { get; set; }
+}
+
 internal enum DeliveryState
 {
     None,

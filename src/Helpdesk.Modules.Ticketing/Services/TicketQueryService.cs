@@ -25,7 +25,7 @@ internal sealed class TicketQueryService(
     TimeProvider clock)
 {
     /// <summary>Values of the <c>sla</c> list filter. Breached: past its deadline and unmet; approaching: inside its warning window; duesoon: due within four hours; paused: resolution clock paused.</summary>
-    public static readonly string[] SlaFilters = ["breached", "approaching", "duesoon", "paused", "awaitingresponse"];
+    public static readonly string[] SlaFilters = ["breached", "approaching", "duesoon", "paused", "awaitingresponse", "slafirstresponse"];
 
     /// <summary>Values of the <c>send</c> list filter: tickets with an agent reply whose email failed, or whose send outcome is uncertain.</summary>
     public static readonly string[] SendFilters = ["failed", "uncertain"];
@@ -203,6 +203,9 @@ internal sealed class TicketQueryService(
             case "awaitingresponse":
                 tickets = tickets.Where(QueuePredicates.AwaitingFirstResponse(db));
                 break;
+            case "slafirstresponse":
+                tickets = tickets.Where(QueuePredicates.SlaFirstResponsePending(db));
+                break;
         }
 
         // Search (trigram-indexed ILIKE): reference, subject, requester name/email, message text. Internal notes are searched only in
@@ -313,10 +316,12 @@ internal sealed class TicketQueryService(
         var me = current.UserId;
         var teamIds = (await organisation.GetTeamIdsOfUserAsync(me, scope.DepartmentIds, ct)).ToArray();
         var now = clock.GetUtcNow();
-        var slaBreached = await db.TicketSlas.AsNoTracking().CountAsync(s => s.NextDueAt != null && s.NextDueAt <= now, ct);
-        var slaApproaching = await db.TicketSlas.AsNoTracking().CountAsync(s => s.NextWarnAt != null && s.NextWarnAt <= now && s.NextDueAt > now, ct);
+
+        // D25: every sidebar count is the set its link opens: the shared backlog (Open and Pending, never a merged source), and the SLA badges only for that backlog.
+        var slaBreached = await db.Tickets.AsNoTracking().Where(QueuePredicates.Backlog).CountAsync(QueuePredicates.SlaBreached(db, now), ct);
+        var slaApproaching = await db.Tickets.AsNoTracking().Where(QueuePredicates.Backlog).CountAsync(QueuePredicates.SlaApproaching(db, now), ct);
         var counts = await db.Tickets.AsNoTracking()
-            .Where(t => t.Status == TicketStatus.Open && t.MergedIntoTicketId == null)
+            .Where(QueuePredicates.Backlog)
             .GroupBy(_ => 1)
             .Select(g => new
             {
@@ -327,7 +332,7 @@ internal sealed class TicketQueryService(
             })
             .SingleOrDefaultAsync(ct);
         var following = await db.Tickets.AsNoTracking()
-            .CountAsync(t => t.Status == TicketStatus.Open && t.MergedIntoTicketId == null && db.TicketFollowers.Any(f => f.TicketId == t.Id && f.UserId == me), ct);
+            .Where(QueuePredicates.Backlog).CountAsync(t => db.TicketFollowers.Any(f => f.TicketId == t.Id && f.UserId == me), ct);
         return counts is null ? new QueueCountsDto(0, 0, 0, 0, slaBreached, slaApproaching, following) : new QueueCountsDto(counts.My, counts.Team, counts.Unassigned, counts.All, slaBreached, slaApproaching, following);
     }
 

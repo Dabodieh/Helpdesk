@@ -121,6 +121,7 @@ export function describeFilter(v: { filter: ViewFilter }): string {
   if (f.noTeam) bits.push('No team')
   if (f.send) bits.push(f.send === 'failed' ? 'Reply not sent' : 'Send uncertain')
   if (f.sla === 'awaitingresponse') bits.push('Awaiting first response')
+  if (f.sla === 'slafirstresponse') bits.push('SLA first response pending')
   if (f.q) bits.push(`“${f.q}”`)
   return bits.join(' · ') || 'Everything visible to you'
 }

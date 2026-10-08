@@ -20,6 +20,8 @@ internal sealed partial class TicketingDbContext
 
     public DbSet<Automation.AutomationIntent> AutomationIntents => Set<Automation.AutomationIntent>();
 
+    public DbSet<TicketLifecycleEvent> TicketLifecycleEvents => Set<TicketLifecycleEvent>();
+
     public DbSet<RequesterLink> RequesterLinks => Set<RequesterLink>();
 
     public DbSet<RequestForm> RequestForms => Set<RequestForm>();
@@ -103,6 +105,21 @@ internal sealed partial class TicketingDbContext
             e.Property(x => x.Attempts).HasColumnName("attempts");
             e.Property(x => x.LastError).HasColumnName("last_error").HasMaxLength(100);
             e.HasIndex(x => x.CreatedAt).HasFilter("processed_at IS NULL").HasDatabaseName("ix_notification_outbox_pending");
+        });
+
+        modelBuilder.Entity<TicketLifecycleEvent>(e =>
+        {
+            e.ToTable("ticket_lifecycle_events");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            e.Property(x => x.TicketId).HasColumnName("ticket_id");
+            e.Property(x => x.DepartmentId).HasColumnName("department_id");
+            e.Property(x => x.Kind).HasColumnName("kind").HasMaxLength(16);
+            e.Property(x => x.FromValue).HasColumnName("from_value").HasMaxLength(64);
+            e.Property(x => x.ToValue).HasColumnName("to_value").HasMaxLength(64);
+            e.Property(x => x.OccurredAt).HasColumnName("occurred_at");
+            e.HasIndex(x => new { x.DepartmentId, x.OccurredAt }).HasDatabaseName("ix_ticket_lifecycle_department_time");
+            e.HasIndex(x => new { x.TicketId, x.OccurredAt }).HasDatabaseName("ix_ticket_lifecycle_ticket_time");
         });
 
         modelBuilder.Entity<Automation.AutomationIntent>(e =>

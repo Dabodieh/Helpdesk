@@ -120,7 +120,8 @@ export default function QueueFilters({
             <option value="approaching">Near deadline (policy warning)</option>
             <option value="duesoon">Due within 4 hours (fixed window)</option>
             <option value="paused">Paused</option>
-            <option value="awaitingresponse">Awaiting first response</option>
+            <option value="awaitingresponse">Awaiting first response (no human reply yet)</option>
+            <option value="slafirstresponse">SLA first response pending</option>
           </select>
         </label>
         {departments.length > 1 && (
