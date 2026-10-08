@@ -23,6 +23,9 @@ The Data Protection key ring is stored in PostgreSQL (`identity.data_protection_
 ## Project name and a second environment
 The compose project name (`COMPOSE_PROJECT_NAME`, default `helpdesk`) names every volume and network. The default is also the name of the local development stack, so on a machine that runs development, run this file only under a different project name. Staging does exactly that: see `STAGING_DEPLOYMENT.md` and `scripts/ops/staging.sh`. Port, proxy address, subnet and TLS directory can be overridden with `HTTP_PORT`, `HTTPS_PORT`, `PROXY_IP`, `INTERNAL_SUBNET` and `TLS_DIR`; the defaults are unchanged.
 
+## Windows Docker Desktop
+The same compose file runs on a Windows PC with Docker Desktop, driven by PowerShell with Task Scheduler backups instead of systemd: see `WINDOWS_DOCKER_DESKTOP.md`.
+
 ## Topology
 One application instance. Do not run two: background jobs, realtime presence and the mail loop assume a single process (ADR-021).
 

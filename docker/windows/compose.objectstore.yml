@@ -1,0 +1,20 @@
+# Optional add-on for a PC that has no S3 provider: a private SeaweedFS object store inside the same compose project (own volume, no published port).
+# Used automatically by scripts/windows/helpdesk.ps1 when LOCAL_OBJECT_STORE=true. Attachments are disabled in this topology until a malware scanner exists,
+# so the store stays empty; the host still checks that it is reachable. Use S3_ENDPOINT=http://objectstore:8333 and any non-default S3_BUCKET/keys.
+services:
+  objectstore:
+    image: chrislusf/seaweedfs:4.48
+    restart: unless-stopped
+    command: server -dir=/data -s3 -s3.port=8333 -master.volumeSizeLimitMB=256
+    environment:
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:?set in .env}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:?set in .env}
+    volumes: ["objectdata:/data"]
+    networks: [internal]
+
+  helpdesk:
+    depends_on:
+      objectstore: { condition: service_started }
+
+volumes:
+  objectdata:

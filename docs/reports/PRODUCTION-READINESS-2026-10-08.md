@@ -88,3 +88,24 @@ Attachment UI: recorded in `docs/plans/BACKLOG.md` that the redesigned UI must h
 
 ## Update 3: staging preparation (not deployed)
 Staging is prepared, not run. `docs/guides/STAGING_DEPLOYMENT.md`, `docker/staging/.env.example`, `docker/staging/backup.env.example`, `scripts/ops/staging.sh` (isolated entry point, refuses volume deletion), `scripts/ops/staging-verify.sh` (post-deployment checks) and the staging backup timer units. Validated with placeholder values only: configuration completeness check (names missing values, rejects placeholders and the default bucket, wrong project name), `docker compose config` (project `helpdesk-staging`, volume `helpdesk-staging_pgdata`, network 172.30.0.0/24, Production mode, attachments disabled), unchanged default rendering of the production compose file, `nginx -t` with the shipped config and a throw-away certificate, the application's production settings guard accepting the staging settings, and shell syntax. No staging container, volume or network was created; development containers were not touched. **Not verified:** anything on a real host, real certificates, Entra, Graph or the S3 endpoint, the systemd units, and `staging-verify.sh` against a running stack.
+
+## Update 4: Windows Docker Desktop support (not deployed to a real PC)
+`scripts/windows/helpdesk.ps1` (Windows PowerShell 5.1 and PowerShell 7), `docker/windows/.env.example`, `docker/windows/compose.objectstore.yml` and `docs/guides/WINDOWS_DOCKER_DESKTOP.md`. Verified on this development PC with placeholder credentials in a throw-away compose project (`helpdesk-wintest`, own ports, subnet and volumes, all removed afterwards; the development containers and volumes were not touched):
+
+| Check | Result |
+|-------|--------|
+| Script syntax in 5.1 and 7 | PASS |
+| `check`: missing values, placeholders, non-GUID ids, reserved project name `helpdesk`, subnet overlap with an existing Docker network, port already in use, TLS files | PASS |
+| `new-certificate`: valid X.509 with SAN, key passes `openssl rsa -check`, `nginx -t` accepts it | PASS |
+| Full isolated stack (`migrate`, `start`, `stop`, `status`, `logs`, `verify`): production settings guard accepted, 13/13 verify checks | PASS in 5.1; PASS in 7 after fixes |
+| Encrypted backup: openssl-compatible format, passphrase absent from the backup folder, plaintext marker not in the file | PASS |
+| Cross-tool compatibility: PowerShell backup verified by the Linux `verify-backup.sh` and decrypted by `openssl`; Linux-made backup verified by PowerShell | PASS |
+| Tamper, wrong passphrase, missing passphrase | PASS (clear failures, failed status file) |
+| `restore-test`, `restore` into a new and into an empty database, refusal on a non-empty one, `swap-database` | PASS |
+| Retention (6 old pruned, newest and unrelated files kept) | PASS |
+| Task Scheduler: register, run (last result 0, verified backup written), unregister | PASS (task removed afterwards) |
+| DPAPI passphrase created in 5.1 and read in 7 | PASS |
+| `update` end to end (build step) | NOT RUN: it refuses a dirty tree, and a build would replace images; its parts (backup, migrate, up, verify) were each exercised |
+| Real Entra/Graph, real certificate, the SAMH PC, Docker Desktop restart behaviour | NOT RUN |
+
+Linux deployment unchanged: the compose file's new overrides default to the old values (rendering compared before and after).

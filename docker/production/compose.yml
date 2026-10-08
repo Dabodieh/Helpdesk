@@ -38,7 +38,8 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       Database__ConnectionString: Host=postgres;Database=helpdesk;Username=helpdesk;Password=${POSTGRES_PASSWORD}
       AllowedHosts: ${PUBLIC_HOST:?set in .env}
-      Realtime__AllowedOrigins__0: https://${PUBLIC_HOST}
+      # PUBLIC_PORT_SUFFIX (for example :8443) is only for hosts that publish HTTPS on a non-standard port; empty by default.
+      Realtime__AllowedOrigins__0: https://${PUBLIC_HOST}${PUBLIC_PORT_SUFFIX:-}
       # Forwarded headers are trusted from the proxy's fixed address only.
       Proxy__KnownProxies__0: ${PROXY_IP:-172.29.0.10}
       Authentication__Entra__TenantId: ${ENTRA_TENANT_ID:?set in .env}
@@ -46,7 +47,7 @@ services:
       Authentication__Entra__ClientSecret: ${ENTRA_CLIENT_SECRET:?set in .env}
       Authentication__BootstrapPlatformAdminSubjects__0: ${BOOTSTRAP_PLATFORM_ADMIN_SUBJECT:?set in .env}
       Mail__Provider: Graph
-      Mail__NotificationBaseUrl: https://${PUBLIC_HOST}
+      Mail__NotificationBaseUrl: https://${PUBLIC_HOST}${PUBLIC_PORT_SUFFIX:-}
       Mail__Graph__TenantId: ${GRAPH_TENANT_ID:?set in .env}
       Mail__Graph__ClientId: ${GRAPH_CLIENT_ID:?set in .env}
       Mail__Graph__ClientSecret: ${GRAPH_CLIENT_SECRET:?set in .env}
