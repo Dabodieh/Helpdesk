@@ -28,6 +28,12 @@ internal static class HangfireSetup
         services.AddScoped<NotificationJobs>();
         services.AddSingleton<IMailJobScheduler, HangfireMailJobScheduler>();
         services.AddHostedService<RecurringJobsRegistration>();
+        services.AddSingleton<Helpdesk.SharedKernel.Operations.IOperationalSignal, Operations.FailedJobsSignal>();
+        foreach (var (jobId, suffix) in new[] { ("mail-sync-all", "mail_sync"), ("mail-dispatch", "mail_dispatch"), ("sla-monitor", "sla_monitor"), ("notification-outbox", "notification_drain") })
+        {
+            services.AddSingleton<Helpdesk.SharedKernel.Operations.IOperationalSignal>(sp => new Operations.RecurringJobLagSignal(jobId, suffix, sp.GetRequiredService<TimeProvider>()));
+        }
+
         return services;
     }
 

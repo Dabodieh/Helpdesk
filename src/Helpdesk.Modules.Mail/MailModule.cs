@@ -68,6 +68,9 @@ public static class MailModule
         services.AddScoped<IMailboxHealthReader, MailboxHealthReader>();
         services.AddScoped<IMailOutbox, MailOutbox>();
         services.AddSingleton<IEmailHtmlSanitiser, EmailHtmlSanitiser>();
+        services.AddSingleton<SharedKernel.Operations.IOperationalSignal, OutboundQueueAgeSignal>();
+        services.AddSingleton<SharedKernel.Operations.IOperationalSignal, MailSyncAgeSignal>();
+        services.AddSingleton<SharedKernel.Operations.IOperationalSignal, OutboundNeedingAttentionSignal>();
         return services;
     }
 

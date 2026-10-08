@@ -13,6 +13,9 @@ public interface IModuleMigration
     int Order { get; }
 
     Task MigrateAsync(CancellationToken cancellationToken);
+
+    /// <summary>True when every migration of this module has been applied (readiness: a host that runs against an unmigrated schema is not ready).</summary>
+    Task<bool> IsUpToDateAsync(CancellationToken cancellationToken);
 }
 
 public sealed class DbContextModuleMigration<TContext>(IServiceScopeFactory scopes, string module, int order) : IModuleMigration
@@ -27,6 +30,13 @@ public sealed class DbContextModuleMigration<TContext>(IServiceScopeFactory scop
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<TContext>();
         await db.Database.MigrateAsync(cancellationToken);
+    }
+
+    public async Task<bool> IsUpToDateAsync(CancellationToken cancellationToken)
+    {
+        using var scope = scopes.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<TContext>();
+        return !(await db.Database.GetPendingMigrationsAsync(cancellationToken)).Any();
     }
 }
 

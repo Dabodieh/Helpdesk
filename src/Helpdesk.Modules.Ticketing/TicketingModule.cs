@@ -78,6 +78,7 @@ public static class TicketingModule
         services.AddScoped<NotificationRecorder>();
         services.AddScoped<NotificationOutboxDrainer>();
         services.AddScoped<INotificationOutbox>(sp => sp.GetRequiredService<NotificationOutboxDrainer>());
+        services.AddSingleton<SharedKernel.Operations.IOperationalSignal, NotificationOutboxAgeSignal>();
         services.AddScoped<NotificationService>();
         services.AddScoped<Helpdesk.Modules.Knowledge.Contracts.IRequesterAudience, RequesterAudience>();
         services.AddScoped<PortalFormAccess>();

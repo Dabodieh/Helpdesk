@@ -1,5 +1,6 @@
 using Helpdesk.Host.Errors;
 using Helpdesk.Host.Hosting;
+using Helpdesk.Host.Operations;
 using Helpdesk.Host.Jobs;
 using Helpdesk.Modules.Attachments;
 using Helpdesk.Modules.Audit;
@@ -12,6 +13,9 @@ using Helpdesk.SharedKernel.Database;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using OpenTelemetry.Exporter;
+using OpenTelemetry.Logs;
+using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Serilog;
@@ -29,7 +33,16 @@ try
         .ReadFrom.Services(services)
         .Enrich.FromLogContext(),
         // Keep the bootstrap logger usable: several hosts per process (integration tests) must not freeze it.
-        preserveStaticLogger: true);
+        // writeToProviders forwards events to the OpenTelemetry log provider below (the central sink, decision D7d); console output stays Serilog's.
+        preserveStaticLogger: true,
+        writeToProviders: true);
+
+    var otlpEndpoint = builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"];
+    builder.Logging.ClearProviders();
+    if (!string.IsNullOrWhiteSpace(otlpEndpoint))
+    {
+        builder.Logging.AddOpenTelemetry(o => o.AddOtlpExporter());
+    }
 
     builder.Services.AddOptions<DatabaseOptions>()
         .Bind(builder.Configuration.GetSection(DatabaseOptions.Section))
@@ -40,7 +53,10 @@ try
 
     builder.Services.AddHealthChecks()
         .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"])
-        .AddNpgSql(connectionString!, name: "postgres", tags: ["ready"]);
+        .AddNpgSql(connectionString!, name: "postgres", tags: ["ready"])
+        .AddCheck<ObjectStoreHealthCheck>("object-store", tags: ["ready"])
+        .AddCheck<MigrationsHealthCheck>("migrations", tags: ["ready"]);
+    builder.Services.AddHostedService<OperationalMetrics>();
 
     builder.Services.AddAuditModule();
     builder.Services.AddIdentityModule(builder.Configuration, builder.Environment);
@@ -63,9 +79,17 @@ try
         .WithTracing(t =>
         {
             t.AddAspNetCoreInstrumentation();
-            if (!string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]))
+            if (!string.IsNullOrWhiteSpace(otlpEndpoint))
             {
                 t.AddOtlpExporter();
+            }
+        })
+        .WithMetrics(m =>
+        {
+            m.AddAspNetCoreInstrumentation().AddMeter(OperationalMetrics.MeterName);
+            if (!string.IsNullOrWhiteSpace(otlpEndpoint))
+            {
+                m.AddOtlpExporter();
             }
         });
 
