@@ -106,7 +106,7 @@ test('formatted email view is a sandboxed frame without script rights and is opt
   expect(screen.queryByTitle('Formatted email')).not.toBeInTheDocument()
 })
 
-test('the ticket header shows the mailbox it arrived through and the people in copy', async () => {
+test('the ticket workspace hides sender addresses and keeps the people in copy', async () => {
   mockFetch(
     ticketRoutes(
       [makeMessage()],
@@ -121,7 +121,7 @@ test('the ticket header shows the mailbox it arrived through and the people in c
   )
   await openTicket()
   const header = within(screen.getByRole('region', { name: 'Ticket' }))
-  expect(await header.findByText('desk@helpdesk.test')).toBeInTheDocument()
+  expect(header.queryByText('desk@helpdesk.test')).not.toBeInTheDocument()
   expect(header.getByText('The Boss, copy@client.test')).toBeInTheDocument()
 })
 

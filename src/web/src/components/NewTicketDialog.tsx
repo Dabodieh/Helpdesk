@@ -98,13 +98,13 @@ export default function NewTicketDialog({ onClose, onCreated }: { onClose: () =>
           </Field>
         )}
         {(mailboxes.data?.length ?? 0) > 1 && (
-          <Field label="Send replies from" hint="Fixed for this ticket once it is created.">
+          <Field label="Mailbox" hint="Used for this ticket’s email conversations.">
             {(p) => (
               <select {...p} value={mailboxId} onChange={(e) => setMailboxId(e.target.value)}>
                 <option value="">Default ({mailboxes.data!.find((m) => m.isDefault)?.name ?? mailboxes.data![0].name})</option>
                 {mailboxes.data!.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.name} &lt;{m.address}&gt;
+                    {m.name}
                   </option>
                 ))}
               </select>

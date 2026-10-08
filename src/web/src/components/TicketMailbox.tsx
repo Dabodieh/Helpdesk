@@ -23,13 +23,12 @@ export default function TicketMailbox({ ticket: t, routeRef }: { ticket: TicketD
   const offer = canManage && (!t.mailbox || t.mailboxAssigned)
   return (
     <div className="ctl">
-      <span className="ctl-label">Replies sent from</span>
+      <span className="ctl-label">Mailbox administration</span>
       <span>
         {t.mailbox ? (
           <>
             {t.mailbox.name}
-            <br />
-            <span className="muted small">{t.mailbox.address}</span>
+
           </>
         ) : (
           <span className="muted">No mailbox: replies cannot be emailed</span>

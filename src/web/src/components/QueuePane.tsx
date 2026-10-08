@@ -272,8 +272,8 @@ export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
           <span className="sr-only">{density === 'compact' ? 'Comfortable rows' : 'Compact rows'}</span>
         </button>
         {mode === 'queue' && (
-          <button type="button" className="ghost" aria-haspopup="dialog" onClick={() => setPrefsOpen(true)}>
-            Columns &amp; default
+          <button type="button" className="ghost" title="Columns & default" aria-haspopup="dialog" onClick={() => setPrefsOpen(true)}>
+            <Icon name="views" /><span className="sr-only">Columns &amp; default</span>
           </button>
         )}
       </div>

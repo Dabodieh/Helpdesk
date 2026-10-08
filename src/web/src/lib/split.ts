@@ -2,11 +2,11 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKe
 import { readPref, writePref } from './prefs'
 
 export const SPLIT_KEY = 'helpdesk.queueWidth'
-export const SPLIT_MIN = 360
-export const SPLIT_DEFAULT = 420
+export const SPLIT_MIN = 250
+export const SPLIT_DEFAULT = 280
 const TICKET_MIN = 460
 
-/** Clamp to sensible bounds: the queue never shrinks below 360px and never leaves the ticket less than 460px. */
+/** Clamp to sensible bounds: the queue never shrinks below 250px and never leaves the ticket less than 460px. */
 export function clampWidth(width: number, container: number) {
   const max = Math.max(SPLIT_MIN, container > 0 ? container - TICKET_MIN : 900)
   return Math.round(Math.min(max, Math.max(SPLIT_MIN, width)))

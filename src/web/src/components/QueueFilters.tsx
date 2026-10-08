@@ -93,6 +93,17 @@ export default function QueueFilters({
           ))}
         </div>
       </div>
+      <div className="queue-sort">        <label className="fsel">
+          <span>Sort</span>
+          <select value={params.get('sort') ?? 'updated_desc'} onChange={(e) => set('sort', e.target.value === 'updated_desc' ? '' : e.target.value)}>
+            <option value="updated_desc">Newest update</option>
+            <option value="updated_asc">Oldest update</option>
+            <option value="priority_desc">Priority</option>
+            <option value="sla_due_asc">SLA due soonest</option>
+          </select>
+        </label></div>
+      <details className="queue-filter-details">
+        <summary>Filters{['priority', 'sla', 'dept', 'team', 'type', 'send', 'assignee'].filter(k => params.get(k)).length > 0 ? ` · ${['priority', 'sla', 'dept', 'team', 'type', 'send', 'assignee'].filter(k => params.get(k)).length} active` : ''}</summary>
       <div className="filters-row selects">
         <label className="fsel">
           <span>Priority</span>
@@ -103,15 +114,7 @@ export default function QueueFilters({
             ))}
           </select>
         </label>
-        <label className="fsel">
-          <span>Sort</span>
-          <select value={params.get('sort') ?? 'updated_desc'} onChange={(e) => set('sort', e.target.value === 'updated_desc' ? '' : e.target.value)}>
-            <option value="updated_desc">Newest update</option>
-            <option value="updated_asc">Oldest update</option>
-            <option value="priority_desc">Priority</option>
-            <option value="sla_due_asc">SLA due soonest</option>
-          </select>
-        </label>
+
         <label className="fsel">
           <span>Service level</span>
           <select value={params.get('sla') ?? ''} onChange={(e) => set('sla', e.target.value)}>
@@ -196,6 +199,7 @@ export default function QueueFilters({
           </select>
         </label>
       </div>
+      </details>
       {viewsOpen && <ViewsMenu filters={filters} onClose={() => setViewsOpen(false)} />}
     </div>
   )

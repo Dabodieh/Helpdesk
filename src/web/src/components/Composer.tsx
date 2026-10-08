@@ -212,10 +212,11 @@ ${draft}` : draft
           <Icon name="reply" />
           <span>
             Public reply to <span className="composer-recipient">{ticket.requester.displayName} &lt;{ticket.requester.email}&gt;</span>
-            {ticket.participants.length > 0 ? ` (Cc ${ticket.participants.length})` : ''} — emailed from the department mailbox; with no active mailbox it is only recorded.
+            {ticket.participants.length > 0 ? ` (Cc ${ticket.participants.length})` : ''}
           </span>
         </p>
       )}
+      {!internal && !ticket.mailbox && <p className="notice warn small" role="note">Email sending is unavailable: this ticket has no mailbox. Public replies are recorded but not emailed. Contact a mailbox administrator.</p>}
       {!internal && ticket.participants.length > 0 && <CcRecipients ticket={ticket} canRemove={canReply && !closed} />}
       {!internal && signature.data && (
         <p className="small muted composer-signature">

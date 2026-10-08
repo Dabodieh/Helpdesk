@@ -115,7 +115,7 @@ test('a ticket created by hand offers the mailbox choice only when the departmen
   renderApp('/queue/my')
   fireEvent.click(await screen.findByRole('button', { name: 'New ticket' }))
   const dialog = await screen.findByRole('dialog', { name: 'New ticket' })
-  const select = await within(dialog).findByLabelText('Send replies from')
+  const select = await within(dialog).findByLabelText('Mailbox')
   expect(within(select).getByRole('option', { name: /Default \(IT Helpdesk\)/ })).toBeInTheDocument()
   fireEvent.change(select, { target: { value: 'mb2' } })
   fireEvent.change(within(dialog).getByLabelText('Requester email'), { target: { value: 'jane@example.test' } })

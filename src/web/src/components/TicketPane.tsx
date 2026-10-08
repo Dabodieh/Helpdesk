@@ -23,7 +23,7 @@ import { TicketDialogs, type TicketDialogName } from './TicketLinks'
 type Props = { ticketRef: string; backTo: string; composerRef: RefObject<ComposerHandle | null> }
 
 /** Below this width of the ticket pane the properties panel is an overlay instead of a docked column, so the conversation keeps usable room. */
-const DOCK_MIN_WIDTH = 720
+const DOCK_MIN_WIDTH = 690
 
 /** True while the element is narrower than <paramref name="limit"/> px. Assumes wide when ResizeObserver is unavailable. */
 function useNarrow(el: HTMLElement | null, limit: number) {

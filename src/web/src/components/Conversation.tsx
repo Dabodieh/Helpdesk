@@ -149,12 +149,13 @@ export function MessageItem({ message: m, departmentId }: { message: Message; de
       aria-label={`${label} from ${m.author.displayName}`}
     >
       <header className="msg-head">
+        <span className="message-avatar" aria-hidden="true">{m.author.displayName.split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase()}</span>
+        <span className="author">{m.author.displayName}</span>
         <span className="kind">
           <Icon name={internal ? 'lock' : 'reply'} />
           {label}
         </span>
-        <span className="author">{m.author.displayName}</span>
-        <span className="muted small">{m.authorType}</span>
+
         <time className="muted small" dateTime={m.createdAt}>
           {formatDateTime(m.createdAt)}
         </time>
