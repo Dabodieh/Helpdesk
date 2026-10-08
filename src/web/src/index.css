@@ -8,10 +8,10 @@
 :root {
   color-scheme: dark;
   --bg: #121214; --surface: #1b1b1e; --surface-2: #232326; --hover: #2b2b30;
-  --border: #2e2e33; --border-strong: #45454c; --text: #ececf0; --muted: #9a9aa3;
+  --border: #2e2e33; --border-strong: #45454c; --text: #f4f5f8; --muted: #a3a7b0;
   --accent: #4a8cff; --accent-text: #07101f; --accent-soft: #14233d;
   --danger: #f4a094; --danger-bg: #442d28; --ok: #9ac49d; --warn: #e3bf77; --info-bg: #172131;
-  --st-open: #a6c2d0; --st-pending: #e3bf77; --st-resolved: #9ac49d; --st-closed: #9a9aa3;
+  --st-open: #a6c2d0; --st-pending: #e3bf77; --st-resolved: #9ac49d; --st-closed: #a3a7b0;
   --internal-bg: #302d21; --internal-stripe: #393324; --internal-border: #625332; --internal-text: #e3c588;
   --public-bg: #1b1b1e; --requester-bg: #121214;
   --rail: #0b0c0f; --rail-text: #a0a2ac; --rail-active: #f2f3f7; --rail-mark: #4a8cff;
