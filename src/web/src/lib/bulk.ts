@@ -4,6 +4,7 @@ const OUTCOME_TEXT: Record<string, string> = {
   not_found: 'not found or not accessible',
   forbidden: 'not allowed',
   invalid: 'not valid for the ticket’s department',
+  changed: 'changed since you selected them (left as they are)',
 }
 
 /** Plain-language summary of a bulk result: how many changed, and why the others did not. */

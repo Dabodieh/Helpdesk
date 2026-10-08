@@ -15,7 +15,7 @@ namespace Helpdesk.Modules.Ticketing.Services;
 internal sealed class TicketIngressService(TicketingDbContext db, TicketingAudit audit, TicketLifecycle lifecycle, TimeProvider clock) : ITicketIngress
 {
     public async Task<RequesterMessageResult> AddRequesterMessageAsync(
-        Guid departmentId, Guid ticketId, Guid requesterId, string body, string source, CancellationToken cancellationToken = default)
+        Guid departmentId, Guid ticketId, Guid requesterId, string body, string source, string? clientMessageId = null, CancellationToken cancellationToken = default)
     {
         var errors = new Dictionary<string, string[]>();
         TicketValidation.Body(errors, "body", body);
@@ -24,10 +24,24 @@ internal sealed class TicketIngressService(TicketingDbContext db, TicketingAudit
             errors["source"] = [$"source must be one of {MessageSources.Web}, {MessageSources.Manual}."];
         }
 
+        var sourceRef = ClientMessageIds.SourceRef(errors, clientMessageId);
         TicketValidation.ThrowIfAny(errors);
 
         await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
         await db.Database.ExecuteSqlAsync($"SELECT 1 FROM ticketing.tickets WHERE id = {ticketId} AND department_id = {departmentId} FOR UPDATE", cancellationToken);
+
+        // Replay of a post whose response was lost: the ticket row lock serialises duplicates, so one look-up is enough. Nothing is written, reopened or notified again.
+        if (sourceRef is not null)
+        {
+            var earlier = await db.Messages.AsNoTracking().IgnoreDepartmentScope()
+                .Where(m => m.DepartmentId == departmentId && m.Source == source && m.SourceRef == sourceRef).Select(m => new { m.Id, m.TicketId }).SingleOrDefaultAsync(cancellationToken);
+            if (earlier is not null)
+            {
+                return earlier.TicketId == ticketId
+                    ? new RequesterMessageResult(earlier.Id, false, Replayed: true)
+                    : throw new ConflictException("That message id was already used for another request.", ProblemCodes.Duplicate);
+            }
+        }
         var ticket = await db.Tickets.IgnoreDepartmentScope()
             .SingleOrDefaultAsync(t => t.Id == ticketId && t.DepartmentId == departmentId, cancellationToken) ?? throw new NotFoundException();
         if (ticket.IsMerged)
@@ -53,6 +67,7 @@ internal sealed class TicketIngressService(TicketingDbContext db, TicketingAudit
             AuthorRequesterId = requesterId,
             Body = body,
             Source = source,
+            SourceRef = sourceRef,
             DeliveryState = DeliveryState.None,
             CreatedAt = now,
         };

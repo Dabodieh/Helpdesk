@@ -53,7 +53,8 @@ internal sealed record PortalRequestDto(
     IReadOnlyList<PortalFieldValueDto> Fields, IReadOnlyList<PortalMessageDto> Messages, IReadOnlyList<PortalEditableFieldDto> EditableFields,
     string? MergedInto = null, bool CanReply = true);
 
-internal sealed record PortalReplyResultDto(PortalMessageDto Message, string Status, string StatusLabel);
+/// <param name="AttachmentsNotSaved">How many of the attached files could not be stored. The reply itself IS saved; the requester is told to attach those again.</param>
+internal sealed record PortalReplyResultDto(PortalMessageDto Message, string Status, string StatusLabel, int AttachmentsNotSaved = 0);
 
 internal sealed record PortalCreateRequest(Guid? FormId, string? Subject, string? Description, Dictionary<string, JsonElement>? Fields, Guid? SubmissionId);
 
@@ -245,7 +246,7 @@ internal sealed class PortalRequestService(
 
     // ----- reply -----
 
-    public async Task<PortalReplyResultDto> ReplyAsync(string reference, string? body, IReadOnlyList<IFormFile> files, CancellationToken ct)
+    public async Task<PortalReplyResultDto> ReplyAsync(string reference, string? body, IReadOnlyList<IFormFile> files, CancellationToken ct, string? clientMessageId = null)
     {
         var errors = new Dictionary<string, string[]>();
         TicketValidation.Body(errors, "body", body);
@@ -258,32 +259,47 @@ internal sealed class PortalRequestService(
         var ticket = await OwnTicketAsync(reference, track: false, ct);
 
         // Same domain behaviour as an inbound requester email: public message, reopening (D-15), SLA, RequesterMessageAdded automation, activity timestamps.
-        var result = await ingress.AddRequesterMessageAsync(ticket.DepartmentId, ticket.Id, ticket.RequesterId, body!, MessageSources.Portal, ct);
-        for (var i = 0; i < files.Count; i++)
-        {
-            var file = files[i];
-            var name = Path.GetFileName(file.FileName);
-            var content = file.Length <= 25 * 1024 * 1024 ? await ReadAsync(file, ct) : [];
-            await attachments.StoreAsync(new StoreAttachmentRequest(
-                ticket.DepartmentId, ticket.Id, result.MessageId, string.IsNullOrWhiteSpace(name) ? "attachment" : name, file.ContentType, content, false, null,
-                $"portal:{result.MessageId:N}:{i}", file.Length), ct);
-        }
+        var result = await ingress.AddRequesterMessageAsync(ticket.DepartmentId, ticket.Id, ticket.RequesterId, body!, MessageSources.Portal, clientMessageId, ct);
 
-        await events.PublishAsync(ticket.DepartmentId, ticket.Id, ticket.Reference, TicketEventKinds.Message, current.UserId, ct);
-        if (result.Reopened)
+        // A repeated post (the first response was lost) returns the saved reply: its files were stored by the first call and nothing is announced twice.
+        var notSaved = 0;
+        if (!result.Replayed)
         {
-            await events.PublishAsync(ticket.DepartmentId, ticket.Id, ticket.Reference, TicketEventKinds.Status, current.UserId, ct);
-        }
+            // The reply is committed; each file then goes through the attachment pipeline on its own. A file that cannot be stored is counted and reported with the saved reply
+            // (never an error for a reply that exists, which made the requester resend it and lose the files).
+            for (var i = 0; i < files.Count; i++)
+            {
+                try
+                {
+                    var file = files[i];
+                    var name = Path.GetFileName(file.FileName);
+                    var content = file.Length <= 25 * 1024 * 1024 ? await ReadAsync(file, ct) : [];
+                    await attachments.StoreAsync(new StoreAttachmentRequest(
+                        ticket.DepartmentId, ticket.Id, result.MessageId, string.IsNullOrWhiteSpace(name) ? "attachment" : name, file.ContentType, content, false, null,
+                        $"portal:{result.MessageId:N}:{i}", file.Length), ct);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    notSaved++;
+                }
+            }
 
-        if (files.Count > 0)
-        {
-            await events.PublishAsync(ticket.DepartmentId, ticket.Id, ticket.Reference, TicketEventKinds.Attachment, current.UserId, ct);
+            await events.PublishAsync(ticket.DepartmentId, ticket.Id, ticket.Reference, TicketEventKinds.Message, current.UserId, ct);
+            if (result.Reopened)
+            {
+                await events.PublishAsync(ticket.DepartmentId, ticket.Id, ticket.Reference, TicketEventKinds.Status, current.UserId, ct);
+            }
+
+            if (files.Count > notSaved)
+            {
+                await events.PublishAsync(ticket.DepartmentId, ticket.Id, ticket.Reference, TicketEventKinds.Attachment, current.UserId, ct);
+            }
         }
 
         var message = await db.Messages.AsNoTracking().IgnoreDepartmentScope().SingleAsync(m => m.Id == result.MessageId && m.DepartmentId == ticket.DepartmentId, ct);
         var stored = await attachments.ListForMessagesAsync(ticket.DepartmentId, [message.Id], ct);
         var status = await db.Tickets.AsNoTracking().IgnoreDepartmentScope().Where(t => t.Id == ticket.Id && t.DepartmentId == ticket.DepartmentId).Select(t => t.Status).SingleAsync(ct);
-        return new PortalReplyResultDto(ToMessage(message, [ticket.RequesterId], stored), PortalStatus.Code(status), PortalStatus.Label(status));
+        return new PortalReplyResultDto(ToMessage(message, [ticket.RequesterId], stored), PortalStatus.Code(status), PortalStatus.Label(status), notSaved);
     }
 
     private static async Task<byte[]> ReadAsync(IFormFile file, CancellationToken ct)

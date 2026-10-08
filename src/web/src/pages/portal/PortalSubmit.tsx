@@ -166,5 +166,6 @@ function RequestForm({ formId }: { formId: string }) {
 
 export default function PortalSubmit() {
   const { formId } = useParams()
-  return formId ? <RequestForm formId={formId} /> : <ChooseForm />
+  // Keyed by the form: its draft values and submission id never carry over to another form (UX-016).
+  return formId ? <RequestForm key={formId} formId={formId} /> : <ChooseForm />
 }

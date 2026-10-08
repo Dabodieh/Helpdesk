@@ -40,6 +40,8 @@ export const ticketListItemSchema = z.object({
   sla: slaSummarySchema.nullish(),
   /** Reference of the canonical ticket when this ticket was merged (history and search results). */
   mergedInto: z.string().nullish(),
+  /** Row version when the list was read; bulk edits send it so a ticket that changed since is left alone. */
+  version: z.string().nullish(),
 })
 export type TicketListItem = z.infer<typeof ticketListItemSchema>
 

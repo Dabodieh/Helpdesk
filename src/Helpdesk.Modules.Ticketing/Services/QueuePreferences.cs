@@ -74,18 +74,31 @@ internal sealed class QueuePreferencesService(TicketingDbContext db, ICurrentUse
 
         TicketValidation.ThrowIfAny(errors);
 
-        var row = await db.UserQueuePreferences.SingleOrDefaultAsync(p => p.UserId == me, ct);
-        if (row is null)
+        // Two first saves at once (a double click, two tabs) both see no row: the loser's insert hits the primary key and is simply redone as an update (BE-013).
+        for (var attempt = 0; ; attempt++)
         {
-            row = new UserQueuePreference { UserId = me };
-            db.UserQueuePreferences.Add(row);
+            var row = await db.UserQueuePreferences.SingleOrDefaultAsync(p => p.UserId == me, ct);
+            if (row is null)
+            {
+                row = new UserQueuePreference { UserId = me };
+                db.UserQueuePreferences.Add(row);
+            }
+
+            row.ColumnsJson = columns is null ? null : JsonSerializer.Serialize(columns, Json);
+            row.DefaultQueue = string.IsNullOrEmpty(queue) ? null : queue;
+            row.DefaultViewId = request.DefaultViewId;
+            row.UpdatedAt = ClockExtensions.GetUtcNowMicroseconds(clock);
+            try
+            {
+                await db.SaveChangesAsync(ct);
+                break;
+            }
+            catch (DbUpdateException ex) when (attempt == 0 && PostgresErrors.IsUniqueViolation(ex, out _))
+            {
+                db.ChangeTracker.Clear();
+            }
         }
 
-        row.ColumnsJson = columns is null ? null : JsonSerializer.Serialize(columns, Json);
-        row.DefaultQueue = string.IsNullOrEmpty(queue) ? null : queue;
-        row.DefaultViewId = request.DefaultViewId;
-        row.UpdatedAt = ClockExtensions.GetUtcNowMicroseconds(clock);
-        await db.SaveChangesAsync(ct);
         return await GetAsync(ct);
     }
 }

@@ -113,15 +113,19 @@ ${draft}` : draft
 
   const picked = mentioned.filter((m) => text.includes(`@${m.displayName}`)).map((m) => m.userId)
   const mentionIds = picked.length > 0 ? picked : undefined
+  // One id per composed message, kept across retries and double clicks so the server never posts it twice; a new one after it was accepted.
+  const clientMessageId = useRef(crypto.randomUUID())
   const send = useMutation({
     mutationFn: () =>
       postMessage(ticket.id, {
+        clientMessageId: clientMessageId.current,
         kind: effectiveMode,
         body: text.trim(),
         status: statusAfter && statusAfter !== ticket.status ? statusAfter : undefined,
         mentionUserIds: effectiveMode === 'Internal' ? mentionIds : undefined,
       }),
     onSuccess: (res) => {
+      clientMessageId.current = crypto.randomUUID()
       setDraft(ticket.id, '')
       setText('')
       setMentioned([])

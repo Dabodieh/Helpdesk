@@ -11,16 +11,26 @@ import { StatusBadge } from './parts'
 const formatBytes = (n: number) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`)
 
 /** One request: the public conversation only (there is no concept of internal notes here) and a reply box. */
-export default function PortalRequest() {
+export default function PortalRequestPage() {
   const { reference = '' } = useParams()
+  // Keyed by the reference: the draft, the files and the message id of one request never carry over to another (UX-016).
+  return <PortalRequest key={reference} reference={reference} />
+}
+
+function PortalRequest({ reference }: { reference: string }) {
   const qc = useQueryClient()
   const request = useQuery({ queryKey: ['portal', 'request', reference], queryFn: () => getPortalRequest(reference), refetchInterval: () => pollInterval() })
   const [text, setText] = useState('')
   const [files, setFiles] = useState<File[]>([])
   const picker = useRef<HTMLInputElement>(null)
+  // One id per composed reply, kept across retries and double clicks so the server never posts it twice (BE-003); a new one once it was saved.
+  const clientMessageId = useRef(crypto.randomUUID())
+  const [notSaved, setNotSaved] = useState(0)
   const send = useMutation({
-    mutationFn: () => replyToRequest(reference, text.trim(), files),
-    onSuccess: async () => {
+    mutationFn: () => replyToRequest(reference, text.trim(), files, clientMessageId.current),
+    onSuccess: async (result) => {
+      clientMessageId.current = crypto.randomUUID()
+      setNotSaved(result.attachmentsNotSaved)
       setText('')
       setFiles([])
       if (picker.current) picker.current.value = ''
@@ -132,6 +142,11 @@ export default function PortalRequest() {
           {(p) => <input {...p} ref={picker} type="file" multiple onChange={(e) => setFiles([...(e.target.files ?? [])].slice(0, 5))} />}
         </Field>
         <ErrorNotice error={send.error && Object.keys(server).length === 0 ? send.error : null} />
+        {notSaved > 0 && (
+          <p className="notice warn" role="status">
+            Your reply was sent, but {notSaved === 1 ? '1 file' : `${notSaved} files`} could not be saved. Please attach {notSaved === 1 ? 'it' : 'them'} again in a new reply.
+          </p>
+        )}
         <button type="submit" className="primary" disabled={send.isPending || !text.trim()}>
           {send.isPending ? 'Sending…' : 'Send reply'}
         </button>

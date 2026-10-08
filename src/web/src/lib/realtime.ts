@@ -153,6 +153,11 @@ export function setConnectionFactory(next: ConnectionFactory | null) {
   factory = next
 }
 
+/** Everything that live events keep fresh is re-read through REST. Called after EVERY way back to a live connection (automatic reconnect and a manual restart). */
+export function reconcile(qc: QueryClient) {
+  for (const key of ['tickets', 'ticket', 'notifications', 'portal']) void qc.invalidateQueries({ queryKey: [key] })
+}
+
 export function useRealtime(enabled: boolean, myUserId: string) {
   const qc = useQueryClient()
   useEffect(() => {
@@ -179,10 +184,7 @@ export function useRealtime(enabled: boolean, myUserId: string) {
         connection.onreconnecting(() => setStatus('reconnecting'))
         connection.onreconnected(() => {
           setStatus('live')
-          // Anything missed while disconnected is reconciled through REST.
-          void qc.invalidateQueries({ queryKey: ['tickets'] })
-          void qc.invalidateQueries({ queryKey: ['ticket'] })
-          void qc.invalidateQueries({ queryKey: ['notifications'] })
+          reconcile(qc)
           if (declared) send(declared.ticketId, declared.state) // the server forgot this connection: say again what we are doing
         })
         connection.onclose(() => {
@@ -193,6 +195,7 @@ export function useRealtime(enabled: boolean, myUserId: string) {
         await connection.start()
         if (connection.state === HubConnectionState.Connected) {
           setStatus('live')
+          reconcile(qc) // a (re)start after a long outage: whatever was missed is re-read
           if (declared) send(declared.ticketId, declared.state)
         }
       } catch {

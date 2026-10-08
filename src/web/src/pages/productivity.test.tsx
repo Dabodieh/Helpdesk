@@ -49,6 +49,22 @@ test('queue rows can be selected and the bulk bar appears', async () => {
   expect(await screen.findByText(/1 selected/)).toBeInTheDocument()
 })
 
+test('bulk apply sends the version of every selected ticket and says which ones changed since', async () => {
+  const calls = mockFetch({
+    ...workspaceRoutes(agentMe()),
+    'GET /api/tickets': () => page([makeTicket({ id: 't1', reference: 'IT-1', subject: 'Printer jam', version: 'v7' })]),
+    'POST /api/tickets/bulk': () => ({ results: [{ ticketId: 't1', outcome: 'changed', code: 'version_conflict' }], updated: 0, unchanged: 0, failed: 1 }),
+  })
+  renderApp('/queue/my')
+  await screen.findByRole('link', { name: 'Printer jam' })
+  fireEvent.click(screen.getByRole('checkbox', { name: /Select IT-1/ }))
+  fireEvent.change(within(await screen.findByRole('region', { name: 'Bulk actions' })).getByLabelText('Priority'), { target: { value: 'High' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+  expect(await screen.findByText(/changed since you selected them/)).toBeInTheDocument()
+  const sent = calls.find((c) => c.method === 'POST' && c.path === '/api/tickets/bulk')!.body as { versions?: Record<string, string> }
+  expect(sent.versions).toEqual({ t1: 'v7' })
+})
+
 test('bulk summary explains partial failures in plain words', () => {
   const text = summarise({
     updated: 2,

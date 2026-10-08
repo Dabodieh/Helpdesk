@@ -229,7 +229,7 @@ internal sealed class TicketQueryService(
             .Take(take + 1)
             .Select(t => new TicketRow(
                 t.Id, t.Reference, t.DepartmentId, t.Subject, t.Status, t.Priority, t.RequesterId, t.Requester.DisplayName, t.Requester.Email,
-                t.TeamId, t.AssigneeUserId, t.CreatedAt, t.UpdatedAt, t.MergedIntoTicketId))
+                t.TeamId, t.AssigneeUserId, t.CreatedAt, t.UpdatedAt, t.MergedIntoTicketId, t.Version))
             .ToListAsync(ct);
 
         var hasMore = rows.Count > take;

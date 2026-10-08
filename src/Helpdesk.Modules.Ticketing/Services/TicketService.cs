@@ -373,6 +373,7 @@ internal sealed class TicketService(
         var kind = TicketValidation.ParseEnum<MessageKind>(errors, "kind", request.Kind);
         TicketValidation.Body(errors, "body", request.Body);
         var status = TicketValidation.ParseEnum<TicketStatus>(errors, "status", request.Status);
+        var sourceRef = ClientMessageIds.SourceRef(errors, request.ClientMessageId);
         TicketValidation.ThrowIfAny(errors);
 
         var key = await resolver.FindAsync(route, ct) ?? throw new NotFoundException();
@@ -386,6 +387,27 @@ internal sealed class TicketService(
         var mentionIds = await mentions.ValidateAsync(key.DepartmentId, kind == MessageKind.Internal, request.MentionUserIds, ct);
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var ticket = await LockAndLoadAsync(key.Id, expectedVersion: null, ct);
+
+        // Replay (BE-003): the same client message id returns the first result and sends, notifies and audits nothing again. The ticket lock serialises duplicates.
+        if (sourceRef is not null)
+        {
+            var earlier = await db.Messages.AsNoTracking().FirstOrDefaultAsync(m => m.DepartmentId == ticket.DepartmentId && m.Source == MessageSources.Web && m.SourceRef == sourceRef, ct);
+            if (earlier is not null)
+            {
+                await tx.RollbackAsync(ct);
+                if (earlier.TicketId != ticket.Id || earlier.AuthorUserId != current.UserId)
+                {
+                    throw new ConflictException("That message id was already used for another message.", ProblemCodes.Duplicate);
+                }
+
+                var earlierMentions = await db.MessageMentions.AsNoTracking().Where(x => x.MessageId == earlier.Id).Select(x => x.UserId).ToListAsync(ct);
+                var replay = new MessageDto(earlier.Id, earlier.TicketId, earlier.Kind.ToString(), earlier.AuthorType.ToString(),
+                    new MessageAuthorDto(current.UserId, current.DisplayName), earlier.Body, null, earlier.Source, earlier.DeliveryState.ToString(), earlier.DeliveryError, [], earlier.CreatedAt,
+                    Mentions: await MentionDtosAsync(earlierMentions, ct));
+                return new PostedMessageDto(replay, await projection.DetailAsync(ticket, ticket.Requester, ct));
+            }
+        }
+
         if (kind == MessageKind.Public && ticket.Status == TicketStatus.Closed)
         {
             throw new ConflictException("The ticket is closed. Reopen it before replying to the requester.", ProblemCodes.InvalidState);
@@ -423,6 +445,7 @@ internal sealed class TicketService(
             AuthorUserId = current.UserId,
             Body = request.Body!,
             Source = MessageSources.Web,
+            SourceRef = sourceRef,
 
             // Truthful states only: Pending once queued in the outbox; NotDelivered when no mailbox exists to send it from.
             DeliveryState = kind != MessageKind.Public ? DeliveryState.None : replyMailbox is null ? DeliveryState.NotDelivered : DeliveryState.Pending,
@@ -808,6 +831,18 @@ internal sealed class TicketService(
             errors["body"] = ["Provide at least one of status, priority, team, assignee."];
         }
 
+        var expected = new Dictionary<Guid, uint>();
+        foreach (var (ticketId, token) in request.Versions ?? [])
+        {
+            if (!ConcurrencyVersion.TryParse(token, out var parsed))
+            {
+                errors["versions"] = ["versions must hold valid ticket versions."];
+                break;
+            }
+
+            expected[ticketId] = parsed;
+        }
+
         TicketValidation.ThrowIfAny(errors);
         await scope.EnsureLoadedAsync(ct);
 
@@ -817,7 +852,7 @@ internal sealed class TicketService(
             db.ChangeTracker.Clear();
             try
             {
-                results.Add(await BulkOneAsync(id, status, priority, request.Team, request.Assignee, ct));
+                results.Add(await BulkOneAsync(id, status, priority, request.Team, request.Assignee, expected.TryGetValue(id, out var version) ? version : null, ct));
             }
             catch (NotFoundException)
             {
@@ -826,6 +861,11 @@ internal sealed class TicketService(
             catch (ForbiddenException)
             {
                 results.Add(new BulkItemDto(id, null, "forbidden", null));
+            }
+            catch (ConflictException ex) when (ex.Code == ProblemCodes.VersionConflict)
+            {
+                // Changed since the agent selected it: their decision was about an older state, so it is not applied (D19).
+                results.Add(new BulkItemDto(id, null, "changed", ex.Code));
             }
             catch (ConflictException ex)
             {
@@ -838,10 +878,10 @@ internal sealed class TicketService(
             results,
             results.Count(r => r.Outcome == "updated"),
             results.Count(r => r.Outcome == "unchanged"),
-            results.Count(r => r.Outcome is "not_found" or "forbidden" or "invalid"));
+            results.Count(r => r.Outcome is "not_found" or "forbidden" or "invalid" or "changed"));
     }
 
-    private async Task<BulkItemDto> BulkOneAsync(Guid id, TicketStatus? status, TicketPriority? priority, IdChange? team, IdChange? assignee, CancellationToken ct)
+    private async Task<BulkItemDto> BulkOneAsync(Guid id, TicketStatus? status, TicketPriority? priority, IdChange? team, IdChange? assignee, uint? expectedVersion, CancellationToken ct)
     {
         // The scope filter makes an inaccessible ticket null here (same answer as a missing one).
         var key = await db.Tickets.AsNoTracking().Where(t => t.Id == id).Select(t => new { t.Id, t.DepartmentId }).SingleOrDefaultAsync(ct) ?? throw new NotFoundException();
@@ -851,7 +891,7 @@ internal sealed class TicketService(
         }
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
-        var ticket = await LockAndLoadAsync(key.Id, expectedVersion: null, ct);
+        var ticket = await LockAndLoadAsync(key.Id, expectedVersion, ct);
         var now = clock.GetUtcNowMicroseconds();
         var changes = new List<(string Action, object Previous, object Next, string Kind)>();
         var (oldStatus, oldPriority, oldTeam, oldAssignee) = (ticket.Status, ticket.Priority, ticket.TeamId, ticket.AssigneeUserId);

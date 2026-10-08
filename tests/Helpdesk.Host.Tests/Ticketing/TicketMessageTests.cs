@@ -210,7 +210,7 @@ public sealed class TicketMessageTests(HelpdeskFixture fixture) : IClassFixture<
         await Rejected("Public", "Requester", agent, null, "None", "ck_messages_author_matches_type");
         await Rejected("Public", "System", agent, null, "None", "ck_messages_author_matches_type");
         await Rejected("Secret", "Agent", agent, null, "None", "ck_messages_kind");
-        await Rejected("Public", "Agent", agent, null, "Bounced", "ck_messages_delivery_state");
+        await Rejected("Public", "Agent", agent, null, "Teleported", "ck_messages_delivery_state");
         await Rejected("Public", "Agent", agent, null, "None", "ck_messages_source", source: "sms");
         // Only an agent's public reply has a delivery state (Pending/Sent/Failed come from the mail outbox).
         await Rejected("Public", "Requester", null, req, "Pending", "ck_messages_delivery_only_agent_public");

@@ -29,7 +29,8 @@ internal sealed record TicketListItemDto(
     DateTimeOffset UpdatedAt,
     MatchDto? Match = null,
     Helpdesk.Modules.Ticketing.Sla.SlaSummaryDto? Sla = null,
-    string? MergedInto = null);
+    string? MergedInto = null,
+    string? Version = null);
 
 internal sealed record MailboxRefDto(Guid Id, string Address, string Name);
 
@@ -127,12 +128,13 @@ internal sealed record UpdateTicketRequest(string? Version, string? Subject, str
 
 internal sealed record AssignTicketRequest(string? Version, Guid? TeamId, Guid? AssigneeUserId);
 
-internal sealed record PostMessageRequest(string? Kind, string? Body, string? Status, IReadOnlyList<Guid>? MentionUserIds = null);
+internal sealed record PostMessageRequest(string? Kind, string? Body, string? Status, IReadOnlyList<Guid>? MentionUserIds = null, string? ClientMessageId = null);
 
 internal sealed record IdChange(Guid? Id);
 
 /// <summary>Bulk change: only the fields present are applied (Team/Assignee present with a null id means "clear").</summary>
-internal sealed record BulkRequest(Guid[]? TicketIds, string? Status, string? Priority, IdChange? Team, IdChange? Assignee);
+/// <param name="Versions">Optional per-ticket row versions the client saw when it selected the tickets (D19). A ticket that changed since is reported as <c>changed</c> and left alone; the others proceed.</param>
+internal sealed record BulkRequest(Guid[]? TicketIds, string? Status, string? Priority, IdChange? Team, IdChange? Assignee, Dictionary<Guid, string>? Versions = null);
 
 internal sealed record BulkItemDto(Guid TicketId, string? Reference, string Outcome, string? Code);
 

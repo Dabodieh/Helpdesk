@@ -9,7 +9,8 @@ public static class TicketMessageSources
 
 /// <param name="MessageId">The stored message.</param>
 /// <param name="Reopened">True when the ticket was Closed, Resolved or Pending and is now Open because of this message (D-15).</param>
-public sealed record RequesterMessageResult(Guid MessageId, bool Reopened);
+/// <param name="Replayed">True when this call repeated an earlier post with the same client message id: nothing new was written.</param>
+public sealed record RequesterMessageResult(Guid MessageId, bool Reopened, bool Replayed = false);
 
 /// <summary>
 /// Non-HTTP entry point for adding a requester's public message to an existing ticket (used by Phase 3 mail ingestion; never
@@ -22,6 +23,10 @@ public interface ITicketIngress
     /// Appends a Public message authored by the requester. Closed, Resolved or Pending tickets return to Open (same ticket,
     /// reference, team and assignee), audited as <c>ticket.status_changed</c> with reason <c>requester_reply</c>.
     /// </summary>
+    /// <param name="clientMessageId">
+    /// Optional client-generated id (a GUID) that makes the post idempotent: a repeat with the same id returns the earlier message and does nothing else
+    /// (<see cref="RequesterMessageResult.Replayed"/>).
+    /// </param>
     Task<RequesterMessageResult> AddRequesterMessageAsync(
-        Guid departmentId, Guid ticketId, Guid requesterId, string body, string source, CancellationToken cancellationToken = default);
+        Guid departmentId, Guid ticketId, Guid requesterId, string body, string source, string? clientMessageId = null, CancellationToken cancellationToken = default);
 }

@@ -22,7 +22,7 @@ internal static class PortalEndpoints
     /// <summary>Largest portal reply request: 25 MiB attachment (the attachment limit) plus 4 MiB for the other parts.</summary>
     private const long MaxReplyRequestBytes = (25L + 4) * 1024 * 1024;
 
-    private sealed record ReplyJson(string? Body);
+    private sealed record ReplyJson(string? Body, string? ClientMessageId = null);
 
     private sealed record FieldsJson(Dictionary<string, JsonElement>? Fields);
 
@@ -54,6 +54,7 @@ internal static class PortalEndpoints
         portal.MapPost("requests/{reference}/replies", async (string reference, HttpRequest http, PortalRequestService requests, CancellationToken ct) =>
             {
                 string? body;
+                string? clientMessageId;
                 IReadOnlyList<IFormFile> files = [];
                 if (http.HasFormContentType)
                 {
@@ -61,14 +62,17 @@ internal static class PortalEndpoints
                     http.LimitRequestBody(MaxReplyRequestBytes);
                     var form = await http.ReadFormAsync(ct);
                     body = form["body"].ToString();
+                    clientMessageId = form["clientMessageId"].ToString();
                     files = [.. form.Files];
                 }
                 else
                 {
-                    body = (await http.ReadFromJsonAsync<ReplyJson>(ct))?.Body;
+                    var json = await http.ReadFromJsonAsync<ReplyJson>(ct);
+                    body = json?.Body;
+                    clientMessageId = json?.ClientMessageId;
                 }
 
-                return TypedResults.Created($"/api/portal/requests/{reference}", await requests.ReplyAsync(reference, body, files, ct));
+                return TypedResults.Created($"/api/portal/requests/{reference}", await requests.ReplyAsync(reference, body, files, ct, clientMessageId));
             })
             .RequireRateLimiting(RateLimitPolicies.PortalReply)
             .RequireAuthenticatedOnly();

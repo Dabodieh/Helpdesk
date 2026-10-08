@@ -37,6 +37,7 @@ export default function BulkBar({ tickets, onClear }: { tickets: TicketListItem[
       bulkUpdate(
         tickets.map((t) => t.id),
         change,
+        Object.fromEntries(tickets.flatMap((t) => (t.version ? [[t.id, t.version] as const] : []))),
       ),
     onSuccess: async (result) => {
       setSummary(result)

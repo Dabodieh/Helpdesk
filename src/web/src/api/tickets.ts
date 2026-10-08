@@ -84,7 +84,8 @@ const cursorPath = (base: string, cursor: string | null, limit: number) => {
 export const listMessages = (ticket: string, cursor: string | null, limit = 50) =>
   api('GET', cursorPath(`${tk(ticket)}/messages`, cursor, limit), { schema: pageSchema(messageSchema) })
 
-export const postMessage = (ticket: string, body: { kind: 'Public' | 'Internal'; body: string; status?: string; mentionUserIds?: string[] }) =>
+/** `clientMessageId` (a GUID made once per composed message) lets the server recognise a repeated post and return the first result. */
+export const postMessage = (ticket: string, body: { kind: 'Public' | 'Internal'; body: string; status?: string; mentionUserIds?: string[]; clientMessageId?: string }) =>
   api('POST', `${tk(ticket)}/messages`, { body, schema: postMessageResultSchema })
 
 /** Eligible colleagues for an @mention in an internal note of this ticket (this department only; the server decides eligibility). */
@@ -136,8 +137,9 @@ export type BulkChange = {
   assignee?: { id: string | null }
 }
 
-export const bulkUpdate = (ticketIds: string[], change: BulkChange) =>
-  api('POST', '/api/tickets/bulk', { body: { ticketIds, ...change }, schema: bulkResultSchema })
+/** `versions` (ticket id to the version seen when selected): a ticket that changed since is reported as changed and not touched. */
+export const bulkUpdate = (ticketIds: string[], change: BulkChange, versions?: Record<string, string>) =>
+  api('POST', '/api/tickets/bulk', { body: { ticketIds, ...change, versions }, schema: bulkResultSchema })
 
 /** Knowledge articles this ticket's requester can open (published, their audience, this department only); empty when the requester has no linked account. */
 export const articleLinkSchema = z.object({ slug: z.string(), title: z.string(), category: z.string().nullish(), path: z.string() })

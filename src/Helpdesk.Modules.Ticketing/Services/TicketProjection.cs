@@ -24,7 +24,8 @@ internal sealed record TicketRow(
     Guid? AssigneeUserId,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    Guid? MergedIntoTicketId = null);
+    Guid? MergedIntoTicketId = null,
+    uint Version = 0);
 
 /// <summary>Builds API shapes from tickets: resolves team, assignee and department names through the module contracts, in batches.</summary>
 internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirectory organisation, IUserDirectory users, IMailboxDirectory mailboxes, TimeProvider clock)
@@ -162,6 +163,7 @@ internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirec
             r.UpdatedAt,
             matches is not null && matches.TryGetValue(r.Id, out var match) ? match : null,
             slas is not null && slas.TryGetValue(r.Id, out var sla) ? Helpdesk.Modules.Ticketing.Sla.SlaSummary.Of(sla, now) : null,
-            r.MergedIntoTicketId is { } mergedTo && mergedRefs.TryGetValue(mergedTo, out var mergedRef) ? mergedRef : null)).ToList();
+            r.MergedIntoTicketId is { } mergedTo && mergedRefs.TryGetValue(mergedTo, out var mergedRef) ? mergedRef : null,
+            ConcurrencyVersion.ToToken(r.Version))).ToList();
     }
 }

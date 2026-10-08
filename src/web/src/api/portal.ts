@@ -92,13 +92,14 @@ export type NewPortalRequest = { formId: string; subject: string; description: s
 export const createPortalRequest = (body: NewPortalRequest) =>
   api('POST', '/api/portal/requests', { body, schema: z.object({ reference: z.string(), status: z.string(), statusLabel: z.string() }) })
 
-const replyResultSchema = z.object({ message: portalMessageSchema, status: z.string(), statusLabel: z.string() })
+const replyResultSchema = z.object({ message: portalMessageSchema, status: z.string(), statusLabel: z.string(), attachmentsNotSaved: z.number().default(0) })
 
 /** Reply with optional files. Files go as multipart through the same secure attachment pipeline as email attachments. */
-export async function replyToRequest(reference: string, body: string, files: File[]) {
-  if (files.length === 0) return api('POST', `/api/portal/requests/${encodeURIComponent(reference)}/replies`, { body: { body }, schema: replyResultSchema })
+export async function replyToRequest(reference: string, body: string, files: File[], clientMessageId?: string) {
+  if (files.length === 0) return api('POST', `/api/portal/requests/${encodeURIComponent(reference)}/replies`, { body: { body, clientMessageId }, schema: replyResultSchema })
   const form = new FormData()
   form.set('body', body)
+  if (clientMessageId) form.set('clientMessageId', clientMessageId)
   for (const f of files) form.append('files', f)
   const res = await fetch(`/api/portal/requests/${encodeURIComponent(reference)}/replies`, {
     method: 'POST',

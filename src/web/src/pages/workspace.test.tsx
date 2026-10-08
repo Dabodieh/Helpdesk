@@ -126,7 +126,7 @@ test('composer: internal mode shows the banner and submits kind Internal', async
   fireEvent.change(screen.getByRole('textbox', { name: 'Internal note' }), { target: { value: 'Checked the fuser\nlooks worn' } })
   fireEvent.click(screen.getByRole('button', { name: 'Add internal note' }))
   await waitFor(() => expect(posts(calls, '/messages')).toHaveLength(1))
-  expect(posts(calls, '/messages')[0]!.body).toEqual({ kind: 'Internal', body: 'Checked the fuser\nlooks worn' })
+  expect(posts(calls, '/messages')[0]!.body).toMatchObject({ kind: 'Internal', body: 'Checked the fuser\nlooks worn' })
   expect(posts(calls, '/messages')[0]!.headers['X-CSRF-TOKEN']).toBe('tok')
   await waitFor(() => expect(screen.getByRole('textbox', { name: 'Internal note' })).toHaveValue(''))
 })
@@ -176,7 +176,7 @@ test('public reply: payload carries status-after and the entry says it was recor
   fireEvent.change(pane().getByRole('combobox', { name: /Set status after/ }), { target: { value: 'Resolved' } })
   fireEvent.click(screen.getByRole('button', { name: 'Post public reply' }))
   await waitFor(() => expect(posts(calls, '/messages')).toHaveLength(1))
-  expect(posts(calls, '/messages')[0]!.body).toEqual({ kind: 'Public', body: 'Try the other tray', status: 'Resolved' })
+  expect(posts(calls, '/messages')[0]!.body).toMatchObject({ kind: 'Public', body: 'Try the other tray', status: 'Resolved' })
   const label = await screen.findByText('Recorded, not emailed (the ticket’s mailbox is not available to send from)')
   expect(label).toBeInTheDocument()
   // never claims a send
@@ -312,6 +312,34 @@ test('internal note: typing @ offers eligible colleagues, picking one inserts th
   await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.path === '/api/tickets/t1/messages')).toBe(true))
   const sent = calls.find((c) => c.method === 'POST' && c.path === '/api/tickets/t1/messages')!.body as { kind: string; mentionUserIds?: string[] }
   expect(sent).toMatchObject({ kind: 'Internal', mentionUserIds: ['u2'] })
+})
+
+test('a retried post carries the same client message id, and the next message gets a new one', async () => {
+  let attempt = 0
+  const calls = mockFetch({
+    ...ticketRoutes(),
+    'POST /api/tickets/t1/messages': () => {
+      attempt += 1
+      return attempt === 1
+        ? problem(500, 'Server error')
+        : json({ message: makeMessage({ id: 'm9', kind: 'Public', authorType: 'Agent', author: { id: 'u1', displayName: 'Test User' }, body: 'x' }), ticket: makeDetail({ version: 'v3' }) }, 201)
+    },
+  })
+  await openTicket()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Public reply' }), { target: { value: 'First answer' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Post public reply' }))
+  await waitFor(() => expect(attempt).toBe(1))
+  fireEvent.click(await screen.findByRole('button', { name: 'Post public reply' }))
+  await waitFor(() => expect(attempt).toBe(2))
+  const ids = calls.filter((c) => c.method === 'POST' && c.path === '/api/tickets/t1/messages').map((c) => (c.body as { clientMessageId?: string }).clientMessageId)
+  expect(ids[0]).toBeTruthy()
+  expect(ids[1]).toBe(ids[0]) // the retry is the same message to the server
+
+  fireEvent.change(screen.getByRole('textbox', { name: 'Public reply' }), { target: { value: 'Second answer' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Post public reply' }))
+  await waitFor(() => expect(attempt).toBe(3))
+  const third = calls.filter((c) => c.method === 'POST' && c.path === '/api/tickets/t1/messages')[2].body as { clientMessageId?: string }
+  expect(third.clientMessageId).not.toBe(ids[0])
 })
 
 test('a saved internal note marks the mentioned colleague, public replies never do', async () => {

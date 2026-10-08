@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import { fieldErrors } from '../api/errors'
 import {
   archiveArticle,
@@ -54,12 +54,21 @@ function EditorForm({ department, article, categories, onClose, onChanged }: { d
   const [visibility, setVisibility] = useState(article?.visibility ?? 'Everyone')
   const [preview, setPreview] = useState(false)
 
+  // The latest copy the server confirmed. Each step updates it, so when a later step fails (publish after a successful save) a retry uses the saved version
+  // instead of conflicting with its own save, and a new article is not created twice (UX-003).
+  const confirmed = useRef<ArticleAdmin | undefined>(article)
+  const remember = (next: ArticleAdmin) => {
+    confirmed.current = next
+    qc.setQueryData(['knowledge-article', department.id, next.id], next)
+    return next
+  }
   const save = useMutation({
     mutationFn: async (action: 'draft' | 'publish' | 'archive') => {
       const input = { title: title.trim(), summary: summary.trim(), body, visibility, categoryId: categoryId || null, clearCategory: !categoryId }
-      let current = article ? await saveDraft(department.id, article.id, { ...input, version: article.version }) : await createArticle(department.id, input)
-      if (action === 'publish') current = await publishArticle(department.id, current.id, current.version)
-      if (action === 'archive') current = await archiveArticle(department.id, current.id, current.version)
+      const base = confirmed.current
+      let current = remember(base ? await saveDraft(department.id, base.id, { ...input, version: base.version }) : await createArticle(department.id, input))
+      if (action === 'publish') current = remember(await publishArticle(department.id, current.id, current.version))
+      if (action === 'archive') current = remember(await archiveArticle(department.id, current.id, current.version))
       return { current, action }
     },
     onSuccess: async ({ current, action }) => {
