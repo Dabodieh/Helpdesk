@@ -19,7 +19,10 @@ internal static class NotificationTypes
     public const string SlaApproaching = "sla_approaching";
     public const string SlaBreached = "sla_breached";
 
-    public static bool IsValid(string value) => value is Assigned or RequesterReply or FollowedUpdate or Mentioned or SlaApproaching or SlaBreached;
+    /// <summary>A ticket lost its assignee because the assignee's department membership was removed (told to those who can reassign).</summary>
+    public const string Unassigned = "unassigned";
+
+    public static bool IsValid(string value) => value is Assigned or RequesterReply or FollowedUpdate or Mentioned or SlaApproaching or SlaBreached or Unassigned;
 }
 
 /// <summary>
@@ -36,7 +39,7 @@ internal sealed class NotificationRecorder(TicketingDbContext db, IOrganisationD
         Guid departmentId, Guid ticketId, string kind, Guid? actorUserId, CancellationToken ct, Guid? subjectUserId = null, Guid? messageId = null)
     {
         if (kind is not (TicketEventKinds.Created or TicketEventKinds.Assignment or TicketEventKinds.Message or TicketEventKinds.Status or TicketEventKinds.Priority or TicketEventKinds.Mention
-            or NotificationTypes.SlaApproaching or NotificationTypes.SlaBreached))
+            or NotificationTypes.SlaApproaching or NotificationTypes.SlaBreached or NotificationTypes.Unassigned))
         {
             return [];
         }
@@ -57,7 +60,7 @@ internal sealed class NotificationRecorder(TicketingDbContext db, IOrganisationD
             }
         }
 
-        var followers = kind is TicketEventKinds.Created or TicketEventKinds.Mention or NotificationTypes.SlaApproaching or NotificationTypes.SlaBreached // following never comes from a mention
+        var followers = kind is TicketEventKinds.Created or TicketEventKinds.Mention or NotificationTypes.SlaApproaching or NotificationTypes.SlaBreached or NotificationTypes.Unassigned // following never comes from a mention
             ? []
             : await db.TicketFollowers.AsNoTracking().IgnoreDepartmentScope().Where(f => f.TicketId == ticketId && f.DepartmentId == departmentId).Select(f => f.UserId).ToListAsync(ct);
 
@@ -92,6 +95,17 @@ internal sealed class NotificationRecorder(TicketingDbContext db, IOrganisationD
                 if (ticket.AssigneeUserId is { } owner)
                 {
                     Add(owner, kind);
+                }
+
+                break;
+            case NotificationTypes.Unassigned:
+                // Everyone who can reassign tickets in this department (team leads and administrators), except the person who made the change and the removed member.
+                foreach (var lead in await organisation.GetUserIdsWithPermissionAsync(departmentId, PermissionCodes.TicketsAssignAny, ct))
+                {
+                    if (lead != subjectUserId)
+                    {
+                        Add(lead, NotificationTypes.Unassigned);
+                    }
                 }
 
                 break;
@@ -165,8 +179,8 @@ internal sealed class NotificationRecorder(TicketingDbContext db, IOrganisationD
                 INSERT INTO ticketing.notifications (id, user_id, department_id, ticket_id, type, message_id, created_at)
                 VALUES ({Guid.CreateVersion7()}, {user}, {departmentId}, {ticketId}, {type}, {linkMessage}, {now})
                 ON CONFLICT (user_id, ticket_id) WHERE read_at IS NULL DO UPDATE SET
-                    type = CASE WHEN (CASE EXCLUDED.type WHEN 'sla_breached' THEN 6 WHEN 'mentioned' THEN 5 WHEN 'assigned' THEN 4 WHEN 'sla_approaching' THEN 3 WHEN 'requester_reply' THEN 2 ELSE 1 END)
-                                   > (CASE notifications.type WHEN 'sla_breached' THEN 6 WHEN 'mentioned' THEN 5 WHEN 'assigned' THEN 4 WHEN 'sla_approaching' THEN 3 WHEN 'requester_reply' THEN 2 ELSE 1 END)
+                    type = CASE WHEN (CASE EXCLUDED.type WHEN 'sla_breached' THEN 7 WHEN 'mentioned' THEN 6 WHEN 'assigned' THEN 5 WHEN 'sla_approaching' THEN 4 WHEN 'unassigned' THEN 3 WHEN 'requester_reply' THEN 2 ELSE 1 END)
+                                   > (CASE notifications.type WHEN 'sla_breached' THEN 7 WHEN 'mentioned' THEN 6 WHEN 'assigned' THEN 5 WHEN 'sla_approaching' THEN 4 WHEN 'unassigned' THEN 3 WHEN 'requester_reply' THEN 2 ELSE 1 END)
                                 THEN EXCLUDED.type ELSE notifications.type END,
                     message_id = CASE WHEN EXCLUDED.type = 'mentioned' THEN EXCLUDED.message_id ELSE notifications.message_id END,
                     created_at = EXCLUDED.created_at
@@ -180,10 +194,11 @@ internal sealed class NotificationRecorder(TicketingDbContext db, IOrganisationD
 
     private static int Rank(string type) => type switch
     {
-        NotificationTypes.SlaBreached => 6,
-        NotificationTypes.Mentioned => 5,
-        NotificationTypes.Assigned => 4,
-        NotificationTypes.SlaApproaching => 3,
+        NotificationTypes.SlaBreached => 7,
+        NotificationTypes.Mentioned => 6,
+        NotificationTypes.Assigned => 5,
+        NotificationTypes.SlaApproaching => 4,
+        NotificationTypes.Unassigned => 3,
         NotificationTypes.RequesterReply => 2,
         _ => 1,
     };

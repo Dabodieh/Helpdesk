@@ -18,7 +18,7 @@ public sealed class DepartmentScopeBypassTests
             // Phase 5: system work that always carries an explicit department (SLA clocks, automation, the SLA monitor).
             typeof(Helpdesk.Modules.Ticketing.Sla.SlaEngine), typeof(Helpdesk.Modules.Ticketing.Automation.AutomationEngine),
             typeof(Helpdesk.Modules.Ticketing.Automation.SystemTicketOps), typeof(Helpdesk.Modules.Ticketing.Automation.TicketLifecycle),
-            typeof(Helpdesk.Modules.Ticketing.Automation.SlaMonitor),
+            typeof(Helpdesk.Modules.Ticketing.Automation.SlaMonitor), typeof(Helpdesk.Modules.Ticketing.Sla.SlaAlertBackfill), typeof(Helpdesk.Modules.Ticketing.Services.MembershipRemovalHandler),
             // Phase 6: requester portal (every query constrained to the caller's linked requesters), form administration and the requester-safe realtime fan-out.
             typeof(Helpdesk.Modules.Ticketing.Portal.PortalRequestService), typeof(Helpdesk.Modules.Ticketing.Fields.TicketFieldsService), typeof(Helpdesk.Modules.Ticketing.Fields.FieldValueStore),
             typeof(Helpdesk.Modules.Ticketing.Fields.TicketPropertiesService),

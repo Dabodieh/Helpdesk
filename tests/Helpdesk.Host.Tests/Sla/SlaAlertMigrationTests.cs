@@ -12,7 +12,7 @@ public sealed class SlaAlertMigrationTests(HelpdeskFixture fixture) : IClassFixt
 {
     private const string Before = "20261008101853_TicketLifecycleEvents";
     private const string ConstraintOnly = "20261008160000_SlaAlertNotifications";
-    private const string Latest = "20261008170000_SlaAlertInstants";
+    private const string Latest = "20261008180000_UnassignedNotification";
 
     private Task<long> AlertColumnsAsync() =>
         fixture.ScalarAsync<long>("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'ticketing' AND table_name = 'ticket_sla' AND column_name IN ('fr_alert_at','fr_alerted_at','res_alert_at','res_alerted_at')");

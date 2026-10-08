@@ -762,7 +762,7 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
 
                     b.ToTable("notifications", "ticketing", t =>
                         {
-                            t.HasCheckConstraint("ck_notifications_type", "type IN ('assigned','requester_reply','followed_update','mentioned','sla_approaching','sla_breached')");
+                            t.HasCheckConstraint("ck_notifications_type", "type IN ('assigned','requester_reply','followed_update','mentioned','sla_approaching','sla_breached','unassigned')");
                         });
                 });
 

@@ -6,6 +6,7 @@ using Helpdesk.Modules.Organisation.Persistence;
 using Helpdesk.SharedKernel.Errors;
 using Helpdesk.SharedKernel.Security;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Helpdesk.Modules.Organisation.Services;
 
@@ -20,8 +21,13 @@ internal sealed class MembershipService(
     ICurrentUser current,
     MembershipCache memberships,
     IEnumerable<IAccessChangeListener> accessListeners,
+    IEnumerable<IMembershipRemovalListener> removalListeners,
+    ILogger<MembershipService> log,
     TimeProvider clock)
 {
+    private static readonly Action<ILogger, string, string, Exception?> FollowUpFailed = LoggerMessage.Define<string, string>(
+        LogLevel.Warning, new EventId(1, "MembershipFollowUpFailed"), "Membership removal follow-up {Listener} failed ({ErrorType})");
+
     public async Task<IReadOnlyList<MemberDto>> ListAsync(Guid departmentId, CancellationToken ct)
     {
         var rows = await db.DepartmentMemberships.AsNoTracking().Where(m => m.DepartmentId == departmentId).ToListAsync(ct);
@@ -107,6 +113,12 @@ internal sealed class MembershipService(
             await EnsureNotLastAdminAsync(departmentId, userId, ct);
         }
 
+        // Let the modules that hold work assigned to this member capture it while the assignment still exists (the foreign key clears it on delete).
+        foreach (var listener in removalListeners)
+        {
+            await listener.BeforeMembershipRemovedAsync(departmentId, userId, ct);
+        }
+
         // Remove (and audit) team memberships explicitly; the composite FK cascade is only the backstop.
         var teamMemberships = await db.TeamMemberships.Where(m => m.DepartmentId == departmentId && m.UserId == userId).ToListAsync(ct);
         db.TeamMemberships.RemoveRange(teamMemberships);
@@ -123,6 +135,18 @@ internal sealed class MembershipService(
         await tx.CommitAsync(ct);
         memberships.Invalidate();
         await NotifyAccessChangedAsync(userId, ct);
+        foreach (var listener in removalListeners)
+        {
+            try
+            {
+                await listener.MembershipRemovedAsync(departmentId, userId, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // The membership is already gone; recording what it did to the member's work is best-effort and must not fail the request.
+                FollowUpFailed(log, listener.GetType().Name, ex.GetType().Name, null);
+            }
+        }
     }
 
     private async Task NotifyAccessChangedAsync(Guid userId, CancellationToken ct)

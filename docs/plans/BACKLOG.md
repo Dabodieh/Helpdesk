@@ -30,7 +30,7 @@
 - Web Dockerfile / reverse-proxy config; CI step that builds the host image
 - Real Entra tenant sign-in verification (needs a dev tenant)
 - Database-level append-only guard (trigger or revoked grants) for `ticketing.messages`, like `audit_events`
-- Ticket event when a membership removal unassigns tickets (needs a cross-module notification)
+- ~~Ticket event when a membership removal unassigns tickets~~ (done: audit/activity entry per ticket with reason `department_membership_removed`, `unassigned` notification to those with `tickets.assign.any`, capped at 5 open tickets per removal). Still open: a grouped summary notification (the notification list is one entry per ticket), and automation triggers for these assignee changes. The web client must learn the `unassigned` notification type (`src/web/src/api/notifications.ts` enum and the text map in `NotificationBell.tsx`) BEFORE this backend reaches an environment with real users, or the notification list fails to parse for leads.
 - Phase 3 mail: sanitise CR/LF in subjects and angle brackets in requester emails before header/template use
 - Per-department late-reply policy (reopen vs follow-up ticket) and auto-close timers (Phase 5)
 - Cross-department ticket move (reference alias rules defined in TICKETING.md)

@@ -56,6 +56,7 @@ public static class TicketingModule
         services.AddSingleton<PresenceService>();
         services.AddHostedService<PresenceSweeper>();
         services.AddSingleton<IAccessChangeListener>(sp => sp.GetRequiredService<HubAccess>());
+        services.AddScoped<IMembershipRemovalListener, MembershipRemovalHandler>();
         services.AddHostedService<HubAccessRefresher>();
         services.AddScoped<SlaEngine>();
         services.AddScoped<RuleReferenceChecker>();
