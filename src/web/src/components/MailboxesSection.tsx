@@ -273,9 +273,11 @@ export default function MailboxesSection({ department }: { department: Departmen
       <section aria-labelledby="mailboxes-h">
         <div className="section-head">
           <h2 id="mailboxes-h">Mailboxes</h2>
-          <button type="button" className="primary" onClick={() => setAdding(true)}>
-            Add mailbox
-          </button>
+          {me.isPlatformAdmin && (
+            <button type="button" className="primary" onClick={() => setAdding(true)}>
+              Add mailbox
+            </button>
+          )}
         </div>
         <p className="muted">
           Email sent to these shared mailboxes becomes tickets of this department. A ticket keeps the mailbox it arrived at (or was created with) as its sender for good; replies are sent from it with that address as Reply-To, whichever agent or team handles the ticket.

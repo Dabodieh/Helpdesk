@@ -17,12 +17,12 @@ internal static class MailKit
 
     public static string NewSender() => $"person{Unique.Id()}@customer.test";
 
-    /// <summary>Creates a mailbox through the admin API (the department admin of <paramref name="d"/>).</summary>
+    /// <summary>Registers a mailbox of <paramref name="d"/> through the API as the Platform Admin (D10: only a Platform Admin registers a mailbox).</summary>
     public static async Task<Mailbox> CreateMailboxAsync(this HelpdeskFixture fixture, Dept d, string? address = null, string? signature = "Regards,\nThe Service Desk", bool? isDefault = null)
     {
-        _ = fixture;
         address ??= NewAddress();
-        var response = (await d.Admin.Client.PostAsync(
+        var platform = await fixture.PlatformAdminAsync();
+        var response = (await platform.Client.PostAsync(
             $"{d.Department.Url}/mailboxes", new { address, displayName = $"Desk {Unique.Id()}", signature, isDefault })).Expect(HttpStatusCode.Created);
         return new Mailbox(response.Id, address, response.Json.GetProperty("displayName").GetString()!, d);
     }

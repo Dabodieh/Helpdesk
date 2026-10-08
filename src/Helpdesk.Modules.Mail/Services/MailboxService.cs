@@ -3,11 +3,13 @@ using System.Text.RegularExpressions;
 using Helpdesk.Modules.Mail.Contracts;
 using Helpdesk.Modules.Mail.Domain;
 using Helpdesk.Modules.Mail.Persistence;
+using Helpdesk.Modules.Mail.Providers;
 using Helpdesk.Modules.Organisation.Contracts;
 using Helpdesk.SharedKernel.Authorization;
 using Helpdesk.SharedKernel.Database;
 using Helpdesk.SharedKernel.Errors;
 using Helpdesk.SharedKernel.Paging;
+using Helpdesk.SharedKernel.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -73,6 +75,8 @@ internal sealed partial class MailboxService(
     IOptions<MailOptions> options,
     OutboundSender sender,
     IAuthorizer authorizer,
+    ICurrentUser current,
+    IMailProvider provider,
     TimeProvider clock)
 {
     private const int MaxLimit = 100;
@@ -99,6 +103,12 @@ internal sealed partial class MailboxService(
 
     public async Task<MailboxDto> CreateAsync(Guid departmentId, CreateMailboxRequest request, CancellationToken ct)
     {
+        // D10: only a Platform Admin introduces a mailbox address; Department Admins keep managing the mailboxes already registered.
+        if (!current.IsPlatformAdmin)
+        {
+            throw new ForbiddenException();
+        }
+
         var errors = new Dictionary<string, string[]>();
         var address = request.Address?.Trim();
         if (string.IsNullOrWhiteSpace(address) || address.Length > 320 || !EmailPattern().IsMatch(address) || address.Contains('\0', StringComparison.Ordinal))
@@ -120,6 +130,21 @@ internal sealed partial class MailboxService(
             throw new ConflictException("The department is inactive.", ProblemCodes.Inactive);
         }
 
+        // D10: the application's own credentials must reach the mailbox before anything is registered. A failed probe creates nothing, whoever asks.
+        var providerRef = string.IsNullOrWhiteSpace(request.ProviderRef) ? null : request.ProviderRef.Trim();
+        try
+        {
+            await provider.ProbeMailboxAsync(new MailboxRef(Guid.Empty, address!, providerRef ?? address!), ct);
+        }
+        catch (PermanentProviderException)
+        {
+            throw new RequestValidationException("address", "The application cannot access this mailbox. Check that the address is correct and that the mailbox is inside the application's approved Exchange scope.");
+        }
+        catch (TransientProviderException)
+        {
+            throw new ConflictException("Access to the mailbox could not be verified right now. Nothing was registered; try again shortly.");
+        }
+
         var now = clock.GetUtcNowMicroseconds();
         var mailbox = new Mailbox
         {
@@ -129,7 +154,7 @@ internal sealed partial class MailboxService(
             AddressNormalised = Mailbox.Normalise(address!),
             DisplayName = request.DisplayName!.Trim(),
             Provider = options.Value.Provider.ToLowerInvariant(),
-            ProviderRef = string.IsNullOrWhiteSpace(request.ProviderRef) ? null : request.ProviderRef.Trim(),
+            ProviderRef = providerRef,
             IsActive = true,
             CreatedAt = now,
             UpdatedAt = now,

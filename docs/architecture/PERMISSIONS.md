@@ -19,7 +19,7 @@
 | `department.members.manage` | administrative | DepartmentAdmin; PlatformAdmin |
 | `teams.manage` | administrative | DepartmentAdmin; PlatformAdmin |
 | `department.audit.read` | administrative | TeamLead, DepartmentAdmin; PlatformAdmin |
-| `department.mailboxes.manage` | administrative | DepartmentAdmin; PlatformAdmin |
+| `department.mailboxes.manage` | administrative | DepartmentAdmin; PlatformAdmin (registering a NEW mailbox additionally requires Platform Admin, ADR-019) |
 | `tickets.read`, `tickets.notes.read` | **content** | Viewer, Agent, TeamLead, DepartmentAdmin (membership only) |
 | `tickets.create`, `tickets.reply`, `tickets.note`, `tickets.update`, `tickets.assign.self` | **content** | Agent, TeamLead, DepartmentAdmin (membership only) |
 | `tickets.assign.any` | **content** | TeamLead, DepartmentAdmin (membership only) |

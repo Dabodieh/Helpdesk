@@ -153,6 +153,7 @@ const MAILBOX = {
   lastSyncError: null,
   attentionCount: 1,
 }
+const platformMe = makeMe({ isPlatformAdmin: true, memberships: adminMe.memberships })
 const deptRoutes = (me = adminMe) => ({
   'GET /api/me': () => me,
   'GET /api/departments/d1': () => DEPT,
@@ -192,10 +193,18 @@ test('mailbox administration is not offered without department.mailboxes.manage'
   expect(screen.queryByRole('form', { name: 'New mailbox' })).not.toBeInTheDocument()
 })
 
+test('only a platform admin is offered Add mailbox', async () => {
+  mockFetch(deptRoutes())
+  renderApp('/admin/departments/d1')
+  fireEvent.click(await screen.findByRole('tab', { name: 'Mailboxes' }))
+  await screen.findByRole('heading', { name: 'Mailboxes' })
+  expect(screen.queryByRole('button', { name: 'Add mailbox' })).not.toBeInTheDocument()
+})
+
 test('creating a mailbox posts the trimmed values and shows server field errors', async () => {
   let attempt = 0
   const calls = mockFetch({
-    ...deptRoutes(),
+    ...deptRoutes(platformMe),
     'POST /api/departments/d1/mailboxes': () => {
       attempt += 1
       return attempt === 1

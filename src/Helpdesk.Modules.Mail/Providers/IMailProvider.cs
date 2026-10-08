@@ -77,6 +77,12 @@ internal interface IMailProvider
 {
     string Kind { get; }
 
+    /// <summary>
+    /// Registration check (D10): proves the application's own credentials can reach this mailbox. Throws <see cref="PermanentProviderException"/> when the
+    /// mailbox does not exist or the application is not allowed to access it, <see cref="TransientProviderException"/> when that could not be established.
+    /// </summary>
+    Task ProbeMailboxAsync(MailboxRef mailbox, CancellationToken cancellationToken);
+
     Task<ProviderSubscription> CreateSubscriptionAsync(MailboxRef mailbox, SubscriptionRequest request, CancellationToken cancellationToken);
 
     Task<DateTimeOffset> RenewSubscriptionAsync(MailboxRef mailbox, string subscriptionId, DateTimeOffset newExpiry, CancellationToken cancellationToken);

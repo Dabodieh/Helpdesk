@@ -111,6 +111,13 @@ internal sealed class MicrosoftGraphMailProvider : IMailProvider
         }
     }
 
+    // ---- registration probe (D10; scoping proof is D-16 E-2/E-3) ----
+
+    public async Task ProbeMailboxAsync(MailboxRef mailbox, CancellationToken cancellationToken)
+    {
+        using var response = await SendAsync(HttpMethod.Get, $"users/{Escape(mailbox.Reference)}/mailFolders/inbox?$select=id", null, immutableIds: false, cancellationToken);
+    }
+
     // ---- delta (E-7..E-9) ----
 
     public async Task<DeltaResult> FetchChangesAsync(MailboxRef mailbox, string? deltaToken, DateTimeOffset notBefore, CancellationToken cancellationToken)

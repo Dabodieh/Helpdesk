@@ -33,6 +33,28 @@ public sealed class MailAdminApiTests(HelpdeskFixture fixture) : IClassFixture<H
     }
 
     [Fact]
+    public async Task Only_a_platform_admin_registers_a_mailbox_and_a_failed_access_probe_registers_nothing()
+    {
+        var d = await fixture.NewDeptAsync();
+        var platform = await fixture.PlatformAdminAsync();
+        var url = $"{d.Department.Url}/mailboxes";
+        var address = MailKit.NewAddress();
+
+        // A Department Admin cannot introduce an address (they keep managing registered mailboxes).
+        (await d.Admin.Client.PostAsync(url, new { address, displayName = "Desk" })).Expect(HttpStatusCode.Forbidden);
+        Assert.Equal(0, await fixture.CountAsync("SELECT count(*) FROM mail.mailboxes WHERE address_normalised = @a", TicketKit.P("a", address)));
+
+        // The application cannot reach the mailbox (outside its Exchange scope): refused for everybody, a Platform Admin included, and nothing is created.
+        fixture.Fake().DenyMailbox(address);
+        var refused = (await platform.Client.PostAsync(url, new { address, displayName = "Desk" })).Expect(HttpStatusCode.BadRequest);
+        Assert.Contains("address", refused.Json.GetProperty("errors").EnumerateObject().Select(p => p.Name));
+        Assert.Equal(0, await fixture.CountAsync("SELECT count(*) FROM mail.mailboxes WHERE address_normalised = @a", TicketKit.P("a", address)));
+
+        // An accessible mailbox registers.
+        (await platform.Client.PostAsync(url, new { address = MailKit.NewAddress(), displayName = "Desk" })).Expect(HttpStatusCode.Created);
+    }
+
+    [Fact]
     public async Task A_mailbox_of_another_department_is_not_reachable_through_a_foreign_route()
     {
         var a = await fixture.NewDeptAsync();
@@ -56,12 +78,13 @@ public sealed class MailAdminApiTests(HelpdeskFixture fixture) : IClassFixture<H
         var box = await fixture.CreateMailboxAsync(a);
         var url = $"{a.Department.Url}/mailboxes";
 
-        Assert.Contains("address", (await a.Admin.Client.PostAsync(url, new { address = "not-an-address", displayName = "x" })).Expect(HttpStatusCode.BadRequest).Json.GetProperty("errors").EnumerateObject().Select(p => p.Name));
-        Assert.Contains("displayName", (await a.Admin.Client.PostAsync(url, new { address = MailKit.NewAddress(), displayName = "  " })).Expect(HttpStatusCode.BadRequest).Json.GetProperty("errors").EnumerateObject().Select(p => p.Name));
+        var platform = await fixture.PlatformAdminAsync();
+        Assert.Contains("address", (await platform.Client.PostAsync(url, new { address = "not-an-address", displayName = "x" })).Expect(HttpStatusCode.BadRequest).Json.GetProperty("errors").EnumerateObject().Select(p => p.Name));
+        Assert.Contains("displayName", (await platform.Client.PostAsync(url, new { address = MailKit.NewAddress(), displayName = "  " })).Expect(HttpStatusCode.BadRequest).Json.GetProperty("errors").EnumerateObject().Select(p => p.Name));
 
         // One mailbox belongs to exactly one department: the same address (any case) is refused everywhere.
-        (await a.Admin.Client.PostAsync(url, new { address = box.Address.ToUpperInvariant(), displayName = "dup" })).ExpectCode(HttpStatusCode.Conflict, "duplicate");
-        (await b.Admin.Client.PostAsync($"{b.Department.Url}/mailboxes", new { address = box.Address, displayName = "dup" })).ExpectCode(HttpStatusCode.Conflict, "duplicate");
+        (await platform.Client.PostAsync(url, new { address = box.Address.ToUpperInvariant(), displayName = "dup" })).ExpectCode(HttpStatusCode.Conflict, "duplicate");
+        (await platform.Client.PostAsync($"{b.Department.Url}/mailboxes", new { address = box.Address, displayName = "dup" })).ExpectCode(HttpStatusCode.Conflict, "duplicate");
     }
 
     [Fact]

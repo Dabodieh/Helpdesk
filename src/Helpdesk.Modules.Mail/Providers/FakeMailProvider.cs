@@ -55,6 +55,7 @@ internal sealed class FakeMailProvider : IMailProvider
     private int _timeoutNextSends;
     private bool _timeoutNextSendsReach;
     private int _hiddenSentLookups;
+    private readonly HashSet<string> _deniedMailboxes = new(StringComparer.OrdinalIgnoreCase);
     private int _throttleNextSends;
 
     public string Kind => Contracts.MailProviderKinds.Fake;
@@ -170,6 +171,23 @@ internal sealed class FakeMailProvider : IMailProvider
         {
             _timeoutNextSends = count;
             _timeoutNextSendsReach = reachedProvider;
+        }
+    }
+
+    /// <summary>SIMULATOR ONLY. The application is not allowed to access this mailbox (outside its Exchange scope): the registration probe fails with 403.</summary>
+    public void DenyMailbox(string address)
+    {
+        lock (_gate)
+        {
+            _deniedMailboxes.Add(address);
+        }
+    }
+
+    public Task ProbeMailboxAsync(MailboxRef mailbox, CancellationToken cancellationToken)
+    {
+        lock (_gate)
+        {
+            return _deniedMailboxes.Contains(mailbox.Address) ? throw new PermanentProviderException("graph_403") : Task.CompletedTask;
         }
     }
 

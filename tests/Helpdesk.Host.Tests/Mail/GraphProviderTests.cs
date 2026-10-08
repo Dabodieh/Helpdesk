@@ -74,6 +74,20 @@ public sealed class GraphProviderTests
     private static string Path(Recorded r) => Uri.UnescapeDataString(r.Uri.PathAndQuery);
 
     [Fact]
+    public async Task The_registration_probe_reads_the_inbox_folder_and_classifies_an_inaccessible_mailbox_as_permanent()
+    {
+        var (provider, handler) = Create();
+        handler.Json(HttpStatusCode.OK, new { id = "inbox" }).Json(HttpStatusCode.Forbidden, new { error = new { code = "ErrorAccessDenied" } }).Json(HttpStatusCode.ServiceUnavailable, new { error = new { code = "x" } });
+
+        await provider.ProbeMailboxAsync(Mailbox, CancellationToken.None);
+        Assert.Equal(HttpMethod.Get, handler.Requests[0].Method);
+        Assert.Contains("/users/11111111-2222-3333-4444-555555555555/mailFolders/inbox", Path(handler.Requests[0]), StringComparison.Ordinal);
+
+        Assert.Equal("graph_403", (await Assert.ThrowsAsync<PermanentProviderException>(() => provider.ProbeMailboxAsync(Mailbox, CancellationToken.None))).Code);
+        await Assert.ThrowsAsync<TransientProviderException>(() => provider.ProbeMailboxAsync(Mailbox, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Subscription_is_created_without_resource_data_with_lifecycle_url_client_state_and_immutable_ids()
     {
         var (provider, handler) = Create();
