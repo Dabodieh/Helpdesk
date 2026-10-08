@@ -121,12 +121,30 @@ internal sealed class NotificationOutboxInterceptor(IServiceProvider services) :
                     // The message id is kept so a late drain classifies THIS message (requester reply or agent reply), not whatever is latest by then (BE-015).
                     Add(message.DepartmentId, message.TicketId, TicketEventKinds.Message, messageId: message.Id);
                     break;
+                case TicketSla sla when entry.State == EntityState.Modified:
+                    // The SLA monitor records a warning or breach on the tracked row; a breach (which also sets the warning) wins. Resets to null stage nothing.
+                    if (BecameSet(entry, nameof(TicketSla.FirstResponseBreachedAt)) || BecameSet(entry, nameof(TicketSla.ResolutionBreachedAt)))
+                    {
+                        Add(sla.DepartmentId, sla.TicketId, NotificationTypes.SlaBreached);
+                    }
+                    else if (BecameSet(entry, nameof(TicketSla.FirstResponseWarnedAt)) || BecameSet(entry, nameof(TicketSla.ResolutionWarnedAt)))
+                    {
+                        Add(sla.DepartmentId, sla.TicketId, NotificationTypes.SlaApproaching);
+                    }
+
+                    break;
                 case MessageMention mention when entry.State == EntityState.Added:
                     // One intent per mentioned user (a duplicate is impossible: the key is note + user).
                     Add(mention.DepartmentId, mention.TicketId, TicketEventKinds.Mention, mention.UserId, mention.MessageId);
                     break;
             }
         }
+    }
+
+    private static bool BecameSet(Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry, string property)
+    {
+        var p = entry.Property(property);
+        return p.IsModified && p.OriginalValue is null && p.CurrentValue is not null;
     }
 
     private static bool Changed(Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry, string property)

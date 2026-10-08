@@ -16,8 +16,10 @@ internal static class NotificationTypes
     public const string RequesterReply = "requester_reply";
     public const string FollowedUpdate = "followed_update";
     public const string Mentioned = "mentioned";
+    public const string SlaApproaching = "sla_approaching";
+    public const string SlaBreached = "sla_breached";
 
-    public static bool IsValid(string value) => value is Assigned or RequesterReply or FollowedUpdate or Mentioned;
+    public static bool IsValid(string value) => value is Assigned or RequesterReply or FollowedUpdate or Mentioned or SlaApproaching or SlaBreached;
 }
 
 /// <summary>
@@ -33,7 +35,8 @@ internal sealed class NotificationRecorder(TicketingDbContext db, IOrganisationD
     public async Task<IReadOnlyCollection<Guid>> RecordAsync(
         Guid departmentId, Guid ticketId, string kind, Guid? actorUserId, CancellationToken ct, Guid? subjectUserId = null, Guid? messageId = null)
     {
-        if (kind is not (TicketEventKinds.Created or TicketEventKinds.Assignment or TicketEventKinds.Message or TicketEventKinds.Status or TicketEventKinds.Priority or TicketEventKinds.Mention))
+        if (kind is not (TicketEventKinds.Created or TicketEventKinds.Assignment or TicketEventKinds.Message or TicketEventKinds.Status or TicketEventKinds.Priority or TicketEventKinds.Mention
+            or NotificationTypes.SlaApproaching or NotificationTypes.SlaBreached))
         {
             return [];
         }
@@ -54,7 +57,7 @@ internal sealed class NotificationRecorder(TicketingDbContext db, IOrganisationD
             }
         }
 
-        var followers = kind is TicketEventKinds.Created or TicketEventKinds.Mention // following never comes from a mention
+        var followers = kind is TicketEventKinds.Created or TicketEventKinds.Mention or NotificationTypes.SlaApproaching or NotificationTypes.SlaBreached // following never comes from a mention
             ? []
             : await db.TicketFollowers.AsNoTracking().IgnoreDepartmentScope().Where(f => f.TicketId == ticketId && f.DepartmentId == departmentId).Select(f => f.UserId).ToListAsync(ct);
 
@@ -81,6 +84,14 @@ internal sealed class NotificationRecorder(TicketingDbContext db, IOrganisationD
                 foreach (var f in followers)
                 {
                     Add(f, NotificationTypes.FollowedUpdate);
+                }
+
+                break;
+            case NotificationTypes.SlaApproaching or NotificationTypes.SlaBreached:
+                // SLA alerts go to the assigned agent only; an unassigned ticket's risk stays visible through the Department's reporting.
+                if (ticket.AssigneeUserId is { } owner)
+                {
+                    Add(owner, kind);
                 }
 
                 break;
@@ -154,8 +165,8 @@ internal sealed class NotificationRecorder(TicketingDbContext db, IOrganisationD
                 INSERT INTO ticketing.notifications (id, user_id, department_id, ticket_id, type, message_id, created_at)
                 VALUES ({Guid.CreateVersion7()}, {user}, {departmentId}, {ticketId}, {type}, {linkMessage}, {now})
                 ON CONFLICT (user_id, ticket_id) WHERE read_at IS NULL DO UPDATE SET
-                    type = CASE WHEN (CASE EXCLUDED.type WHEN 'mentioned' THEN 4 WHEN 'assigned' THEN 3 WHEN 'requester_reply' THEN 2 ELSE 1 END)
-                                   > (CASE notifications.type WHEN 'mentioned' THEN 4 WHEN 'assigned' THEN 3 WHEN 'requester_reply' THEN 2 ELSE 1 END)
+                    type = CASE WHEN (CASE EXCLUDED.type WHEN 'sla_breached' THEN 6 WHEN 'mentioned' THEN 5 WHEN 'assigned' THEN 4 WHEN 'sla_approaching' THEN 3 WHEN 'requester_reply' THEN 2 ELSE 1 END)
+                                   > (CASE notifications.type WHEN 'sla_breached' THEN 6 WHEN 'mentioned' THEN 5 WHEN 'assigned' THEN 4 WHEN 'sla_approaching' THEN 3 WHEN 'requester_reply' THEN 2 ELSE 1 END)
                                 THEN EXCLUDED.type ELSE notifications.type END,
                     message_id = CASE WHEN EXCLUDED.type = 'mentioned' THEN EXCLUDED.message_id ELSE notifications.message_id END,
                     created_at = EXCLUDED.created_at
@@ -169,8 +180,10 @@ internal sealed class NotificationRecorder(TicketingDbContext db, IOrganisationD
 
     private static int Rank(string type) => type switch
     {
-        NotificationTypes.Mentioned => 4,
-        NotificationTypes.Assigned => 3,
+        NotificationTypes.SlaBreached => 6,
+        NotificationTypes.Mentioned => 5,
+        NotificationTypes.Assigned => 4,
+        NotificationTypes.SlaApproaching => 3,
         NotificationTypes.RequesterReply => 2,
         _ => 1,
     };

@@ -74,7 +74,7 @@ internal sealed partial class TicketingDbContext
 
         modelBuilder.Entity<Notification>(e =>
         {
-            e.ToTable("notifications", t => t.HasCheckConstraint("ck_notifications_type", "type IN ('assigned','requester_reply','followed_update','mentioned')"));
+            e.ToTable("notifications", t => t.HasCheckConstraint("ck_notifications_type", "type IN ('assigned','requester_reply','followed_update','mentioned','sla_approaching','sla_breached')"));
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
             e.Property(x => x.UserId).HasColumnName("user_id");

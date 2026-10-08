@@ -3,7 +3,7 @@ import { api } from './http'
 
 export const notificationSchema = z.object({
   id: z.string(),
-  type: z.enum(['assigned', 'requester_reply', 'followed_update', 'mentioned']),
+  type: z.enum(['assigned', 'requester_reply', 'followed_update', 'mentioned', 'sla_approaching', 'sla_breached']),
   createdAt: z.string(),
   read: z.boolean(),
   reference: z.string(),

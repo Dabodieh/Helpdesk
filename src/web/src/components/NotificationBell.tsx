@@ -11,6 +11,8 @@ const TEXT: Record<Notification['type'], string> = {
   requester_reply: 'Requester replied',
   followed_update: 'Update on a ticket you follow',
   mentioned: 'Mentioned you in a note on',
+  sla_approaching: 'SLA target approaching on',
+  sla_breached: 'SLA target breached on',
 }
 
 /**
