@@ -20,6 +20,7 @@ public sealed class EndpointAuthorizationTests(AppFixture app) : IClassFixture<A
         "DELETE /api/views/{viewId:guid}",
         "GET /api/canned-responses",
         "GET /api/canned-responses/placeholders", // a constant list, no data
+        "GET /api/portal/capabilities", // one UI flag (attachments enabled); upload and download stay authorised by the attachment pipeline
         "GET /api/departments",
         "GET /api/requesters/{requesterId:guid}",
         "GET /api/requesters/{requesterId:guid}/tickets",

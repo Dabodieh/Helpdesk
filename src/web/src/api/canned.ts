@@ -28,3 +28,9 @@ export const createCanned = (body: { scope: 'Personal' | 'Department'; departmen
 
 export const updateCanned = (id: string, body: { version: string; title?: string; body?: string; isActive?: boolean }) =>
   api('PATCH', `/api/canned-responses/${encodeURIComponent(id)}`, { body, schema: cannedSchema })
+
+export const renderedCannedSchema = z.object({ id: z.string(), title: z.string(), body: z.string(), emptyPlaceholders: z.array(z.string()) })
+
+/** The response with its {{placeholders}} filled in for one ticket. Read-only on the server; insert the returned body, never the raw one. */
+export const renderCanned = (ticketId: string, id: string) =>
+  api('GET', `/api/tickets/${encodeURIComponent(ticketId)}/canned-responses/${encodeURIComponent(id)}/render`, { schema: renderedCannedSchema })

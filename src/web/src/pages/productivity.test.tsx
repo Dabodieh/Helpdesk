@@ -13,7 +13,7 @@ const CANNED = {
   departmentId: 'd1',
   departmentName: 'IT Support',
   title: 'Reset password',
-  body: 'Hello,\nPlease reset your password at the portal.',
+  body: 'Hello {{requester.name}},\nPlease reset your password at the portal.',
   isActive: true,
   canManage: false,
   updatedAt: '2026-01-01T00:00:00Z',
@@ -25,9 +25,11 @@ const routes = () => ({
   'GET /api/tickets/t1/messages': () => page([makeMessage()]),
   'GET /api/tickets/t1/activity': () => page([]),
   'GET /api/canned-responses': () => json([CANNED]),
+  'GET /api/tickets/t1/canned-responses/c1/render': () =>
+    json({ id: 'c1', title: 'Reset password', body: 'Hello Ana,\nPlease reset your password at the portal.', emptyPlaceholders: [] }),
 })
 
-test('canned response: picking inserts the text into the draft and posts nothing', async () => {
+test('canned response: picking inserts the text rendered for this ticket into the draft and posts nothing', async () => {
   const calls = mockFetch(routes())
   renderApp('/queue/my/IT-1')
   await screen.findByRole('heading', { name: 'Printer jam', level: 2 })
@@ -36,7 +38,9 @@ test('canned response: picking inserts the text into the draft and posts nothing
   fireEvent.click(screen.getByRole('button', { name: /Insert response/ }))
   const dialog = await screen.findByRole('dialog')
   fireEvent.click(await within(dialog).findByRole('button', { name: /Reset password/ }))
-  await waitFor(() => expect(box).toHaveValue('Hi there. Hello,\nPlease reset your password at the portal.'))
+  await waitFor(() => expect(box).toHaveValue('Hi there. Hello Ana,\nPlease reset your password at the portal.'))
+  expect((box as HTMLTextAreaElement).value).not.toContain('{{')
+  expect(calls.some((c) => c.path === '/api/tickets/t1/canned-responses/c1/render')).toBe(true)
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   expect(calls.some((c) => c.method === 'POST')).toBe(false)
 })

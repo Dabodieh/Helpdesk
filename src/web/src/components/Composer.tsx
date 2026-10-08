@@ -200,7 +200,7 @@ ${draft}` : draft
         </div>
         {closed && canReply && <span className="muted small">Public replies need the ticket reopened first.</span>}
         <span className="grow" />
-        <CannedPicker departmentId={ticket.departmentId} onPick={insertText} />
+        <CannedPicker departmentId={ticket.departmentId} ticketId={ticket.id} onPick={insertText} />
         {!internal && canReply && <ArticleLinkPicker ticketId={ticket.id} onPick={insertText} />}
       </div>
       {internal ? (

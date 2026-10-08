@@ -13,6 +13,7 @@ const TEXT: Record<Notification['type'], string> = {
   mentioned: 'Mentioned you in a note on',
   sla_approaching: 'SLA target approaching on',
   sla_breached: 'SLA target breached on',
+  unassigned: 'Ticket unassigned, its assignee was removed:',
 }
 
 /**

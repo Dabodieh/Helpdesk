@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { listCanned, type Canned } from '../api/canned'
+import { listCanned, renderCanned, type Canned } from '../api/canned'
 import { ErrorNotice, Loading } from './common'
 import Dialog from './Dialog'
 import { Icon } from './icons'
@@ -10,8 +10,9 @@ import { Icon } from './icons'
  * Insert a canned response into the composer. Picking one only inserts its text: the agent still reviews and submits it, nothing is
  * ever posted or sent automatically.
  */
-export default function CannedPicker({ departmentId, onPick }: { departmentId: string; onPick: (text: string) => void }) {
+export default function CannedPicker({ departmentId, ticketId, onPick }: { departmentId: string; ticketId: string; onPick: (text: string) => void }) {
   const [open, setOpen] = useState(false)
+  const [failure, setFailure] = useState<unknown>(null)
   const [filter, setFilter] = useState('')
   const q = useQuery({ queryKey: ['canned', departmentId], queryFn: () => listCanned({ departmentId }), staleTime: 60_000 })
   const matches = useMemo(() => {
@@ -20,10 +21,17 @@ export default function CannedPicker({ departmentId, onPick }: { departmentId: s
     return needle ? all.filter((c) => c.title.toLowerCase().includes(needle) || c.body.toLowerCase().includes(needle)) : all
   }, [q.data, filter])
 
-  function choose(c: Canned) {
-    onPick(c.body)
-    setOpen(false)
-    setFilter('')
+  // The server fills the placeholders in for THIS ticket; the raw body (with its {{tokens}}) is never inserted.
+  async function choose(c: Canned) {
+    setFailure(null)
+    try {
+      const rendered = await renderCanned(ticketId, c.id)
+      onPick(rendered.body)
+      setOpen(false)
+      setFilter('')
+    } catch (error) {
+      setFailure(error)
+    }
   }
 
   return (
@@ -43,10 +51,11 @@ export default function CannedPicker({ departmentId, onPick }: { departmentId: s
             onKeyDown={(e) => {
               if (e.key === 'Enter' && matches[0]) {
                 e.preventDefault()
-                choose(matches[0])
+                void choose(matches[0])
               }
             }}
           />
+          {failure !== null && <ErrorNotice error={failure} />}
           {q.isPending && <Loading label="Loading responses" />}
           {q.isError && <ErrorNotice error={q.error} onRetry={() => void q.refetch()} />}
           {q.isSuccess && (q.data ?? []).length === 0 && (
@@ -58,7 +67,7 @@ export default function CannedPicker({ departmentId, onPick }: { departmentId: s
           <ul className="canned-list">
             {matches.map((c) => (
               <li key={c.id}>
-                <button type="button" onClick={() => choose(c)}>
+                <button type="button" onClick={() => void choose(c)}>
                   <span className="canned-title">
                     {c.title} <span className="badge">{c.scope === 'Personal' ? 'Personal' : (c.departmentName ?? 'Department')}</span>
                   </span>
