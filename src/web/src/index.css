@@ -3378,11 +3378,15 @@ table.compact th {
 .wordmark span { color:var(--accent); }
 .topbar-context { font-size:13px; border-left:1px solid var(--border); padding-left:20px; }
 .global-search { margin-left:auto; display:flex; gap:9px; align-items:center; border:1px solid var(--border); background:var(--bg); color:var(--muted); border-radius:6px; padding:6px 12px; min-width:190px; text-decoration:none; font-size:13px; }
+.global-search input { border:0; background:transparent; color:var(--text); font:inherit; width:100%; min-width:0; padding:0; outline:none; }
+.global-search input::placeholder { color:var(--muted); }
+.global-search:focus-within { border-color:var(--accent); }
 .app-topbar .live { margin:0 0 0 auto; font-size:11px; }
 .app-topbar .global-search + .live { margin-left:0; }
 .app-topbar .notify-trigger { width:auto; padding:6px; min-width:32px; }
 .app-topbar .notify-trigger .nav-label { display:none; }
-.app-topbar .notify-panel { top:calc(100% + 12px); bottom:auto; right:0; left:auto; }
+/* .notify is the positioned parent: the panel hangs under the bell (it used to stay position:fixed, so top:100% put it below the screen). */
+.app-topbar .notify-panel { position:absolute; top:calc(100% + 12px); bottom:auto; right:0; left:auto; }
 .workspace-nav { grid-column:2; grid-row:2; background:var(--bg); overflow:auto; padding:18px 10px; }
 .workspace-nav .rail-heading { font-size:10px; text-transform:uppercase; letter-spacing:1px; margin:18px 9px 8px; }
 .workspace-nav .rail-heading:first-child { margin-top:0; }

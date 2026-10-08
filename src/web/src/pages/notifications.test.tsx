@@ -41,3 +41,13 @@ test('nothing to show', async () => {
   fireEvent.click(await screen.findByRole('button', { name: 'Notifications' }))
   expect(await screen.findByText(/Nothing needs your attention/)).toBeInTheDocument()
 })
+
+test('the top-bar search accepts typed text and opens the search workspace with it', async () => {
+  mockFetch(routes({ unreadCount: 0, items: [] }))
+  renderApp('/queue/my')
+  const box = await screen.findByRole('searchbox', { name: 'Search all tickets' })
+  fireEvent.change(box, { target: { value: 'printer' } })
+  expect(box).toHaveValue('printer')
+  fireEvent.submit(box.closest('form') as HTMLFormElement)
+  expect(await screen.findByRole('searchbox', { name: 'Search tickets' })).toHaveValue('printer')
+})

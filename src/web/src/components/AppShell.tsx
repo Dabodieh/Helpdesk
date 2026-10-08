@@ -36,6 +36,27 @@ const LIVE_TEXT = {
 } as const
 
 /** Narrow left navigation + content. Only modules that exist are listed. */
+/** The top-bar search: type a reference, subject or requester and press Enter; the results open in the search workspace. */
+function GlobalSearch() {
+  const navigate = useNavigate()
+  const [text, setText] = useState('')
+  return (
+    <form
+      className="global-search"
+      role="search"
+      onSubmit={(e) => {
+        e.preventDefault()
+        const q = text.trim()
+        void navigate(q ? `/search?q=${encodeURIComponent(q)}` : '/search')
+        setText('')
+      }}
+    >
+      <Icon name="search" />
+      <input type="search" aria-label="Search all tickets" placeholder="Search tickets" value={text} onChange={(e) => setText(e.target.value)} autoComplete="off" />
+    </form>
+  )
+}
+
 export default function AppShell({ children }: { children: ReactNode }) {
   const me = useMe()
   const qc = useQueryClient()
@@ -96,7 +117,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <header className="app-topbar">
           <Link to="/" className="wordmark">helpdesk<span>.</span></Link>
           <span className="topbar-context">{location.pathname.startsWith('/admin') ? 'Administration' : 'Agent workspace'}</span>
-          {hasTickets && <Link className="global-search" to="/search"><Icon name="search" /> Search tickets</Link>}
+          {hasTickets && <GlobalSearch />}
           {live !== 'off' && <span className={`live live-${live}`} role="status"><span className="live-dot" aria-hidden="true" />{LIVE_TEXT[live]}</span>}
           {canCreate && <button type="button" className="primary" onClick={() => setDialog('ticket')}><Icon name="plus" /> New ticket</button>}
           {hasTickets && <NotificationBell />}
