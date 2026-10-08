@@ -3,6 +3,7 @@ using System.Net;
 using System.Text.Json;
 using Helpdesk.Host.Tests.Infrastructure;
 using Helpdesk.Host.Tests.Ticketing;
+using Helpdesk.Modules.Organisation.Contracts;
 using Helpdesk.Modules.Ticketing.Automation;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
@@ -31,23 +32,22 @@ public sealed class AutomationTests(HelpdeskFixture fixture) : IClassFixture<Hel
         (await w.Admin.Client.GetAsync($"/api/tickets/{ticketId}/messages?limit=200")).Expect(HttpStatusCode.OK).Json.GetProperty("items");
 
     [Fact]
-    public async Task A_routing_rule_assigns_the_team_on_creation_for_matching_tickets_only_and_records_why()
+    public async Task A_routing_rule_assigns_the_agent_on_creation_for_matching_tickets_only_and_records_why()
     {
         await using var w = await TimedWorld.CreateAsync(fixture, Start);
-        var team = await fixture.CreateTeamAsync(w.Dept.Department);
-        await RuleAsync(w, "Network routing", "TicketCreated", [Cond("subjectContains", "contains", "NETWORK")], [Action("assignTeam", team.Id.ToString())]);
+        await RuleAsync(w, "Network routing", "TicketCreated", [Cond("subjectContains", "contains", "NETWORK")], [Action("assignAgent", w.Agent.Id.ToString())]);
 
         var network = await w.NewTicketAsync("The Network is down");
         var printer = await w.NewTicketAsync("Printer jam");
-        Assert.Equal(team.Id, (await w.TicketAsync(network.Id)).Json.GetProperty("team").GetProperty("id").GetGuid());
-        Assert.Equal(JsonValueKind.Null, (await w.TicketAsync(printer.Id)).Json.GetProperty("team").ValueKind);
+        Assert.Equal(w.Agent.Id, (await w.TicketAsync(network.Id)).Json.GetProperty("assignee").GetProperty("id").GetGuid());
+        Assert.Equal(JsonValueKind.Null, (await w.TicketAsync(printer.Id)).Json.GetProperty("assignee").ValueKind);
 
         // History: one evaluation per ticket, with the matched result and the condition trace (no subject text in it).
         var history = await HistoryAsync(w);
         var matched = Assert.Single(history.EnumerateArray(), e => e.GetProperty("ticketId").GetGuid() == network.Id);
         Assert.True(matched.GetProperty("matched").GetBoolean());
         Assert.Equal("Completed", matched.GetProperty("state").GetString());
-        Assert.Equal("assignTeam", matched.GetProperty("actions")[0].GetProperty("type").GetString());
+        Assert.Equal("assignAgent", matched.GetProperty("actions")[0].GetProperty("type").GetString());
         Assert.Equal("Done", matched.GetProperty("actions")[0].GetProperty("outcome").GetString());
         Assert.False(matched.GetProperty("conditions")[0].TryGetProperty("actual", out var actual) && actual.ValueKind == JsonValueKind.String);
         var skipped = Assert.Single(history.EnumerateArray(), e => e.GetProperty("ticketId").GetGuid() == printer.Id);
@@ -57,8 +57,8 @@ public sealed class AutomationTests(HelpdeskFixture fixture) : IClassFixture<Hel
 
         // The change is attributed to automation in the ticket's history, without naming the rule.
         var activity = (await w.Agent.Client.GetAsync($"/api/tickets/{network.Id}/activity")).Expect(HttpStatusCode.OK).Json.GetProperty("items");
-        var teamChange = Assert.Single(activity.EnumerateArray(), e => e.GetProperty("action").GetString() == "ticket.team_changed");
-        Assert.Equal("automation", teamChange.GetProperty("reason").GetString());
+        var assigneeChange = Assert.Single(activity.EnumerateArray(), e => e.GetProperty("action").GetString() == "ticket.assignee_changed");
+        Assert.Equal("automation", assigneeChange.GetProperty("reason").GetString());
         Assert.DoesNotContain("Network routing", activity.GetRawText(), StringComparison.Ordinal);
     }
 
@@ -114,8 +114,7 @@ public sealed class AutomationTests(HelpdeskFixture fixture) : IClassFixture<Hel
     public async Task A_duplicate_event_never_repeats_notes_or_assignments()
     {
         await using var w = await TimedWorld.CreateAsync(fixture, Start);
-        var team = await fixture.CreateTeamAsync(w.Dept.Department);
-        await RuleAsync(w, "Note and route", "TicketCreated", [], [Action("addInternalNote", text: "Routed automatically"), Action("assignTeam", team.Id.ToString())]);
+        await RuleAsync(w, "Note and route", "TicketCreated", [], [Action("addInternalNote", text: "Routed automatically"), Action("assignAgent", w.Agent.Id.ToString())]);
         var ticket = await w.NewTicketAsync();
         Assert.Single((await MessagesAsync(w, ticket.Id)).EnumerateArray(), m => m.GetProperty("kind").GetString() == "Internal");
 
@@ -130,7 +129,7 @@ public sealed class AutomationTests(HelpdeskFixture fixture) : IClassFixture<Hel
         var notes = (await MessagesAsync(w, ticket.Id)).EnumerateArray().Count(m => m.GetProperty("kind").GetString() == "Internal");
         Assert.Equal(2, notes);
         Assert.Equal(2, await w.CountAsync("SELECT count(*) FROM ticketing.automation_executions WHERE ticket_id = @t", new NpgsqlParameter("t", ticket.Id)));
-        Assert.Equal(1, await w.CountAsync("SELECT count(*) FROM audit.audit_events WHERE object_id = @t AND action = 'ticket.team_changed'", new NpgsqlParameter("t", ticket.Id)));
+        Assert.Equal(1, await w.CountAsync("SELECT count(*) FROM audit.audit_events WHERE object_id = @t AND action = 'ticket.assignee_changed'", new NpgsqlParameter("t", ticket.Id)));
     }
 
     [Fact]
@@ -138,13 +137,10 @@ public sealed class AutomationTests(HelpdeskFixture fixture) : IClassFixture<Hel
     {
         await using var a = await TimedWorld.CreateAsync(fixture, Start);
         await using var b = await TimedWorld.CreateAsync(fixture, Start);
-        var teamB = await fixture.CreateTeamAsync(b.Dept.Department);
 
-        // Rejected when saved: team, person and mailbox of another department.
-        (await a.Admin.Client.PostAsync($"{a.Base}/automations", new { name = "x", trigger = "TicketCreated", conditions = Array.Empty<object>(), actions = new[] { Action("assignTeam", teamB.Id.ToString()) } })).Expect(HttpStatusCode.BadRequest);
+        // Rejected when saved: person and mailbox of another department.
         (await a.Admin.Client.PostAsync($"{a.Base}/automations", new { name = "x", trigger = "TicketCreated", conditions = Array.Empty<object>(), actions = new[] { Action("assignAgent", b.Dept.Agent.Id.ToString()) } })).Expect(HttpStatusCode.BadRequest);
         (await a.Admin.Client.PostAsync($"{a.Base}/automations", new { name = "x", trigger = "TicketCreated", conditions = new[] { Cond("mailbox", "in", Guid.NewGuid().ToString()) }, actions = new[] { Action("setPriority", "High") } })).Expect(HttpStatusCode.BadRequest);
-        (await a.Admin.Client.PostAsync($"{a.Base}/automations", new { name = "x", trigger = "TicketCreated", conditions = new[] { Cond("team", "in", teamB.Id.ToString()) }, actions = new[] { Action("setPriority", "High") } })).Expect(HttpStatusCode.BadRequest);
 
         // Other departments' rules do not exist for A's administrator, and A's rule routes never accept B's ids.
         var ruleB = await RuleAsync(b, "B rule", "TicketCreated", [], [Action("setPriority", "High")]);
@@ -152,19 +148,19 @@ public sealed class AutomationTests(HelpdeskFixture fixture) : IClassFixture<Hel
         (await a.Admin.Client.PatchAsync($"{a.Base}/automations/{ruleB.Id}", new { version = ruleB.Version, name = "hijack" })).Expect(HttpStatusCode.NotFound);
         (await a.Admin.Client.PostAsync($"{b.Base}/automations/test", new { ticket = "X-1", trigger = "TicketCreated" })).Expect(HttpStatusCode.NotFound);
 
-        // A rule stored with a foreign team (bypassing the API) fails closed when it runs: the action fails, the ticket is untouched.
+        // A rule stored with a foreign agent (bypassing the API) fails closed when it runs: the action fails, the ticket is untouched.
         var crafted = Guid.CreateVersion7();
         await fixture.ExecuteAsync(
             "INSERT INTO ticketing.automation_rules (id, department_id, name, is_active, trigger, sort_order, stop_processing, conditions, actions, created_at, updated_at) "
             + "VALUES (@id, @d, 'crafted', true, 'TicketCreated', 10, false, '[]'::jsonb, CAST(@a AS jsonb), now(), now())",
             new NpgsqlParameter("id", crafted), new NpgsqlParameter("d", a.Dept.Id),
-            new NpgsqlParameter("a", $"[{{\"type\":\"assignTeam\",\"value\":\"{teamB.Id}\",\"text\":null}}]"));
+            new NpgsqlParameter("a", $"[{{\"type\":\"assignAgent\",\"value\":\"{b.Dept.Agent.Id}\",\"text\":null}}]"));
         var ticket = await a.NewTicketAsync();
-        Assert.Equal(JsonValueKind.Null, (await a.TicketAsync(ticket.Id)).Json.GetProperty("team").ValueKind);
+        Assert.Equal(JsonValueKind.Null, (await a.TicketAsync(ticket.Id)).Json.GetProperty("assignee").ValueKind);
         var row = Assert.Single((await HistoryAsync(a, ticket.Json.GetProperty("reference").GetString())).EnumerateArray());
         Assert.Equal("Failed", row.GetProperty("state").GetString());
         Assert.Equal("Failed", row.GetProperty("actions")[0].GetProperty("outcome").GetString());
-        Assert.Equal(0, await a.CountAsync("SELECT count(*) FROM ticketing.tickets WHERE department_id = @d AND team_id = @t", new NpgsqlParameter("d", a.Dept.Id), new NpgsqlParameter("t", teamB.Id)));
+        Assert.Equal(0, await a.CountAsync("SELECT count(*) FROM ticketing.tickets WHERE department_id = @d AND assignee_user_id = @t", new NpgsqlParameter("d", a.Dept.Id), new NpgsqlParameter("t", b.Dept.Agent.Id)));
     }
 
     [Fact]
@@ -177,7 +173,7 @@ public sealed class AutomationTests(HelpdeskFixture fixture) : IClassFixture<Hel
         object[][] badActions =
         [
             [Action("runScript", "rm -rf /")], [Action("sendEmail", "x")], [Action("setStatus", "Deleted")], [Action("setPriority", "Nope")],
-            [Action("assignTeam", "not-a-guid")], [Action("addInternalNote", text: new string('x', 1001))], [Action("addInternalNote")], many, [],
+            [Action("assignAgent", "not-a-guid")], [Action("assignTeam", Guid.NewGuid().ToString())], [Action("addInternalNote", text: new string('x', 1001))], [Action("addInternalNote")], many, [],
         ];
         foreach (var actions in badActions)
         {
@@ -204,9 +200,8 @@ public sealed class AutomationTests(HelpdeskFixture fixture) : IClassFixture<Hel
     public async Task Test_against_ticket_explains_everything_and_changes_nothing()
     {
         await using var w = await TimedWorld.CreateAsync(fixture, Start);
-        var team = await fixture.CreateTeamAsync(w.Dept.Department);
         var rule = await RuleAsync(w, "Escalate network", "StatusChanged", [Cond("status", "in", "Pending"), Cond("subjectContains", "contains", "network")],
-            [Action("setPriority", "Urgent"), Action("assignTeam", team.Id.ToString()), Action("addInternalNote", text: "Escalated"), Action("setStatus", "Pending")], stop: true);
+            [Action("setPriority", "Urgent"), Action("assignAgent", w.Agent.Id.ToString()), Action("addInternalNote", text: "Escalated"), Action("setStatus", "Pending")], stop: true);
         await RuleAsync(w, "Later rule", "StatusChanged", [], [Action("setPriority", "Low")]);
         var ticket = await w.NewTicketAsync("Network outage");
         var reference = ticket.Json.GetProperty("reference").GetString();
@@ -340,7 +335,7 @@ public sealed class AutomationTests(HelpdeskFixture fixture) : IClassFixture<Hel
 
         var detail = await w.TicketAsync(ticket.Id);
         Assert.Equal("High", detail.Json.GetProperty("priority").GetString());
-        (await w.Lead.AssignAsync(ticket.Id, detail.Version, null, w.Agent.Id)).Expect(HttpStatusCode.OK);
+        (await w.Lead.AssignAsync(ticket.Id, detail.Version, w.Agent.Id)).Expect(HttpStatusCode.OK);
         Assert.Single((await MessagesAsync(w, ticket.Id)).EnumerateArray(), m => m.GetProperty("body").GetString() == "Someone took it");
     }
 
@@ -361,24 +356,22 @@ public sealed class AutomationTests(HelpdeskFixture fixture) : IClassFixture<Hel
     public async Task A_failed_execution_resumes_at_the_failed_action_without_repeating_what_succeeded()
     {
         await using var w = await TimedWorld.CreateAsync(fixture, Start);
-        var team = await fixture.CreateTeamAsync(w.Dept.Department);
-        await RuleAsync(w, "Three steps", "TicketCreated", [], [Action("setPriority", "High"), Action("addInternalNote", text: "Step two note"), Action("assignTeam", team.Id.ToString())]);
+        await RuleAsync(w, "Three steps", "TicketCreated", [], [Action("setPriority", "High"), Action("addInternalNote", text: "Step two note"), Action("assignAgent", w.Agent.Id.ToString())]);
 
-        // The team is deactivated after the rule was saved: step three fails when the rule runs, steps one and two succeed.
-        (await w.Admin.Client.PatchAsync($"{w.Base}/teams/{team.Id}", new { version = team.Version, isActive = false })).Expect(HttpStatusCode.OK);
+        // The agent leaves the department after the rule was saved: step three fails when the rule runs, steps one and two succeed.
+        (await w.Admin.Client.DeleteAsync($"{w.Base}/members/{w.Agent.Id}")).Expect(HttpStatusCode.NoContent);
         var ticket = await w.NewTicketAsync();
         var (state, actions, key) = await ExecutionOfAsync(ticket.Id);
         Assert.Equal("Failed", state);
         Assert.Equal(["Done", "Done", "Failed"], JsonDocument.Parse(actions).RootElement.EnumerateArray().Select(a => a.GetProperty("outcome").GetString()!).ToArray());
         Assert.Equal("High", (await w.TicketAsync(ticket.Id)).Json.GetProperty("priority").GetString());
-        Assert.Equal(JsonValueKind.Null, (await w.TicketAsync(ticket.Id)).Json.GetProperty("team").ValueKind);
+        Assert.Equal(JsonValueKind.Null, (await w.TicketAsync(ticket.Id)).Json.GetProperty("assignee").ValueKind);
         var notesBefore = (await MessagesAsync(w, ticket.Id)).EnumerateArray().Count(m => m.GetProperty("authorType").GetString() == "System");
         var priorityAuditBefore = await w.CountAsync("SELECT count(*) FROM audit.audit_events WHERE object_id = @t AND action = 'ticket.priority_changed'", new NpgsqlParameter("t", ticket.Id));
         Assert.Equal(1, notesBefore);
 
-        // The team is usable again; the same event is delivered again (a retry) and resumes the failed action only.
-        var current = (await w.Admin.Client.GetAsync($"{w.Base}/teams/{team.Id}")).Expect(HttpStatusCode.OK);
-        (await w.Admin.Client.PatchAsync($"{w.Base}/teams/{team.Id}", new { version = current.Version, isActive = true })).Expect(HttpStatusCode.OK);
+        // The agent is back in the department; the same event is delivered again (a retry) and resumes the failed action only.
+        (await w.Admin.Client.PutAsync($"{w.Base}/members/{w.Agent.Id}", new { role = DepartmentRoles.Agent })).Expect(HttpStatusCode.OK);
         await using var scope = fixture.Factory.Services.CreateAsyncScope();
         var engine = scope.ServiceProvider.GetRequiredService<AutomationEngine>();
         await engine.RunAsync(w.Dept.Id, ticket.Id, "TicketCreated", key, AutomationChain.Start("retry"), CancellationToken.None);
@@ -386,10 +379,10 @@ public sealed class AutomationTests(HelpdeskFixture fixture) : IClassFixture<Hel
         var resumed = await ExecutionOfAsync(ticket.Id);
         Assert.Equal("Completed", resumed.State);
         Assert.Equal(["Done", "Done", "Done"], JsonDocument.Parse(resumed.Actions).RootElement.EnumerateArray().Select(a => a.GetProperty("outcome").GetString()!).ToArray());
-        Assert.Equal(team.Id, (await w.TicketAsync(ticket.Id)).Json.GetProperty("team").GetProperty("id").GetGuid());
+        Assert.Equal(w.Agent.Id, (await w.TicketAsync(ticket.Id)).Json.GetProperty("assignee").GetProperty("id").GetGuid());
         Assert.Equal(notesBefore, (await MessagesAsync(w, ticket.Id)).EnumerateArray().Count(m => m.GetProperty("authorType").GetString() == "System"));
         Assert.Equal(priorityAuditBefore, await w.CountAsync("SELECT count(*) FROM audit.audit_events WHERE object_id = @t AND action = 'ticket.priority_changed'", new NpgsqlParameter("t", ticket.Id)));
-        Assert.Equal(1, await w.CountAsync("SELECT count(*) FROM audit.audit_events WHERE object_id = @t AND action = 'ticket.team_changed'", new NpgsqlParameter("t", ticket.Id)));
+        Assert.Equal(1, await w.CountAsync("SELECT count(*) FROM audit.audit_events WHERE object_id = @t AND action = 'ticket.assignee_changed'", new NpgsqlParameter("t", ticket.Id)));
 
         // Delivering the same event again after success is harmless, and the history stays one coherent row.
         await engine.RunAsync(w.Dept.Id, ticket.Id, "TicketCreated", key, AutomationChain.Start("retry"), CancellationToken.None);

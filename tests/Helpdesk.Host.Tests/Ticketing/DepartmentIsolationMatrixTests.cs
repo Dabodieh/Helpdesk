@@ -38,7 +38,7 @@ public sealed class DepartmentIsolationMatrixTests(HelpdeskFixture fixture) : IC
     private sealed record World(
         Dept It, Dept Hr, Dept Fin, string Token, string RequesterEmail,
         ApiResponse ItTicket, ApiResponse ItMerged, ApiResponse ItAttachmentTicket, Guid ItAttachmentId, ApiResponse HrTicket,
-        ApiResponse ItType, ApiResponse ItField, Guid ItForm, Guid ItTeamId, TestUser Both)
+        ApiResponse ItType, ApiResponse ItField, Guid ItForm, TestUser Both)
     {
         public Guid[] ItTicketIds => [ItTicket.Id, ItMerged.Id, ItAttachmentTicket.Id];
 
@@ -72,12 +72,11 @@ public sealed class DepartmentIsolationMatrixTests(HelpdeskFixture fixture) : IC
         var type = (await it.Admin.Client.PostAsync($"{it.Department.Url}/ticket-types", new { name = $"{token} Incident" })).Expect(HttpStatusCode.Created);
         var field = (await it.Admin.Client.PostAsync($"{it.Department.Url}/ticket-fields", PortalKit.Field($"{token} Asset tag", "ShortText", key: "asset_tag"))).Expect(HttpStatusCode.Created);
         var form = (await it.FormAsync(fixture, $"{token} Request form")).FormId;
-        var team = await fixture.CreateTeamAsync(it.Department, $"{token} Network");
         var hrTicket = (await hr.TicketForAsync($"hr-{Unique.Id()}@example.test", "HR matter")).Expect(HttpStatusCode.Created);
         var both = await fixture.NewMemberAsync(it.Department, "Agent");
         await fixture.AddMemberAsync(hr.Department, both, "Agent");
         return new World(it, hr, fin, token, email, main, merged, attTicket, attachmentId, hrTicket, type, field,
-            form, team.Id, both);
+            form, both);
     }
 
     // ----- helpers -----
@@ -138,7 +137,7 @@ public sealed class DepartmentIsolationMatrixTests(HelpdeskFixture fixture) : IC
             ("POST", "/followers/me", null), ("POST", $"/followers/{w.Hr.Agent.Id}", null),
             ("POST", "/merge", new { version = "1", sources = new[] { new { ticketId = w.HrTicket.Id, version = "1" } } }),
             ("POST", "/links", new { ticketId = w.HrTicket.Id, type = "Related" }),
-            ("PATCH", "", new { version = "1", subject = "x" }), ("PUT", "/assignment", new { version = "1", teamId = (Guid?)null, assigneeUserId = (Guid?)null }),
+            ("PATCH", "", new { version = "1", subject = "x" }), ("PUT", "/assignment", new { version = "1", assigneeUserId = (Guid?)null }),
         ];
         foreach (var target in new[] { w.ItTicket, w.ItMerged, w.ItAttachmentTicket })
         {
@@ -170,7 +169,7 @@ public sealed class DepartmentIsolationMatrixTests(HelpdeskFixture fixture) : IC
         var hr = w.Hr.Agent;
         var before = (await hr.Client.GetAsync("/api/tickets/queue-counts")).Expect(HttpStatusCode.OK).Body;
 
-        foreach (var queue in new[] { "my", "team", "unassigned", "all", "following" })
+        foreach (var queue in new[] { "my", "unassigned", "all", "following" })
         {
             var page = (await hr.Client.GetAsync($"/api/tickets?queue={queue}&status=Open&status=Pending&status=Resolved&status=Closed&limit=100")).Expect(HttpStatusCode.OK);
             Assert.Empty(Ids(page).Intersect(w.ItTicketIds));
@@ -323,10 +322,9 @@ public sealed class DepartmentIsolationMatrixTests(HelpdeskFixture fixture) : IC
         await SameAsRandomAsync("create ticket with type", id => hr.Agent.Client.PostAsync($"{hr.Department.Url}/tickets", TicketHelpers.NewTicketBody("t", $"r-{Unique.Id()}@example.test", new { TicketTypeId = id })), w.ItType.Id);
         var hrDetail = (await hr.Agent.GetTicketAsync(w.HrTicket.Id)).Expect(HttpStatusCode.OK);
         await SameAsRandomAsync("properties type", id => hr.Agent.Client.PatchAsync(TicketKit.Url(w.HrTicket.Id, "/properties"), new { version = hrDetail.Version, ticketTypeId = id }), w.ItType.Id);
-        await SameAsRandomAsync("assign team", id => hr.Lead.AssignAsync(w.HrTicket.Id, hrDetail.Version, id, null), w.ItTeamId);
-        await SameAsRandomAsync("assign agent", id => hr.Lead.AssignAsync(w.HrTicket.Id, hrDetail.Version, null, id), w.It.Agent.Id);
-        await SameAsRandomAsync("create with team", id => hr.Lead.Client.PostAsync($"{hr.Department.Url}/tickets", TicketHelpers.NewTicketBody("t", $"r-{Unique.Id()}@example.test", new { TeamId = id })), w.ItTeamId);
-        await SameAsRandomAsync("rule team", id => hr.Admin.Client.PostAsync($"{hr.Department.Url}/automations", new { name = "x", trigger = "TicketCreated", conditions = Array.Empty<object>(), actions = new[] { new { type = "assignTeam", value = id.ToString(), text = (string?)null } } }), w.ItTeamId);
+        await SameAsRandomAsync("assign agent", id => hr.Lead.AssignAsync(w.HrTicket.Id, hrDetail.Version, id), w.It.Agent.Id);
+        await SameAsRandomAsync("create with assignee", id => hr.Lead.Client.PostAsync($"{hr.Department.Url}/tickets", TicketHelpers.NewTicketBody("t", $"r-{Unique.Id()}@example.test", new { AssigneeUserId = id })), w.It.Agent.Id);
+        await SameAsRandomAsync("rule agent", id => hr.Admin.Client.PostAsync($"{hr.Department.Url}/automations", new { name = "x", trigger = "TicketCreated", conditions = Array.Empty<object>(), actions = new[] { new { type = "assignAgent", value = id.ToString(), text = (string?)null } } }), w.It.Agent.Id);
         await SameAsRandomAsync("sla policy type", id => hr.Admin.Client.PostAsync($"{hr.Department.Url}/sla-policies", new { name = "x", resolutionMinutes = 10, conditions = new[] { new { field = "ticketType", @operator = "in", values = new[] { id.ToString() } } } }), w.ItType.Id);
 
         // A field key belonging to another department's catalogue is just an unknown key here.

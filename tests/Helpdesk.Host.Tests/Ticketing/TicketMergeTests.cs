@@ -110,7 +110,7 @@ public sealed class TicketMergeTests(HelpdeskFixture fixture) : IClassFixture<He
         (await d.Agent.PatchTicketAsync(current, new { Status = "Closed" })).ExpectCode(HttpStatusCode.Conflict, "ticket_merged");
         (await d.Agent.PostMessageAsync(source.Id, "Public", "should not send")).ExpectCode(HttpStatusCode.Conflict, "ticket_merged");
         (await d.Agent.PostMessageAsync(source.Id, "Internal", "nor a note")).ExpectCode(HttpStatusCode.Conflict, "ticket_merged");
-        (await d.Lead.AssignAsync(source.Id, current.Version, null, d.Agent.Id)).ExpectCode(HttpStatusCode.Conflict, "ticket_merged");
+        (await d.Lead.AssignAsync(source.Id, current.Version, d.Agent.Id)).ExpectCode(HttpStatusCode.Conflict, "ticket_merged");
         (await d.Agent.Client.PatchAsync(TicketKit.Url(source.Id, "/properties"), new { version = current.Version, clearTicketType = true }))
             .ExpectCode(HttpStatusCode.Conflict, "ticket_merged");
         (await d.Agent.Client.PostAsync("/api/tickets/bulk", new { ticketIds = new[] { source.Id }, status = "Closed" })).Expect(HttpStatusCode.OK);

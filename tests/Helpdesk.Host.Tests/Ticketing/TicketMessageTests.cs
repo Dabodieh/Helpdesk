@@ -237,7 +237,7 @@ public sealed class TicketMessageTests(HelpdeskFixture fixture) : IClassFixture<
         var t = await d.Agent.CreateTicketAsync(d.Department);
         var otherTicket = await d.Agent.CreateTicketAsync(d.Department);
         var patched = (await d.Lead.PatchTicketAsync(t, new { Priority = "High" })).Expect(HttpStatusCode.OK);
-        (await d.Lead.AssignAsync(t.Id, patched.Version, null, d.Agent.Id)).Expect(HttpStatusCode.OK);
+        (await d.Lead.AssignAsync(t.Id, patched.Version, d.Agent.Id)).Expect(HttpStatusCode.OK);
         (await d.Agent.PostMessageAsync(t.Id, "Public", "hello")).Expect(HttpStatusCode.Created);
         (await d.Agent.PatchTicketAsync(otherTicket, new { Priority = "Low" })).Expect(HttpStatusCode.OK);
 

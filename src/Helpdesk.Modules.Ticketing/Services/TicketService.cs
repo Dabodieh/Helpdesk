@@ -59,7 +59,7 @@ internal sealed partial class TicketService(
     public async Task<TicketDetailDto> CreateAsync(Guid departmentId, CreateTicketRequest request, CancellationToken ct)
     {
         await scope.EnsureLoadedAsync(ct);
-        await RequireAssignmentRightsAsync(departmentId, request.TeamId, request.AssigneeUserId, ticket: null, ct);
+        await RequireAssignmentRightsAsync(departmentId, request.AssigneeUserId, ticket: null, ct);
 
         var errors = new Dictionary<string, string[]>();
         TicketValidation.Subject(errors, "subject", request.Subject);
@@ -83,7 +83,6 @@ internal sealed partial class TicketService(
             throw new ConflictException("The department is inactive.", ProblemCodes.Inactive);
         }
 
-        await ValidateTeamAsync(departmentId, request.TeamId, ct);
         await ValidateAssigneeAsync(departmentId, request.AssigneeUserId, ct);
 
         // The mailbox is the ticket's sender identity for good: an explicit choice must be an active mailbox of THIS department (foreign, missing and inactive answer
@@ -148,7 +147,6 @@ internal sealed partial class TicketService(
                 Subject = request.Subject!.Trim(),
                 Status = TicketStatus.Open,
                 Priority = priority,
-                TeamId = request.TeamId,
                 AssigneeUserId = request.AssigneeUserId,
                 CreatedByUserId = current.UserId,
                 CreatedAt = now,
@@ -310,18 +308,11 @@ internal sealed partial class TicketService(
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var ticket = await LockAndLoadAsync(key.Id, version, ct);
 
-        await RequireAssignmentRightsAsync(ticket.DepartmentId, request.TeamId, request.AssigneeUserId, ticket, ct);
+        await RequireAssignmentRightsAsync(ticket.DepartmentId, request.AssigneeUserId, ticket, ct);
 
-        // Validate only what actually changes, so keeping an existing (since deactivated) team or assignee stays possible.
+        // Validate only what actually changes, so keeping an existing (since deactivated) assignee stays possible.
         var changes = new List<(string Action, object Previous, object Next)>();
         var lc = new List<TicketChange>();
-        if (request.TeamId != ticket.TeamId)
-        {
-            await ValidateTeamAsync(ticket.DepartmentId, request.TeamId, ct);
-            changes.Add((TicketAuditActions.TeamChanged, new { teamId = ticket.TeamId }, new { teamId = request.TeamId }));
-            lc.Add(new TicketChange(ChangeKind.Team, ticket.TeamId?.ToString(), request.TeamId?.ToString()));
-        }
-
         if (request.AssigneeUserId != ticket.AssigneeUserId)
         {
             await ValidateAssigneeAsync(ticket.DepartmentId, request.AssigneeUserId, ct);
@@ -331,7 +322,6 @@ internal sealed partial class TicketService(
 
         if (changes.Count > 0)
         {
-            ticket.TeamId = request.TeamId;
             ticket.AssigneeUserId = request.AssigneeUserId;
             ticket.UpdatedAt = clock.GetUtcNowMicroseconds();
             await SaveAsync(ct);
@@ -805,7 +795,7 @@ internal sealed partial class TicketService(
     /// <summary>
     /// Applies the same change to many tickets. Every ticket is authorised and validated on its own, in its own transaction, against its
     /// own department: ids that are not visible are "not_found" (indistinguishable from missing), a lacking permission is "forbidden",
-    /// a department-inconsistent team/assignee is "invalid". One ticket failing never rolls back or blocks the others; the result lists
+    /// a department-inconsistent assignee is "invalid". One ticket failing never rolls back or blocks the others; the result lists
     /// every outcome. Each applied change is audited like its single-ticket counterpart (with bulk = true).
     /// </summary>
     public async Task<BulkResultDto> BulkAsync(BulkRequest request, CancellationToken ct)
@@ -819,9 +809,9 @@ internal sealed partial class TicketService(
 
         var status = TicketValidation.ParseEnum<TicketStatus>(errors, "status", request.Status);
         var priority = TicketValidation.ParseEnum<TicketPriority>(errors, "priority", request.Priority);
-        if (status is null && priority is null && request.Team is null && request.Assignee is null)
+        if (status is null && priority is null && request.Assignee is null)
         {
-            errors["body"] = ["Provide at least one of status, priority, team, assignee."];
+            errors["body"] = ["Provide at least one of status, priority, assignee."];
         }
 
         var expected = new Dictionary<Guid, uint>();
@@ -845,7 +835,7 @@ internal sealed partial class TicketService(
             db.ChangeTracker.Clear();
             try
             {
-                results.Add(await BulkOneAsync(id, status, priority, request.Team, request.Assignee, expected.TryGetValue(id, out var version) ? version : null, ct));
+                results.Add(await BulkOneAsync(id, status, priority, request.Assignee, expected.TryGetValue(id, out var version) ? version : null, ct));
             }
             catch (NotFoundException)
             {
@@ -874,7 +864,7 @@ internal sealed partial class TicketService(
             results.Count(r => r.Outcome is "not_found" or "forbidden" or "invalid" or "changed"));
     }
 
-    private async Task<BulkItemDto> BulkOneAsync(Guid id, TicketStatus? status, TicketPriority? priority, IdChange? team, IdChange? assignee, uint? expectedVersion, CancellationToken ct)
+    private async Task<BulkItemDto> BulkOneAsync(Guid id, TicketStatus? status, TicketPriority? priority, IdChange? assignee, uint? expectedVersion, CancellationToken ct)
     {
         // The scope filter makes an inaccessible ticket null here (same answer as a missing one).
         var key = await db.Tickets.AsNoTracking().Where(t => t.Id == id).Select(t => new { t.Id, t.DepartmentId }).SingleOrDefaultAsync(ct) ?? throw new NotFoundException();
@@ -887,20 +877,12 @@ internal sealed partial class TicketService(
         var ticket = await LockAndLoadAsync(key.Id, expectedVersion, ct);
         var now = clock.GetUtcNowMicroseconds();
         var changes = new List<(string Action, object Previous, object Next, string Kind)>();
-        var (oldStatus, oldPriority, oldTeam, oldAssignee) = (ticket.Status, ticket.Priority, ticket.TeamId, ticket.AssigneeUserId);
+        var (oldStatus, oldPriority, oldAssignee) = (ticket.Status, ticket.Priority, ticket.AssigneeUserId);
 
-        var wantedTeam = team is null ? ticket.TeamId : team.Id;
         var wantedAssignee = assignee is null ? ticket.AssigneeUserId : assignee.Id;
-        if (wantedTeam != ticket.TeamId || wantedAssignee != ticket.AssigneeUserId)
+        if (wantedAssignee != ticket.AssigneeUserId)
         {
-            await RequireAssignmentRightsAsync(ticket.DepartmentId, wantedTeam, wantedAssignee, ticket, ct);
-            if (wantedTeam != ticket.TeamId)
-            {
-                await ValidateTeamAsync(ticket.DepartmentId, wantedTeam, ct);
-                changes.Add((TicketAuditActions.TeamChanged, new { teamId = ticket.TeamId }, new { teamId = wantedTeam, bulk = true }, TicketEventKinds.Assignment));
-                ticket.TeamId = wantedTeam;
-            }
-
+            await RequireAssignmentRightsAsync(ticket.DepartmentId, wantedAssignee, ticket, ct);
             if (wantedAssignee != ticket.AssigneeUserId)
             {
                 await ValidateAssigneeAsync(ticket.DepartmentId, wantedAssignee, ct);
@@ -944,11 +926,6 @@ internal sealed partial class TicketService(
         if (ticket.Priority != oldPriority)
         {
             lc.Add(new TicketChange(ChangeKind.Priority, oldPriority.ToString(), ticket.Priority.ToString()));
-        }
-
-        if (ticket.TeamId != oldTeam)
-        {
-            lc.Add(new TicketChange(ChangeKind.Team, oldTeam?.ToString(), ticket.TeamId?.ToString()));
         }
 
         if (ticket.AssigneeUserId != oldAssignee)
@@ -996,13 +973,13 @@ internal sealed partial class TicketService(
     }
 
     /// <summary>
-    /// Team/assignee changes need <c>tickets.assign.any</c>. With only <c>tickets.assign.self</c> a caller may CLAIM a ticket that has
-    /// no assignee (or keep one they already hold) or release a ticket they hold, leaving the team unchanged (on create: no team,
-    /// assignee = themself). Taking a ticket that is assigned to another agent is a reassignment and needs <c>assign.any</c>.
+    /// Choosing the assignee needs <c>tickets.assign.any</c>. With only <c>tickets.assign.self</c> a caller may CLAIM a ticket that has
+    /// no assignee (or keep one they already hold) or release a ticket they hold (on create: assignee = themself). Taking a ticket that
+    /// is assigned to another agent is a reassignment and needs <c>assign.any</c>.
     /// </summary>
-    internal async Task RequireAssignmentRightsAsync(Guid departmentId, Guid? teamId, Guid? assigneeUserId, Ticket? ticket, CancellationToken ct)
+    internal async Task RequireAssignmentRightsAsync(Guid departmentId, Guid? assigneeUserId, Ticket? ticket, CancellationToken ct)
     {
-        if (ticket is null && teamId is null && assigneeUserId is null)
+        if (ticket is null && assigneeUserId is null)
         {
             return;
         }
@@ -1013,40 +990,12 @@ internal sealed partial class TicketService(
         }
 
         var self = await authorizer.CheckAsync(PermissionCodes.TicketsAssignSelf, departmentId, ct) == AccessOutcome.Allowed;
-        var teamUnchanged = teamId == ticket?.TeamId;
         var currentAssignee = ticket?.AssigneeUserId;
         var selfAssignment = (assigneeUserId == current.UserId && (currentAssignee is null || currentAssignee == current.UserId))
             || (assigneeUserId is null && currentAssignee == current.UserId);
-
-        // D21: routing. Changing only the TEAM of an existing ticket (or together with taking or releasing it for oneself) needs tickets.assign.team, which agents hold;
-        // choosing another person as assignee stays with tickets.assign.any. On create the team is still assign.any.
-        var assigneeUnchanged = assigneeUserId == currentAssignee;
-        var allowed = teamUnchanged
-            ? self && selfAssignment
-            : ticket is not null && await authorizer.CheckAsync(PermissionCodes.TicketsAssignTeam, departmentId, ct) == AccessOutcome.Allowed
-                && (assigneeUnchanged || (self && selfAssignment));
-        if (!allowed)
+        if (!(self && selfAssignment))
         {
             throw new ForbiddenException();
-        }
-    }
-
-    internal async Task ValidateTeamAsync(Guid departmentId, Guid? teamId, CancellationToken ct)
-    {
-        if (teamId is not { } id)
-        {
-            return;
-        }
-
-        var team = await organisation.FindTeamAsync(departmentId, id, ct);
-        if (team is null)
-        {
-            throw new ConflictException("The team does not belong to this ticket's department.", ProblemCodes.InvalidState);
-        }
-
-        if (!team.IsActive)
-        {
-            throw new ConflictException("The team is inactive.", ProblemCodes.InvalidState);
         }
     }
 
@@ -1079,8 +1028,8 @@ internal sealed partial class TicketService(
         }
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.ForeignKeyViolation })
         {
-            // The team or assignee membership disappeared between validation and the write (composite foreign keys).
-            throw new ConflictException("The team or assignee is no longer valid for this department.", ProblemCodes.InvalidState);
+            // The assignee membership disappeared between validation and the write (composite foreign keys).
+            throw new ConflictException("The assignee is no longer valid for this department.", ProblemCodes.InvalidState);
         }
     }
 

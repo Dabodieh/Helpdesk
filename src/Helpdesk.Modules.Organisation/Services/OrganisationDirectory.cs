@@ -27,24 +27,6 @@ internal sealed class OrganisationDirectory(OrganisationDbContext db, IUserDirec
             .ToDictionaryAsync(d => d.Id, cancellationToken);
     }
 
-    public Task<TeamInfo?> FindTeamAsync(Guid departmentId, Guid teamId, CancellationToken cancellationToken = default) =>
-        db.Teams.AsNoTracking().Where(t => t.Id == teamId && t.DepartmentId == departmentId)
-            .Select(t => new TeamInfo(t.Id, t.DepartmentId, t.Name, t.IsActive))
-            .SingleOrDefaultAsync(cancellationToken);
-
-    public async Task<IReadOnlyDictionary<Guid, TeamInfo>> GetTeamsAsync(IReadOnlyCollection<Guid> teamIds, CancellationToken cancellationToken = default)
-    {
-        if (teamIds.Count == 0)
-        {
-            return new Dictionary<Guid, TeamInfo>();
-        }
-
-        var ids = teamIds.Distinct().ToArray();
-        return await db.Teams.AsNoTracking().Where(t => ids.Contains(t.Id))
-            .Select(t => new TeamInfo(t.Id, t.DepartmentId, t.Name, t.IsActive))
-            .ToDictionaryAsync(t => t.Id, cancellationToken);
-    }
-
     public async Task<bool> IsEligibleAssigneeAsync(Guid departmentId, Guid userId, CancellationToken cancellationToken = default)
     {
         var role = await db.DepartmentMemberships.AsNoTracking()
@@ -78,19 +60,5 @@ internal sealed class OrganisationDirectory(OrganisationDbContext db, IUserDirec
         var rows = await db.DepartmentMemberships.AsNoTracking().Where(m => m.DepartmentId == departmentId)
             .Select(m => new { m.UserId, m.Role }).ToListAsync(cancellationToken);
         return [.. rows.Where(r => RoleCatalogue.RoleGrants(r.Role, permission)).Select(r => r.UserId)];
-    }
-
-    public async Task<IReadOnlyCollection<Guid>> GetTeamIdsOfUserAsync(Guid userId, IReadOnlyCollection<Guid> departmentIds, CancellationToken cancellationToken = default)
-    {
-        if (departmentIds.Count == 0)
-        {
-            return [];
-        }
-
-        var ids = departmentIds.Distinct().ToArray();
-        return await db.TeamMemberships.AsNoTracking()
-            .Where(m => m.UserId == userId && ids.Contains(m.DepartmentId))
-            .Select(m => m.TeamId)
-            .ToListAsync(cancellationToken);
     }
 }

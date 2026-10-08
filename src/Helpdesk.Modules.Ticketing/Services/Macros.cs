@@ -18,7 +18,6 @@ internal static class MacroActionTypes
 {
     public const string SetStatus = "setStatus";
     public const string SetPriority = "setPriority";
-    public const string SetTeam = "setTeam";
     public const string SetAssignee = "setAssignee";
     public const string ClearAssignee = "clearAssignee";
     public const string AssignToMe = "assignToMe";
@@ -28,11 +27,11 @@ internal static class MacroActionTypes
     public const string PublicReply = "publicReply";
 
     public static readonly string[] All =
-        [SetStatus, SetPriority, SetTeam, SetAssignee, ClearAssignee, AssignToMe, SetType, SetField, InternalNote, PublicReply];
+        [SetStatus, SetPriority, SetAssignee, ClearAssignee, AssignToMe, SetType, SetField, InternalNote, PublicReply];
 }
 
 /// <summary>
-/// One structured step of a macro (never code). <c>Value</c>: enum name, id (team, user, type, canned response). <c>Text</c>: note or reply text.
+/// One structured step of a macro (never code). <c>Value</c>: enum name, id (user, type, canned response). <c>Text</c>: note or reply text.
 /// <c>Key</c> + <c>Data</c>: a ticket field key and its typed value.
 /// </summary>
 internal sealed record MacroAction(string? Type, string? Value, string? Text, string? Key = null, JsonElement? Data = null);
@@ -59,14 +58,13 @@ internal static class MacroCodes
 }
 
 /// <summary>Resolves names for the plain-language summary of macro actions (one lookup per kind per call, never per macro).</summary>
-internal sealed class MacroSummariser(TicketingDbContext db, IDepartmentScope scope, IOrganisationDirectory organisation, IUserDirectory users)
+internal sealed class MacroSummariser(TicketingDbContext db, IDepartmentScope scope, IUserDirectory users)
 {
     public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<string>>> SummariseAsync(Guid departmentId, IReadOnlyList<(Guid MacroId, IReadOnlyList<MacroAction> Actions)> macros, CancellationToken ct)
     {
         await scope.EnsureLoadedAsync(ct); // canned responses are read through the caller's department scope
         var all = macros.SelectMany(m => m.Actions).ToList();
         Guid[] Ids(string type) => [.. all.Where(a => a.Type == type && Guid.TryParse(a.Value, out _)).Select(a => Guid.Parse(a.Value!)).Distinct()];
-        var teams = await organisation.GetTeamsAsync(Ids(MacroActionTypes.SetTeam), ct);
         var people = await users.GetManyAsync(Ids(MacroActionTypes.SetAssignee), ct);
         var typeIds = Ids(MacroActionTypes.SetType);
         var typeNames = typeIds.Length == 0 ? [] : await db.TicketTypes.AsNoTracking().Where(t => t.DepartmentId == departmentId && typeIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Name, ct);
@@ -87,7 +85,6 @@ internal sealed class MacroSummariser(TicketingDbContext db, IDepartmentScope sc
                 {
                     MacroActionTypes.SetStatus => $"Status → {a.Value}",
                     MacroActionTypes.SetPriority => $"Priority → {a.Value}",
-                    MacroActionTypes.SetTeam => $"Team → {Name(teams, a.Value, t => t.Name)}",
                     MacroActionTypes.SetAssignee => $"Assignee → {Name(people, a.Value, p => p.DisplayName)}",
                     MacroActionTypes.ClearAssignee => "Clear assignee",
                     MacroActionTypes.AssignToMe => "Assign to me",
@@ -115,8 +112,7 @@ internal sealed class MacroSummariser(TicketingDbContext db, IDepartmentScope sc
 
 /// <summary>
 /// Macro administration (department.canned.manage, enforced by the endpoint filter; every query filters by the department itself). A macro is a stored,
-/// ordered bundle of structured actions that an agent runs by hand. It is not an automation rule: nothing here reacts to events. Every reference (team,
-/// person, type, field, canned response) must belong to the macro's department, and foreign, missing and unusable ids are refused alike.
+/// ordered bundle of structured actions that an agent runs by hand. It is not an automation rule: nothing here reacts to events. Every reference (person, type, field, canned response) must belong to the macro's department, and foreign, missing and unusable ids are refused alike.
 /// </summary>
 internal sealed class MacroAdminService(
     TicketingDbContext db,
@@ -305,9 +301,6 @@ internal sealed class MacroAdminService(
                     message = Enum.TryParse<TicketPriority>(value, true, out var priority) && Enum.IsDefined(priority) ? null : "Choose a valid priority.";
                     value = message is null ? priority.ToString() : value;
                     break;
-                case MacroActionTypes.SetTeam:
-                    message = await references.CheckTeamAsync(departmentId, value ?? "", requireActive: true, ct);
-                    break;
                 case MacroActionTypes.SetAssignee:
                     message = await references.CheckAssigneeAsync(departmentId, value ?? "", ct);
                     break;
@@ -406,7 +399,7 @@ internal sealed class MacroAdminService(
 
 /// <summary>
 /// Running macros on a ticket. The caller needs exactly the permissions the equivalent manual actions need (tickets.update for status, priority, type and fields;
-/// the assignment rules for team and assignee; tickets.note for a note; tickets.reply for a reply draft); nothing is added. Everything is resolved and validated
+/// the assignment rules for the assignee; tickets.note for a note; tickets.reply for a reply draft); nothing is added. Everything is resolved and validated
 /// against the ticket's FINAL intended state before anything is written, then applied in one transaction through the same audit, SLA and automation hooks as manual
 /// changes. A Public Reply action only returns text for the composer: this service never queues or sends mail.
 /// </summary>
@@ -454,7 +447,7 @@ internal sealed class MacroRunService(
     private async Task<HashSet<string>> AllowedAsync(Guid departmentId, CancellationToken ct)
     {
         var allowed = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var permission in new[] { PermissionCodes.TicketsUpdate, PermissionCodes.TicketsNote, PermissionCodes.TicketsReply, PermissionCodes.TicketsAssignAny, PermissionCodes.TicketsAssignSelf, PermissionCodes.TicketsAssignTeam })
+        foreach (var permission in new[] { PermissionCodes.TicketsUpdate, PermissionCodes.TicketsNote, PermissionCodes.TicketsReply, PermissionCodes.TicketsAssignAny, PermissionCodes.TicketsAssignSelf })
         {
             if (await authorizer.CheckAsync(permission, departmentId, ct) == AccessOutcome.Allowed)
             {
@@ -474,12 +467,6 @@ internal sealed class MacroRunService(
             allowed.Add("assign.self");
         }
 
-        // D21: routing a ticket to a team is open to every agent; choosing a person is not.
-        if (allowed.Contains(PermissionCodes.TicketsAssignTeam) || allowed.Contains(PermissionCodes.TicketsAssignAny))
-        {
-            allowed.Add("assign.team");
-        }
-
         return allowed;
     }
 
@@ -491,9 +478,6 @@ internal sealed class MacroRunService(
             {
                 case MacroActionTypes.SetStatus or MacroActionTypes.SetPriority or MacroActionTypes.SetType or MacroActionTypes.SetField:
                     yield return PermissionCodes.TicketsUpdate;
-                    break;
-                case MacroActionTypes.SetTeam:
-                    yield return "assign.team";
                     break;
                 case MacroActionTypes.SetAssignee or MacroActionTypes.ClearAssignee:
                     yield return "assign";
@@ -562,7 +546,6 @@ internal sealed class MacroRunService(
         Guid? typeId = null;
         var typeSet = false;
         var fields = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
-        Guid? team = ticket.TeamId;
         Guid? assignee = ticket.AssigneeUserId;
         string? noteText = null;
         foreach (var a in actions)
@@ -574,9 +557,6 @@ internal sealed class MacroRunService(
                     break;
                 case MacroActionTypes.SetPriority:
                     priority = Enum.Parse<TicketPriority>(a.Value!);
-                    break;
-                case MacroActionTypes.SetTeam:
-                    team = Guid.Parse(a.Value!);
                     break;
                 case MacroActionTypes.SetAssignee:
                     assignee = Guid.Parse(a.Value!);
@@ -610,20 +590,11 @@ internal sealed class MacroRunService(
             TicketValidation.ThrowIfAny(fieldErrors);
         }
 
-        var teamChanged = team != ticket.TeamId;
         var assigneeChanged = assignee != ticket.AssigneeUserId;
-        if (teamChanged || assigneeChanged)
+        if (assigneeChanged)
         {
-            await tickets.RequireAssignmentRightsAsync(ticket.DepartmentId, team, assignee, ticket, ct);
-            if (teamChanged)
-            {
-                await tickets.ValidateTeamAsync(ticket.DepartmentId, team, ct);
-            }
-
-            if (assigneeChanged)
-            {
-                await tickets.ValidateAssigneeAsync(ticket.DepartmentId, assignee, ct);
-            }
+            await tickets.RequireAssignmentRightsAsync(ticket.DepartmentId, assignee, ticket, ct);
+            await tickets.ValidateAssigneeAsync(ticket.DepartmentId, assignee, ct);
         }
 
         // ----- apply -----
@@ -647,15 +618,6 @@ internal sealed class MacroRunService(
             await audit.WriteAsync(TicketAuditActions.StatusChanged, TicketingAudit.TicketObject, ticket.Id, ticket.DepartmentId, new { status = previous.ToString() }, new { status = s.ToString(), via }, ct);
             lc.Add(new TicketChange(ChangeKind.Status, previous.ToString(), s.ToString()));
             kinds.Add(TicketEventKinds.Status);
-            stateChanged = true;
-        }
-
-        if (teamChanged)
-        {
-            await audit.WriteAsync(TicketAuditActions.TeamChanged, TicketingAudit.TicketObject, ticket.Id, ticket.DepartmentId, new { teamId = ticket.TeamId }, new { teamId = team, via }, ct);
-            lc.Add(new TicketChange(ChangeKind.Team, ticket.TeamId?.ToString(), team?.ToString()));
-            ticket.TeamId = team;
-            kinds.Add(TicketEventKinds.Assignment);
             stateChanged = true;
         }
 

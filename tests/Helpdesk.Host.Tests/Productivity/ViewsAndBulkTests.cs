@@ -63,7 +63,7 @@ public sealed class ViewsAndBulkTests(HelpdeskFixture fixture) : IClassFixture<H
         var inB = await b.Agent.CreateTicketAsync(b.Department);
         var inA = await a.Agent.CreateTicketAsync(a.Department);
 
-        // The stored definition points at department B and at B's ticket's team/assignee ids: execution is still scoped to A's agent.
+        // The stored definition points at department B and at B's ticket's assignee ids: execution is still scoped to A's agent.
         var view = (await a.Agent.Client.PostAsync("/api/views", new { name = $"Foreign {Unique.Id()}", filter = Filter(departmentId: b.Id, status: ["Open"]) })).Expect(HttpStatusCode.Created);
         var page = (await a.Agent.Client.GetAsync($"/api/tickets?view={view.Id}")).Expect(HttpStatusCode.OK);
         Assert.Empty(page.Ids());
@@ -80,10 +80,9 @@ public sealed class ViewsAndBulkTests(HelpdeskFixture fixture) : IClassFixture<H
     // ----- bulk -----
 
     [Fact]
-    public async Task Bulk_changes_status_priority_team_and_assignee_and_audits_each_ticket()
+    public async Task Bulk_changes_status_priority_and_assignee_and_audits_each_ticket()
     {
         var d = await fixture.NewDeptAsync();
-        var team = await fixture.CreateTeamAsync(d.Department);
         var t1 = await d.Agent.CreateTicketAsync(d.Department);
         var t2 = await d.Agent.CreateTicketAsync(d.Department);
 
@@ -92,7 +91,6 @@ public sealed class ViewsAndBulkTests(HelpdeskFixture fixture) : IClassFixture<H
             ticketIds = new[] { t1.Id, t2.Id },
             status = "Pending",
             priority = "High",
-            team = new { id = team.Id },
             assignee = new { id = d.Agent.Id },
         })).Expect(HttpStatusCode.OK);
 
@@ -103,10 +101,9 @@ public sealed class ViewsAndBulkTests(HelpdeskFixture fixture) : IClassFixture<H
             var ticket = (await d.Agent.GetTicketAsync(id)).Expect(HttpStatusCode.OK);
             Assert.Equal("Pending", ticket.Json.Str("status"));
             Assert.Equal("High", ticket.Json.Str("priority"));
-            Assert.Equal(team.Id, ticket.Json.GetProperty("team").GetProperty("id").GetGuid());
             Assert.Equal(d.Agent.Id, ticket.Json.GetProperty("assignee").GetProperty("id").GetGuid());
             var audit = await fixture.AuditOfAsync(id);
-            foreach (var action in new[] { "ticket.status_changed", "ticket.priority_changed", "ticket.team_changed", "ticket.assignee_changed" })
+            foreach (var action in new[] { "ticket.status_changed", "ticket.priority_changed", "ticket.assignee_changed" })
             {
                 Assert.Contains(audit, a => a.Action == action && a.ActorUserId == d.Lead.Id && a.Next!.Contains("\"bulk\": true", StringComparison.Ordinal));
             }
@@ -144,22 +141,18 @@ public sealed class ViewsAndBulkTests(HelpdeskFixture fixture) : IClassFixture<H
     {
         var d = await fixture.NewDeptAsync();
         var other = await fixture.NewDeptAsync();
-        var foreignTeam = await fixture.CreateTeamAsync(other.Department);
         var t = await d.Agent.CreateTicketAsync(d.Department);
 
-        // Viewer: no update permission at all. Agent: may change status/priority and claim for self, but not assign teams or others.
+        // Viewer: no update permission at all. Agent: may change status/priority and claim for self, but not assign others.
         Assert.Equal("forbidden", Outcome(await d.Viewer.Client.PostAsync("/api/tickets/bulk", new { ticketIds = new[] { t.Id }, status = "Resolved" }), t.Id));
         Assert.Equal("updated", Outcome(await d.Agent.Client.PostAsync("/api/tickets/bulk", new { ticketIds = new[] { t.Id }, status = "Resolved" }), t.Id));
         Assert.Equal("forbidden", Outcome(await d.Agent.Client.PostAsync("/api/tickets/bulk", new { ticketIds = new[] { t.Id }, assignee = new { id = d.Lead.Id } }), t.Id));
         Assert.Equal("updated", Outcome(await d.Agent.Client.PostAsync("/api/tickets/bulk", new { ticketIds = new[] { t.Id }, assignee = new { id = d.Agent.Id } }), t.Id));
 
-        // Department constraints: a team of another department and an assignee without a role there are refused, nothing changes.
-        var invalidTeam = (await d.Lead.Client.PostAsync("/api/tickets/bulk", new { ticketIds = new[] { t.Id }, team = new { id = foreignTeam.Id } })).Expect(HttpStatusCode.OK);
-        Assert.Equal("invalid", invalidTeam.Json.GetProperty("results")[0].Str("outcome"));
-        Assert.Equal("invalid_state", invalidTeam.Json.GetProperty("results")[0].Str("code"));
+        // Department constraints: an assignee of another department or without a role there is refused, nothing changes.
         Assert.Equal("invalid", Outcome(await d.Lead.Client.PostAsync("/api/tickets/bulk", new { ticketIds = new[] { t.Id }, assignee = new { id = other.Agent.Id } }), t.Id));
         Assert.Equal("invalid", Outcome(await d.Lead.Client.PostAsync("/api/tickets/bulk", new { ticketIds = new[] { t.Id }, assignee = new { id = d.Viewer.Id } }), t.Id));
-        Assert.Equal(JsonValueKind.Null, (await d.Agent.GetTicketAsync(t.Id)).Json.GetProperty("team").ValueKind);
+        Assert.Equal(d.Agent.Id, (await d.Agent.GetTicketAsync(t.Id)).Json.GetProperty("assignee").GetProperty("id").GetGuid()); // refused changes left the earlier claim
     }
 
     [Fact]

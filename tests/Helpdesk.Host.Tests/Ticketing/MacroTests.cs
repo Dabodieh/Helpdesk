@@ -127,7 +127,6 @@ public sealed class MacroTests(HelpdeskFixture fixture) : IClassFixture<Helpdesk
     {
         var d = await fixture.NewDeptAsync();
         await fixture.CreateMailboxAsync(d); // replies WOULD be emailed from here if anything sent one
-        var team = await fixture.CreateTeamAsync(d.Department, "Service Desk");
         var type = (await d.Admin.Client.PostAsync($"{d.Department.Url}/ticket-types", new { name = "Hardware Request" })).Expect(HttpStatusCode.Created);
         var field = (await d.Admin.Client.PostAsync($"{d.Department.Url}/ticket-fields", PortalKit.Field("Device action", "SingleSelect", key: "device_action", options: [new { value = "replace", label = "Replacement", isActive = true }, new { value = "repair", label = "Repair", isActive = true }]))).Expect(HttpStatusCode.Created);
         (await d.Admin.Client.PutAsync($"{d.Department.Url}/ticket-types/{type.Id}/fields", new { fields = new[] { new { fieldId = field.Id } } })).Expect(HttpStatusCode.OK);
@@ -136,7 +135,7 @@ public sealed class MacroTests(HelpdeskFixture fixture) : IClassFixture<Helpdesk
         // Field listed BEFORE the type that makes it applicable: valid, because only the final state counts.
         var macro = (await CreateMacroAsync(d, "Prepare laptop replacement",
             Act("setField", key: "device_action", data: "replace"), Act("setType", type.Id.ToString()), Act("setPriority", "High"), Act("setStatus", "Pending"),
-            Act("setTeam", team.Id.ToString()), Act("setAssignee", d.Agent.Id.ToString()), Act("internalNote", text: "macro note"), Act("publicReply", canned.Id.ToString()))).Expect(HttpStatusCode.Created);
+            Act("setAssignee", d.Agent.Id.ToString()), Act("internalNote", text: "macro note"), Act("publicReply", canned.Id.ToString()))).Expect(HttpStatusCode.Created);
         var t = (await d.TicketForAsync($"a-{Unique.Id()}@example.test", "Broken laptop")).Expect(HttpStatusCode.Created);
         var outbound = await fixture.CountAsync("SELECT count(*) FROM mail.messages WHERE department_id = @d AND direction = 'Outbound'", TicketKit.P("d", d.Id));
         var before = (await d.Lead.GetTicketAsync(t.Id)).Expect(HttpStatusCode.OK);
@@ -145,7 +144,6 @@ public sealed class MacroTests(HelpdeskFixture fixture) : IClassFixture<Helpdesk
         var after = run.GetProperty("ticket");
         Assert.Equal("Pending", after.Str("status"));
         Assert.Equal("High", after.Str("priority"));
-        Assert.Equal(team.Id, after.GetProperty("team").GetProperty("id").GetGuid());
         Assert.Equal(d.Agent.Id, after.GetProperty("assignee").GetProperty("id").GetGuid());
         Assert.Equal(type.Id, after.GetProperty("type").GetProperty("id").GetGuid());
         Assert.True(run.GetProperty("noteAdded").GetBoolean());
@@ -260,7 +258,6 @@ public sealed class MacroTests(HelpdeskFixture fixture) : IClassFixture<Helpdesk
     {
         var it = await fixture.NewDeptAsync();
         var hr = await fixture.NewDeptAsync();
-        var itTeam = await fixture.CreateTeamAsync(it.Department, "IT Net");
         var itType = (await it.Admin.Client.PostAsync($"{it.Department.Url}/ticket-types", new { name = "IT type" })).Expect(HttpStatusCode.Created);
         await it.Admin.Client.PostAsync($"{it.Department.Url}/ticket-fields", PortalKit.Field("IT secret field", "ShortText", key: "it_secret"));
         var itCanned = await CannedAsync(it, "IT canned", "secret text");
@@ -280,8 +277,8 @@ public sealed class MacroTests(HelpdeskFixture fixture) : IClassFixture<Helpdesk
         Assert.DoesNotContain("IT secret macro", (await hr.Agent.Client.GetAsync(TicketKit.Url(hrTicket.Id, "/macros"))).Expect(HttpStatusCode.OK).Body, StringComparison.Ordinal);
         Assert.Equal("Normal", (await it.Agent.GetTicketAsync(itTicket.Id)).Expect(HttpStatusCode.OK).Json.Str("priority"));
 
-        // Crafted ids in a macro of the HR department: foreign team, person, type and canned response answer like random ids; a foreign field key like an unknown key.
-        await SameAsRandomAsync("team", id => CreateMacroAsync(hr, $"t{Unique.Id()}", Act("setTeam", id.ToString())), itTeam.Id);
+        // Crafted ids in a macro of the HR department: foreign person, type and canned response answer like random ids; a foreign field key like an unknown key.
+        (await CreateMacroAsync(hr, $"t{Unique.Id()}", Act("setTeam", Guid.NewGuid().ToString()))).Expect(HttpStatusCode.BadRequest); // the team action no longer exists
         await SameAsRandomAsync("assignee", id => CreateMacroAsync(hr, $"a{Unique.Id()}", Act("setAssignee", id.ToString())), it.Agent.Id);
         await SameAsRandomAsync("type", id => CreateMacroAsync(hr, $"y{Unique.Id()}", Act("setType", id.ToString())), itType.Id);
         await SameAsRandomAsync("canned", id => CreateMacroAsync(hr, $"c{Unique.Id()}", Act("publicReply", id.ToString())), itCanned.Id);

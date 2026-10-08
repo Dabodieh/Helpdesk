@@ -13,54 +13,6 @@ public sealed class DatabaseConstraintTests(HelpdeskFixture fixture) : IClassFix
         Assert.Equal(expected, ex.SqlState);
     }
 
-    private async Task InsertTeamMembership(Guid teamId, Guid userId, Guid departmentId) =>
-        await fixture.ExecuteAsync(
-            "INSERT INTO organisation.team_memberships (team_id, user_id, department_id, created_at) VALUES (@t, @u, @d, now())",
-            new NpgsqlParameter("t", teamId), new NpgsqlParameter("u", userId), new NpgsqlParameter("d", departmentId));
-
-    [Fact]
-    public async Task Team_membership_cannot_cross_departments()
-    {
-        var a = await fixture.CreateDepartmentAsync();
-        var b = await fixture.CreateDepartmentAsync();
-        var teamOfA = (await fixture.CreateTeamAsync(a)).Id;
-        var memberOfB = await fixture.NewMemberAsync(b, DepartmentRoles.Agent);
-        var memberOfA = await fixture.NewMemberAsync(a, DepartmentRoles.Agent);
-
-        // Team of A, user only in B, claiming department B: team/department pair does not exist.
-        await AssertSqlState(PostgresErrorCodes.ForeignKeyViolation, () => InsertTeamMembership(teamOfA, memberOfB.Id, b.Id));
-        // Team of A, user only in B, claiming department A: user holds no membership in A.
-        await AssertSqlState(PostgresErrorCodes.ForeignKeyViolation, () => InsertTeamMembership(teamOfA, memberOfB.Id, a.Id));
-        // Team of A, user in A, claiming department B.
-        await AssertSqlState(PostgresErrorCodes.ForeignKeyViolation, () => InsertTeamMembership(teamOfA, memberOfA.Id, b.Id));
-        // The valid combination works.
-        await InsertTeamMembership(teamOfA, memberOfA.Id, a.Id);
-    }
-
-    [Fact]
-    public async Task Team_membership_requires_a_department_membership()
-    {
-        var department = await fixture.CreateDepartmentAsync();
-        var team = (await fixture.CreateTeamAsync(department)).Id;
-        var stranger = await fixture.NewUserAsync();
-        await AssertSqlState(PostgresErrorCodes.ForeignKeyViolation, () => InsertTeamMembership(team, stranger.Id, department.Id));
-    }
-
-    [Fact]
-    public async Task Deleting_a_department_membership_cascades_to_team_memberships()
-    {
-        var department = await fixture.CreateDepartmentAsync();
-        var team = (await fixture.CreateTeamAsync(department)).Id;
-        var agent = await fixture.NewMemberAsync(department, DepartmentRoles.Agent);
-        await InsertTeamMembership(team, agent.Id, department.Id);
-
-        await fixture.ExecuteAsync(
-            "DELETE FROM organisation.department_memberships WHERE user_id = @u AND department_id = @d",
-            new NpgsqlParameter("u", agent.Id), new NpgsqlParameter("d", department.Id));
-
-        Assert.Equal(0, await fixture.ScalarAsync<long>("SELECT count(*) FROM organisation.team_memberships WHERE team_id = @t", new NpgsqlParameter("t", team)));
-    }
-
     [Fact]
     public async Task Department_membership_must_reference_an_existing_user_and_department()
     {
@@ -87,12 +39,7 @@ public sealed class DatabaseConstraintTests(HelpdeskFixture fixture) : IClassFix
     {
         var department = await fixture.CreateDepartmentAsync();
         var other = await fixture.CreateDepartmentAsync();
-        var team = $"Ops {Unique.Id()}";
-        await fixture.CreateTeamAsync(department, team);
 
-        await AssertSqlState(PostgresErrorCodes.UniqueViolation, () => fixture.ExecuteAsync(
-            "INSERT INTO organisation.teams (id, department_id, name, is_active, created_at, updated_at) VALUES (gen_random_uuid(), @d, @n, true, now(), now())",
-            new NpgsqlParameter("d", department.Id), new NpgsqlParameter("n", team.ToUpperInvariant())));
         await AssertSqlState(PostgresErrorCodes.UniqueViolation, () => fixture.ExecuteAsync(
             "UPDATE organisation.departments SET name = @n WHERE id = @id",
             new NpgsqlParameter("n", department.Name.ToLowerInvariant()), new NpgsqlParameter("id", other.Id)));
@@ -112,7 +59,7 @@ public sealed class DatabaseConstraintTests(HelpdeskFixture fixture) : IClassFix
     public async Task Departments_with_dependants_cannot_be_hard_deleted()
     {
         var department = await fixture.CreateDepartmentAsync();
-        await fixture.CreateTeamAsync(department);
+        await fixture.CreateTicketAsync(department);
         await AssertSqlState(PostgresErrorCodes.RestrictViolation, () => fixture.ExecuteAsync(
             "DELETE FROM organisation.departments WHERE id = @id", new NpgsqlParameter("id", department.Id)));
     }

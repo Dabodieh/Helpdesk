@@ -6,12 +6,11 @@ namespace Helpdesk.Host.Tests.Sla;
 /// <summary>Pure condition evaluation: every field, both set operators, and that traces never carry ticket text.</summary>
 public sealed class ConditionTests
 {
-    private static readonly Guid Team = Guid.NewGuid();
     private static readonly Guid Mailbox = Guid.NewGuid();
     private static readonly Guid Agent = Guid.NewGuid();
 
-    private static TicketFacts Facts(Guid? team = null, Guid? assignee = null, Guid? mailbox = null) =>
-        new(TicketStatus.Open, TicketPriority.High, team, assignee, mailbox, "Network down in Building 4", "Pat@Example.COM".ToLowerInvariant(), SlaStates.Running, SlaStates.Breached);
+    private static TicketFacts Facts(Guid? assignee = null, Guid? mailbox = null) =>
+        new(TicketStatus.Open, TicketPriority.High, assignee, mailbox, "Network down in Building 4", "Pat@Example.COM".ToLowerInvariant(), SlaStates.Running, SlaStates.Breached);
 
     private static bool Match(TicketFacts facts, string field, string op, params string[] values) =>
         ConditionEvaluator.AllMatch(ConditionEvaluator.Evaluate([new RuleCondition(field, op, values)], facts));
@@ -19,12 +18,10 @@ public sealed class ConditionTests
     [Fact]
     public void Set_conditions_match_in_and_not_in()
     {
-        var f = Facts(Team, null, Mailbox);
+        var f = Facts(null, Mailbox);
         Assert.True(Match(f, "status", "in", "Open", "Pending"));
         Assert.False(Match(f, "status", "notIn", "Open"));
         Assert.True(Match(f, "priority", "in", "High"));
-        Assert.True(Match(f, "team", "in", Team.ToString()));
-        Assert.False(Match(f, "team", "in", "none"));
         Assert.True(Match(f, "assignee", "in", "none"));
         Assert.True(Match(Facts(assignee: Agent), "assignee", "notIn", "none"));
         Assert.True(Match(f, "mailbox", "in", Mailbox.ToString()));

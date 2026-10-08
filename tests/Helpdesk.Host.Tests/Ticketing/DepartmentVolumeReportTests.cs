@@ -35,7 +35,7 @@ public sealed class DepartmentVolumeReportTests(HelpdeskFixture fixture) : IClas
         Assert.Equal((0, 2), (tuesday.GetProperty("received").GetInt32(), tuesday.GetProperty("resolved").GetInt32())); // B once despite the reopen, A closed from open
         var both = await VolumeAsync(w.Agent, d, "?from=2026-01-12&to=2026-01-13");
         Assert.Equal((3, 2), (both.GetProperty("received").GetInt32(), both.GetProperty("resolved").GetInt32()));
-        Assert.Equal(3, both.GetProperty("teams").EnumerateArray().Sum(t => t.GetProperty("received").GetInt32()));
+        Assert.False(both.TryGetProperty("teams", out _)); // counts only, never grouped by team or person
 
         // The per-day series (for charts) adds up to the totals and puts each ticket on its own London day.
         var days = both.GetProperty("daily").EnumerateArray().Select(x => (x.Str("date"), x.GetProperty("received").GetInt32(), x.GetProperty("resolved").GetInt32())).ToArray();

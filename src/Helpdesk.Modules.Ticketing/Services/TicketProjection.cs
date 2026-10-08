@@ -20,26 +20,18 @@ internal sealed record TicketRow(
     Guid RequesterId,
     string RequesterName,
     string RequesterEmail,
-    Guid? TeamId,
     Guid? AssigneeUserId,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     Guid? MergedIntoTicketId = null,
     uint Version = 0);
 
-/// <summary>Builds API shapes from tickets: resolves team, assignee and department names through the module contracts, in batches.</summary>
+/// <summary>Builds API shapes from tickets: resolves assignee and department names through the module contracts, in batches.</summary>
 internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirectory organisation, IUserDirectory users, IMailboxDirectory mailboxes, TimeProvider clock)
 {
     public async Task<TicketDetailDto> DetailAsync(Ticket ticket, Requester requester, CancellationToken ct)
     {
         var department = await organisation.FindDepartmentAsync(ticket.DepartmentId, ct) ?? throw new NotFoundException();
-        TeamRefDto? team = null;
-        if (ticket.TeamId is { } teamId)
-        {
-            var info = await organisation.FindTeamAsync(ticket.DepartmentId, teamId, ct);
-            team = info is null ? null : new TeamRefDto(info.Id, info.Name);
-        }
-
         RefDto? assignee = null;
         if (ticket.AssigneeUserId is { } assigneeId)
         {
@@ -112,7 +104,6 @@ internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirec
             ticket.Status.ToString(),
             ticket.Priority.ToString(),
             new RequesterDetailDto(requester.Id, requester.DisplayName, requester.Email, counts?.Open ?? 0, counts?.Total ?? 0),
-            team,
             assignee,
             ticket.CreatedAt,
             ticket.UpdatedAt,
@@ -140,7 +131,6 @@ internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirec
 
         // One lookup per kind per page, never per ticket.
         var departments = await organisation.GetDepartmentsAsync(rows.Select(r => r.DepartmentId).Distinct().ToArray(), ct);
-        var teams = await organisation.GetTeamsAsync(rows.Where(r => r.TeamId is not null).Select(r => r.TeamId!.Value).Distinct().ToArray(), ct);
         var people = await users.GetManyAsync(rows.Where(r => r.AssigneeUserId is not null).Select(r => r.AssigneeUserId!.Value).Distinct().ToArray(), ct);
 
         var mergedIds = rows.Where(r => r.MergedIntoTicketId is not null).Select(r => r.MergedIntoTicketId!.Value).Distinct().ToArray();
@@ -165,7 +155,6 @@ internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirec
             r.Status.ToString(),
             r.Priority.ToString(),
             new RequesterRefDto(r.RequesterId, r.RequesterName, r.RequesterEmail),
-            r.TeamId is { } teamId && teams.TryGetValue(teamId, out var team) ? new TeamRefDto(team.Id, team.Name) : null,
             r.AssigneeUserId is { } userId && people.TryGetValue(userId, out var person) ? new RefDto(person.Id, person.DisplayName) : null,
             r.CreatedAt,
             r.UpdatedAt,

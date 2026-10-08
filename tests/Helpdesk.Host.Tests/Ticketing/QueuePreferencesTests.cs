@@ -58,25 +58,23 @@ public sealed class QueuePreferencesTests(HelpdeskFixture fixture) : IClassFixtu
         var other = await fixture.NewDeptAsync();
         var calendar = (await d.Admin.Client.PostAsync($"{d.Department.Url}/business-hours", new { name = "All week", timeZone = "UTC", exceptions = Array.Empty<object>(), weekly = new[] { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" }.Select(day => new { day, intervals = new[] { new { start = "00:00", end = "23:59" } } }).ToArray() })).Expect(HttpStatusCode.Created);
         (await d.Admin.Client.PostAsync($"{d.Department.Url}/sla-policies", new { name = "Respond", calendarId = calendar.Id, firstResponseMinutes = 600, resolutionMinutes = (int?)null, pauseWhenPending = false, approachingLeadMinutes = 30, conditions = Array.Empty<object>() })).Expect(HttpStatusCode.Created);
-        var team = await fixture.CreateTeamAsync(d.Department);
         var type = (await d.Admin.Client.PostAsync($"{d.Department.Url}/ticket-types", new { name = "Hardware" })).Expect(HttpStatusCode.Created);
 
         var plain = await d.Lead.CreateTicketAsync(d.Department, TicketHelpers.NewTicketBody("Plain"));
-        var withTeam = await d.Lead.CreateTicketAsync(d.Department, TicketHelpers.NewTicketBody("With team", extra: new { TeamId = team.Id }));
-        var answered = await d.Lead.CreateTicketAsync(d.Department, TicketHelpers.NewTicketBody("Answered", extra: new { TeamId = team.Id }));
-        var uncertain = await d.Lead.CreateTicketAsync(d.Department, TicketHelpers.NewTicketBody("Uncertain", extra: new { TeamId = team.Id }));
+        var typed = await d.Lead.CreateTicketAsync(d.Department, TicketHelpers.NewTicketBody("Typed"));
+        var answered = await d.Lead.CreateTicketAsync(d.Department, TicketHelpers.NewTicketBody("Answered"));
+        var uncertain = await d.Lead.CreateTicketAsync(d.Department, TicketHelpers.NewTicketBody("Uncertain"));
         (await d.Agent.PostMessageAsync(answered.Id, "Public", "A human reply")).Expect(HttpStatusCode.Created);
         (await d.Agent.PostMessageAsync(uncertain.Id, "Public", "Maybe sent")).Expect(HttpStatusCode.Created);
-        await fixture.ExecuteAsync("UPDATE ticketing.tickets SET ticket_type_id = @ty WHERE id = @t", new NpgsqlParameter("ty", type.Id), new NpgsqlParameter("t", withTeam.Id));
+        await fixture.ExecuteAsync("UPDATE ticketing.tickets SET ticket_type_id = @ty WHERE id = @t", new NpgsqlParameter("ty", type.Id), new NpgsqlParameter("t", typed.Id));
         await SetMessageAsync(answered.Id, "permission_denied");
         await SetMessageAsync(uncertain.Id, "outcome_uncertain");
 
-        Assert.Equal([plain.Id], await ListAsync(d.Agent, d.Department, "&noTeam=true"));
         Assert.Equal([answered.Id], await ListAsync(d.Agent, d.Department, "&send=failed"));
         Assert.Equal([uncertain.Id], await ListAsync(d.Agent, d.Department, "&send=uncertain"));
-        Assert.Equal([withTeam.Id], await ListAsync(d.Agent, d.Department, $"&typeId={type.Id}"));
-        var awaiting = await ListAsync(d.Agent, d.Department, "&sla=awaitingresponse"); // nobody has answered plain and withTeam
-        Assert.Equal(new[] { plain.Id, withTeam.Id }.Order().ToArray(), awaiting.Order().ToArray());
+        Assert.Equal([typed.Id], await ListAsync(d.Agent, d.Department, $"&typeId={type.Id}"));
+        var awaiting = await ListAsync(d.Agent, d.Department, "&sla=awaitingresponse"); // nobody has answered plain and typed
+        Assert.Equal(new[] { plain.Id, typed.Id }.Order().ToArray(), awaiting.Order().ToArray());
         (await d.Agent.Client.GetAsync($"/api/tickets?queue=all&departmentId={d.Department.Id}&send=sideways")).Expect(HttpStatusCode.BadRequest);
 
         // The dashboard reports exactly these sets (one definition).
@@ -86,15 +84,15 @@ public sealed class QueuePreferencesTests(HelpdeskFixture fixture) : IClassFixtu
         Assert.Equal(1, dash.GetProperty("sends").GetProperty("uncertainTickets").GetInt32());
 
         // Saved views carry the new filters.
-        var view = (await d.Agent.Client.PostAsync("/api/views", new { name = "Failed sends", filter = new { queue = "all", send = "failed", typeId = type.Id, noTeam = true } })).Expect(HttpStatusCode.Created);
+        var view = (await d.Agent.Client.PostAsync("/api/views", new { name = "Failed sends", filter = new { queue = "all", send = "failed", typeId = type.Id, unassigned = true } })).Expect(HttpStatusCode.Created);
         Assert.Equal("failed", view.Json.GetProperty("filter").GetProperty("send").GetString());
-        Assert.True(view.Json.GetProperty("filter").GetProperty("noTeam").GetBoolean());
+        Assert.True(view.Json.GetProperty("filter").GetProperty("unassigned").GetBoolean());
         (await d.Agent.Client.PostAsync("/api/views", new { name = "Bad", filter = new { queue = "all", send = "sideways" } })).Expect(HttpStatusCode.BadRequest);
 
         // Types are per department: the picker is only for members, and another department's type id selects nothing there.
         Assert.Contains((await d.Agent.Client.GetAsync($"/api/departments/{d.Department.Id}/queue-types")).Expect(HttpStatusCode.OK).Json.EnumerateArray(), t => t.GetProperty("id").GetGuid() == type.Id);
         (await other.Agent.Client.GetAsync($"/api/departments/{d.Department.Id}/queue-types")).Expect(HttpStatusCode.NotFound);
         Assert.Empty(await ListAsync(other.Agent, other.Department, $"&typeId={type.Id}"));
-        Assert.Empty((await other.Agent.Client.GetAsync($"/api/tickets?queue=all&departmentId={d.Department.Id}&noTeam=true")).Expect(HttpStatusCode.OK).Json.GetProperty("items").EnumerateArray()); // department scope unchanged
+        Assert.Empty((await other.Agent.Client.GetAsync($"/api/tickets?queue=all&departmentId={d.Department.Id}&unassigned=true")).Expect(HttpStatusCode.OK).Json.GetProperty("items").EnumerateArray()); // department scope unchanged
     }
 }

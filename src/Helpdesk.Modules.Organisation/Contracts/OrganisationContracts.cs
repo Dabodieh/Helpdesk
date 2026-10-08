@@ -11,8 +11,6 @@ public static class DepartmentRoles
 
 public sealed record DepartmentInfo(Guid Id, string Key, string Name, bool IsActive);
 
-public sealed record TeamInfo(Guid Id, Guid DepartmentId, string Name, bool IsActive);
-
 /// <summary>
 /// Read-only organisation questions other modules (Ticketing) need, answered without table access across modules.
 /// Lookups are not caller-scoped: callers decide who may see what; ids come from already authorised objects.
@@ -22,11 +20,6 @@ public interface IOrganisationDirectory
     Task<DepartmentInfo?> FindDepartmentAsync(Guid departmentId, CancellationToken cancellationToken = default);
 
     Task<IReadOnlyDictionary<Guid, DepartmentInfo>> GetDepartmentsAsync(IReadOnlyCollection<Guid> departmentIds, CancellationToken cancellationToken = default);
-
-    /// <summary>The team only when it belongs to <paramref name="departmentId"/>; null otherwise (a team of another department is simply not found).</summary>
-    Task<TeamInfo?> FindTeamAsync(Guid departmentId, Guid teamId, CancellationToken cancellationToken = default);
-
-    Task<IReadOnlyDictionary<Guid, TeamInfo>> GetTeamsAsync(IReadOnlyCollection<Guid> teamIds, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// True when the user holds a membership in the department whose role grants <c>tickets.update</c> (can work tickets) and
@@ -42,7 +35,4 @@ public interface IOrganisationDirectory
 
     /// <summary>Ids of the users holding a membership in the department whose role grants <paramref name="permission"/> (activity of the user is not checked here).</summary>
     Task<IReadOnlyCollection<Guid>> GetUserIdsWithPermissionAsync(Guid departmentId, string permission, CancellationToken cancellationToken = default);
-
-    /// <summary>Ids of the teams the user belongs to, restricted to the given departments (team membership, never inferred from role).</summary>
-    Task<IReadOnlyCollection<Guid>> GetTeamIdsOfUserAsync(Guid userId, IReadOnlyCollection<Guid> departmentIds, CancellationToken cancellationToken = default);
 }

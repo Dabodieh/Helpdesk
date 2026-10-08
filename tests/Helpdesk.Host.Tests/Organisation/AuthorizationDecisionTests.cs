@@ -45,7 +45,6 @@ public sealed class AuthorizationDecisionTests(HelpdeskFixture fixture) : IClass
 
         // ...but administrative access works without membership.
         (await admin.Client.GetAsync(department.Url)).Expect(HttpStatusCode.OK);
-        (await admin.Client.GetAsync($"{department.Url}/teams")).Expect(HttpStatusCode.OK);
         (await admin.Client.GetAsync($"{department.Url}/members")).Expect(HttpStatusCode.OK);
         (await admin.Client.GetAsync($"{department.Url}/audit")).Expect(HttpStatusCode.OK);
     }
@@ -74,7 +73,6 @@ public sealed class AuthorizationDecisionTests(HelpdeskFixture fixture) : IClass
         foreach (var user in new[] { agent, viewer })
         {
             (await user.Client.GetAsync($"{department.Url}/audit")).Expect(HttpStatusCode.Forbidden);
-            (await user.Client.PostAsync($"{department.Url}/teams", new { name = "x" })).Expect(HttpStatusCode.Forbidden);
             (await user.Client.PutAsync($"{department.Url}/members/{user.Id}", new { role = DepartmentRoles.DepartmentAdmin })).Expect(HttpStatusCode.Forbidden);
         }
     }
@@ -111,12 +109,9 @@ public sealed class AuthorizationDecisionTests(HelpdeskFixture fixture) : IClass
         var a = await fixture.CreateDepartmentAsync();
         var b = await fixture.CreateDepartmentAsync();
         var adminOfA = await fixture.NewMemberAsync(a, DepartmentRoles.DepartmentAdmin);
-        var teamOfB = await fixture.CreateTeamAsync(b);
         var ticketOfB = await fixture.CreateTicketAsync(b);
 
         (await adminOfA.Client.GetAsync(b.Url)).Expect(HttpStatusCode.NotFound);
-        (await adminOfA.Client.GetAsync($"{b.Url}/teams")).Expect(HttpStatusCode.NotFound);
-        (await adminOfA.Client.GetAsync($"{b.Url}/teams/{teamOfB.Id}")).Expect(HttpStatusCode.NotFound);
         (await adminOfA.Client.GetAsync($"{b.Url}/members")).Expect(HttpStatusCode.NotFound);
         (await adminOfA.Client.GetAsync($"{b.Url}/audit")).Expect(HttpStatusCode.NotFound);
         (await adminOfA.Client.GetAsync($"/api/tickets/{ticketOfB.Id}")).Expect(HttpStatusCode.NotFound);

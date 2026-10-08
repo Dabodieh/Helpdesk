@@ -8,7 +8,7 @@ namespace Helpdesk.Host.Tests.Ticketing;
 public sealed class TicketQueueTests(HelpdeskFixture fixture) : IClassFixture<HelpdeskFixture>
 {
     private static readonly string[] Priorities = ["Low", "Normal", "High"];
-    private static readonly string[] CountKeys = ["my", "team", "unassigned", "all"];
+    private static readonly string[] CountKeys = ["my", "unassigned", "all"];
 
     private static Task<ApiResponse> List(TestUser user, string query = "") => user.Client.GetAsync("/api/tickets" + query);
 
@@ -18,44 +18,36 @@ public sealed class TicketQueueTests(HelpdeskFixture fixture) : IClassFixture<He
     public async Task List_items_carry_the_contract_shape_with_resolved_names()
     {
         var d = await fixture.NewDeptAsync();
-        var team = await fixture.CreateTeamAsync(d.Department);
-        var t = await d.Lead.CreateTicketAsync(d.Department, TicketHelpers.NewTicketBody(extra: new { TeamId = team.Id, AssigneeUserId = d.Agent.Id }));
+        var t = await d.Lead.CreateTicketAsync(d.Department, TicketHelpers.NewTicketBody(extra: new { AssigneeUserId = d.Agent.Id }));
 
         var item = Assert.Single((await List(d.Viewer)).Expect(HttpStatusCode.OK).Json.GetProperty("items").EnumerateArray());
         Assert.Equal(
-            ["assignee", "createdAt", "departmentId", "departmentKey", "id", "lastPublicBy", "match", "mergedInto", "priority", "reference", "requester", "sla", "status", "subject", "team", "updatedAt", "version"],
+            ["assignee", "createdAt", "departmentId", "departmentKey", "id", "lastPublicBy", "match", "mergedInto", "priority", "reference", "requester", "sla", "status", "subject", "updatedAt", "version"],
             item.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
         Assert.Equal(t.Id, item.GetProperty("id").GetGuid());
         Assert.Equal(d.Key, item.Str("departmentKey"));
-        Assert.Equal(team.Json.Str("name"), item.GetProperty("team").Str("name"));
         Assert.Equal(d.Agent.Id, item.GetProperty("assignee").GetProperty("id").GetGuid());
         Assert.Equal("Some Requester", item.GetProperty("requester").Str("displayName"));
         Assert.Equal(["displayName", "email", "id"], item.GetProperty("requester").EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
     }
 
     [Fact]
-    public async Task Queues_my_team_unassigned_and_all()
+    public async Task Queues_my_unassigned_and_all()
     {
         var d = await fixture.NewDeptAsync();
-        var admin = await fixture.PlatformAdminAsync();
-        var teamA = await fixture.CreateTeamAsync(d.Department);
-        var teamB = await fixture.CreateTeamAsync(d.Department);
-        (await admin.Client.PutAsync($"{d.Department.Url}/teams/{teamA.Id}/members/{d.Agent.Id}")).Expect(HttpStatusCode.NoContent);
 
         var mine = await d.Lead.CreateTicketAsync(d.Department, TicketHelpers.NewTicketBody(extra: new { AssigneeUserId = d.Agent.Id }));
-        var inTeam = await d.Lead.CreateTicketAsync(d.Department, TicketHelpers.NewTicketBody(extra: new { TeamId = teamA.Id }));
-        var otherTeam = await d.Lead.CreateTicketAsync(d.Department, TicketHelpers.NewTicketBody(extra: new { TeamId = teamB.Id, AssigneeUserId = d.Lead.Id }));
+        var leads = await d.Lead.CreateTicketAsync(d.Department, TicketHelpers.NewTicketBody(extra: new { AssigneeUserId = d.Lead.Id }));
         var loose = await d.Lead.CreateTicketAsync(d.Department);
 
         Assert.Equal([mine.Id], await IdsAsync(d.Agent, "?queue=my"));
-        Assert.Equal([inTeam.Id], await IdsAsync(d.Agent, "?queue=team"));
-        Assert.Equal([otherTeam.Id], await IdsAsync(d.Lead, "?queue=my"));
-        Assert.Empty(await IdsAsync(d.Lead, "?queue=team")); // the lead is in no team
-        Assert.Equivalent(new[] { inTeam.Id, loose.Id }, await IdsAsync(d.Agent, "?queue=unassigned"));
-        Assert.Equivalent(new[] { mine.Id, inTeam.Id, otherTeam.Id, loose.Id }, await IdsAsync(d.Agent));
-        Assert.Equivalent(new[] { mine.Id, inTeam.Id, otherTeam.Id, loose.Id }, await IdsAsync(d.Viewer, "?queue=all"));
+        Assert.Equal([leads.Id], await IdsAsync(d.Lead, "?queue=my"));
+        Assert.Equal([loose.Id], await IdsAsync(d.Agent, "?queue=unassigned")); // the Department's unassigned queue: every unassigned ticket
+        Assert.Equivalent(new[] { mine.Id, leads.Id, loose.Id }, await IdsAsync(d.Agent));
+        Assert.Equivalent(new[] { mine.Id, leads.Id, loose.Id }, await IdsAsync(d.Viewer, "?queue=all"));
         Assert.Empty(await IdsAsync(d.Viewer, "?queue=my"));
 
+        (await List(d.Agent, "?queue=team")).Expect(HttpStatusCode.BadRequest); // Departments are the workgroups: there is no team queue
         (await List(d.Agent, "?queue=nonsense")).Expect(HttpStatusCode.BadRequest);
     }
 
@@ -64,8 +56,7 @@ public sealed class TicketQueueTests(HelpdeskFixture fixture) : IClassFixture<He
     {
         var d = await fixture.NewDeptAsync();
         var other = await fixture.NewDeptAsync();
-        var team = await fixture.CreateTeamAsync(d.Department);
-        var a = await d.Lead.CreateTicketAsync(d.Department, TicketHelpers.NewTicketBody("Alpha router", extra: new { Priority = "High", TeamId = team.Id, AssigneeUserId = d.Agent.Id }));
+        var a = await d.Lead.CreateTicketAsync(d.Department, TicketHelpers.NewTicketBody("Alpha router", extra: new { Priority = "High", AssigneeUserId = d.Agent.Id }));
         var b = await d.Lead.CreateTicketAsync(d.Department, TicketHelpers.NewTicketBody("Beta 100%_done", extra: new { Priority = "Low" }));
         var c = await d.Lead.CreateTicketAsync(d.Department, TicketHelpers.NewTicketBody("Gamma closed", extra: new { Priority = "Urgent" }));
         (await d.Lead.PatchTicketAsync(c, new { Status = "Closed" })).Expect(HttpStatusCode.OK);
@@ -79,7 +70,6 @@ public sealed class TicketQueueTests(HelpdeskFixture fixture) : IClassFixture<He
         Assert.Equal([b.Id], await IdsAsync(d.Viewer, "?status=Pending"));
         Assert.Equal([a.Id], await IdsAsync(d.Viewer, "?priority=high"));
         Assert.Equivalent(new[] { a.Id, b.Id }, await IdsAsync(d.Viewer, "?priority=High&priority=Low"));
-        Assert.Equal([a.Id], await IdsAsync(d.Viewer, $"?teamId={team.Id}"));
         Assert.Equal([a.Id], await IdsAsync(d.Viewer, $"?assigneeUserId={d.Agent.Id}"));
         Assert.Equal([b.Id], await IdsAsync(d.Viewer, "?unassigned=true"));
 
@@ -92,11 +82,9 @@ public sealed class TicketQueueTests(HelpdeskFixture fixture) : IClassFixture<He
         (await List(d.Viewer, "?q=a")).Expect(HttpStatusCode.BadRequest);
         (await List(d.Viewer, "?q=" + new string('x', 101))).Expect(HttpStatusCode.BadRequest);
 
-        // Inaccessible department / team / assignee filters: an empty page, indistinguishable from "no matches".
+        // Inaccessible department / assignee filters: an empty page, indistinguishable from "no matches".
         Assert.Empty(await IdsAsync(d.Viewer, $"?departmentId={other.Id}"));
         Assert.Empty(await IdsAsync(d.Viewer, $"?departmentId={Guid.NewGuid()}"));
-        var foreignTeam = await fixture.CreateTeamAsync(other.Department);
-        Assert.Empty(await IdsAsync(d.Viewer, $"?teamId={foreignTeam.Id}"));
         Assert.DoesNotContain(foreign.Id, await IdsAsync(d.Viewer, "?status=Open&status=Pending&status=Resolved&status=Closed"));
         Assert.Equal([foreign.Id], await IdsAsync(other.Agent, $"?departmentId={other.Id}"));
 
@@ -201,12 +189,9 @@ public sealed class TicketQueueTests(HelpdeskFixture fixture) : IClassFixture<He
     {
         var d = await fixture.NewDeptAsync();
         var other = await fixture.NewDeptAsync();
-        var admin = await fixture.PlatformAdminAsync();
-        var team = await fixture.CreateTeamAsync(d.Department);
-        (await admin.Client.PutAsync($"{d.Department.Url}/teams/{team.Id}/members/{d.Agent.Id}")).Expect(HttpStatusCode.NoContent);
 
         await d.Lead.CreateTicketAsync(d.Department, TicketHelpers.NewTicketBody(extra: new { AssigneeUserId = d.Agent.Id }));          // my
-        await d.Lead.CreateTicketAsync(d.Department, TicketHelpers.NewTicketBody(extra: new { TeamId = team.Id }));                      // team + unassigned
+        await d.Lead.CreateTicketAsync(d.Department);                                                                                   // unassigned
         await d.Lead.CreateTicketAsync(d.Department);                                                                                   // unassigned
         var pending = await d.Lead.CreateTicketAsync(d.Department, TicketHelpers.NewTicketBody(extra: new { AssigneeUserId = d.Agent.Id }));
         (await d.Lead.PatchTicketAsync(pending, new { Status = "Pending" })).Expect(HttpStatusCode.OK); // Pending is still backlog (REPORTING_DEFINITIONS: Open + Pending): counted
@@ -215,12 +200,12 @@ public sealed class TicketQueueTests(HelpdeskFixture fixture) : IClassFixture<He
 
         var counts = (await d.Agent.Client.GetAsync("/api/tickets/queue-counts")).Expect(HttpStatusCode.OK).Json;
         Assert.Equal(2, counts.GetProperty("my").GetInt32()); // the Pending one is still the agent's work
-        Assert.Equal(1, counts.GetProperty("team").GetInt32());
+        Assert.False(counts.TryGetProperty("team", out _));
         Assert.Equal(2, counts.GetProperty("unassigned").GetInt32());
         Assert.Equal(4, counts.GetProperty("all").GetInt32());
 
         var empty = (await (await fixture.NewUserAsync()).Client.GetAsync("/api/tickets/queue-counts")).Expect(HttpStatusCode.OK).Json;
-        Assert.Equal([0, 0, 0, 0], CountKeys.Select(k => empty.GetProperty(k).GetInt32()));
+        Assert.Equal([0, 0, 0], CountKeys.Select(k => empty.GetProperty(k).GetInt32()));
         (await fixture.CreateAnonymousClient().GetAsync("/api/tickets/queue-counts")).Expect(HttpStatusCode.Unauthorized);
     }
 }

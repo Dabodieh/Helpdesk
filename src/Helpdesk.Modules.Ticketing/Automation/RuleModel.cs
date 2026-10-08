@@ -9,14 +9,13 @@ internal static class Triggers
     public const string RequesterMessageAdded = "RequesterMessageAdded";
     public const string StatusChanged = "StatusChanged";
     public const string PriorityChanged = "PriorityChanged";
-    public const string TeamChanged = "TeamChanged";
     public const string AssigneeChanged = "AssigneeChanged";
     public const string SlaApproaching = "SlaApproaching";
     public const string SlaBreached = "SlaBreached";
 
     public static readonly string[] All =
     [
-        TicketCreated, RequesterMessageAdded, StatusChanged, PriorityChanged, TeamChanged, AssigneeChanged, SlaApproaching, SlaBreached,
+        TicketCreated, RequesterMessageAdded, StatusChanged, PriorityChanged, AssigneeChanged, SlaApproaching, SlaBreached,
     ];
 
     /// <summary>The trigger a ticket change raises, or null when the change is not an automation trigger.</summary>
@@ -26,7 +25,6 @@ internal static class Triggers
         ChangeKind.RequesterMessage => RequesterMessageAdded,
         ChangeKind.Status => StatusChanged,
         ChangeKind.Priority => PriorityChanged,
-        ChangeKind.Team => TeamChanged,
         ChangeKind.Assignee => AssigneeChanged,
         _ => null,
     };
@@ -36,11 +34,10 @@ internal static class ActionTypes
 {
     public const string SetStatus = "setStatus";
     public const string SetPriority = "setPriority";
-    public const string AssignTeam = "assignTeam";
     public const string AssignAgent = "assignAgent";
     public const string AddInternalNote = "addInternalNote";
 
-    public static readonly string[] All = [SetStatus, SetPriority, AssignTeam, AssignAgent, AddInternalNote];
+    public static readonly string[] All = [SetStatus, SetPriority, AssignAgent, AddInternalNote];
 }
 
 /// <summary>One structured action. <c>value</c> carries the status, priority or id (or "none"); <c>text</c> only the internal note text.</summary>
@@ -92,7 +89,7 @@ internal static class ActionCatalogue
             {
                 ActionTypes.SetStatus => Enum.TryParse<TicketStatus>(a.Value, out var s) && Enum.IsDefined(s) ? null : "Choose a status.",
                 ActionTypes.SetPriority => Enum.TryParse<TicketPriority>(a.Value, out var p) && Enum.IsDefined(p) ? null : "Choose a priority.",
-                ActionTypes.AssignTeam or ActionTypes.AssignAgent => a.Value == NoneValue.Value || Guid.TryParse(a.Value, out _) ? null : "Choose a target, or 'none'.",
+                ActionTypes.AssignAgent => a.Value == NoneValue.Value || Guid.TryParse(a.Value, out _) ? null : "Choose a target, or 'none'.",
                 ActionTypes.AddInternalNote => string.IsNullOrWhiteSpace(a.Text) || a.Text.Length > MaxNoteLength ? $"Note text must be 1 to {MaxNoteLength} characters." : null,
                 _ => "Unknown action type.",
             };
@@ -159,7 +156,7 @@ internal sealed class AutomationChain
     }
 }
 
-/// <summary>Shared rule validation (shape only; references to teams, users and mailboxes are checked against the department separately).</summary>
+/// <summary>Shared rule validation (shape only; references to users and mailboxes are checked against the department separately).</summary>
 internal static class RuleShape
 {
     public const int MaxNameLength = 100;

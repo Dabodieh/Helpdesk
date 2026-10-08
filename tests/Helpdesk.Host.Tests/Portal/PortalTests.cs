@@ -124,7 +124,7 @@ public sealed class PortalTests(HelpdeskFixture fixture) : IClassFixture<Helpdes
         // Assignment and priority are agent business too: they must not move the requester's view either.
         var current = (await d.Agent.GetTicketAsync(older.Id)).Expect(HttpStatusCode.OK);
         (await d.Agent.PatchTicketAsync(current, new { Priority = "Urgent" })).Expect(HttpStatusCode.OK);
-        (await d.Lead.AssignAsync(older.Id, (await d.Lead.GetTicketAsync(older.Id)).Version, null, d.Agent.Id)).Expect(HttpStatusCode.OK);
+        (await d.Lead.AssignAsync(older.Id, (await d.Lead.GetTicketAsync(older.Id)).Version, d.Agent.Id)).Expect(HttpStatusCode.OK);
 
         Assert.Equal(before, await ObserveAsync());
         Assert.True(await PortalKit.SilentAsync(events), "the requester received an event for private activity");

@@ -29,17 +29,17 @@ public sealed class NotificationTests(HelpdeskFixture fixture) : IClassFixture<H
         return (d, alice, ticket);
     }
 
-    private static async Task AssignAsync(Dept d, Guid ticketId, Guid? team, Guid assignee)
+    private static async Task AssignAsync(Dept d, Guid ticketId, Guid assignee)
     {
         var current = (await d.Lead.GetTicketAsync(ticketId)).Expect(HttpStatusCode.OK);
-        (await d.Lead.AssignAsync(ticketId, current.Version, team, assignee)).Expect(HttpStatusCode.OK);
+        (await d.Lead.AssignAsync(ticketId, current.Version, assignee)).Expect(HttpStatusCode.OK);
     }
 
     [Fact]
-    public async Task Assignment_notifies_the_new_assignee_only_once_not_the_actor_and_a_team_only_change_stays_quiet()
+    public async Task Assignment_notifies_the_new_assignee_only_once_not_the_actor_and_an_unchanged_assignee_stays_quiet()
     {
         var s = await StartAsync();
-        await AssignAsync(s.D, s.Ticket.Id, null, s.D.Agent.Id);
+        await AssignAsync(s.D, s.Ticket.Id, s.D.Agent.Id);
 
         var list = await ListAsync(s.D.Agent);
         Assert.Equal(1, Unread(list));
@@ -47,12 +47,11 @@ public sealed class NotificationTests(HelpdeskFixture fixture) : IClassFixture<H
         Assert.Equal(s.Ticket.Reference(), list.GetProperty("items")[0].Str("reference"));
         Assert.Equal(0, Unread(await ListAsync(s.D.Lead))); // the actor is never told about their own action
 
-        // Read it, then change only the team: the assignee did not change, so there is nothing new to say.
+        // Read it, then save the same assignment again: the assignee did not change, so there is nothing new to say.
         var id = list.GetProperty("items")[0].GetProperty("id").GetGuid();
         (await s.D.Agent.Client.PostAsync($"/api/notifications/{id}/read")).Expect(HttpStatusCode.NoContent);
         Assert.Equal(0, Unread(await ListAsync(s.D.Agent)));
-        var team = await fixture.CreateTeamAsync(s.D.Department);
-        await AssignAsync(s.D, s.Ticket.Id, team.Id, s.D.Agent.Id);
+        await AssignAsync(s.D, s.Ticket.Id, s.D.Agent.Id);
         Assert.Equal(0, Unread(await ListAsync(s.D.Agent)));
     }
 
@@ -60,7 +59,7 @@ public sealed class NotificationTests(HelpdeskFixture fixture) : IClassFixture<H
     public async Task A_requester_reply_reaches_the_assignee_and_followers_once_and_followed_updates_collapse_into_one_unread()
     {
         var s = await StartAsync();
-        await AssignAsync(s.D, s.Ticket.Id, null, s.D.Agent.Id);
+        await AssignAsync(s.D, s.Ticket.Id, s.D.Agent.Id);
         (await s.D.Lead.Client.PostAsync($"/api/tickets/{s.Ticket.Id}/followers/me")).Expect(HttpStatusCode.OK);
         (await s.D.Agent.Client.PostAsync($"/api/notifications/read-all")).Expect(HttpStatusCode.NoContent);
 
@@ -115,7 +114,7 @@ public sealed class NotificationTests(HelpdeskFixture fixture) : IClassFixture<H
     {
         var s = await StartAsync();
         var other = await fixture.NewDeptAsync();
-        await AssignAsync(s.D, s.Ticket.Id, null, s.D.Agent.Id);
+        await AssignAsync(s.D, s.Ticket.Id, s.D.Agent.Id);
         Assert.Equal(1, Unread(await ListAsync(s.D.Agent))); // persisted with no realtime connection at all
 
         Assert.Equal(0, Unread(await ListAsync(other.Agent)));

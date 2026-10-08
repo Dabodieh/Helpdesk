@@ -18,18 +18,18 @@ internal sealed record FormFieldLinkDto(
 internal sealed record AudienceUserDto(Guid UserId, string DisplayName, string? Email);
 
 internal sealed record FormAdminDto(
-    Guid Id, Guid DepartmentId, string Name, string? Description, bool IsActive, bool VisibleToRequesters, int Order, Guid? DefaultTeamId, string? DefaultPriority,
+    Guid Id, Guid DepartmentId, string Name, string? Description, bool IsActive, bool VisibleToRequesters, int Order, string? DefaultPriority,
     Guid? TicketTypeId, IReadOnlyList<FormFieldLinkDto> Fields, string Version, string Audience, IReadOnlyList<AudienceUserDto> AudienceUsers);
 
 internal sealed record FormRequest(
-    string? Name, string? Description, bool? IsActive, bool? VisibleToRequesters, Guid? DefaultTeamId, bool? ClearDefaultTeam, string? DefaultPriority,
+    string? Name, string? Description, bool? IsActive, bool? VisibleToRequesters, string? DefaultPriority,
     bool? ClearDefaultPriority, Guid? TicketTypeId, bool? ClearTicketType, string? Version, string? Audience = null, IReadOnlyList<Guid>? AudienceUserIds = null);
 
 /// <summary>
 /// Request form administration (permission department.forms.manage, enforced by the endpoint filter; every query also names the department). A form is
 /// HOW a requester submits: it picks a ticket type of its department and selects, orders and (optionally) overrides the requirement of department ticket fields.
 /// </summary>
-internal sealed class FormsAdminService(TicketingDbContext db, TicketingAudit audit, IOrganisationDirectory organisation, IUserDirectory users, TicketTypesService types, TimeProvider clock)
+internal sealed class FormsAdminService(TicketingDbContext db, TicketingAudit audit, IUserDirectory users, TicketTypesService types, TimeProvider clock)
 {
     public const int MaxForms = 50;
     public const int MaxFieldsPerForm = 30;
@@ -54,7 +54,6 @@ internal sealed class FormsAdminService(TicketingDbContext db, TicketingAudit au
         var errors = new Dictionary<string, string[]>();
         var (name, description, priority) = ValidateForm(errors, request, creating: true);
         TicketValidation.ThrowIfAny(errors);
-        await CheckTeamAsync(departmentId, request.DefaultTeamId, ct);
         if (request.TicketTypeId is { } typeId)
         {
             await types.RequireActiveAsync(departmentId, typeId, "ticketTypeId", ct);
@@ -80,7 +79,6 @@ internal sealed class FormsAdminService(TicketingDbContext db, TicketingAudit au
             VisibleToRequesters = request.VisibleToRequesters ?? true,
             Audience = audience,
             SortOrder = last + 10,
-            DefaultTeamId = request.DefaultTeamId,
             DefaultPriority = priority,
             TicketTypeId = request.TicketTypeId,
             CreatedAt = now,
@@ -102,7 +100,6 @@ internal sealed class FormsAdminService(TicketingDbContext db, TicketingAudit au
         var version = TicketValidation.Version(errors, request.Version);
         var (name, description, priority) = ValidateForm(errors, request, creating: false);
         TicketValidation.ThrowIfAny(errors);
-        await CheckTeamAsync(departmentId, request.DefaultTeamId, ct);
         var audienceUserIds = await ValidateAudienceAsync(request.Audience, request.AudienceUserIds, ct);
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
@@ -127,7 +124,6 @@ internal sealed class FormsAdminService(TicketingDbContext db, TicketingAudit au
 
         form.IsActive = request.IsActive ?? form.IsActive;
         form.VisibleToRequesters = request.VisibleToRequesters ?? form.VisibleToRequesters;
-        form.DefaultTeamId = request.ClearDefaultTeam == true ? null : request.DefaultTeamId ?? form.DefaultTeamId;
         form.DefaultPriority = request.ClearDefaultPriority == true ? null : priority ?? form.DefaultPriority;
         form.TicketTypeId = request.ClearTicketType == true ? null : request.TicketTypeId ?? form.TicketTypeId;
         form.UpdatedAt = ClockExtensions.GetUtcNowMicroseconds(clock);
@@ -301,16 +297,8 @@ internal sealed class FormsAdminService(TicketingDbContext db, TicketingAudit au
         return previousAudience == form.Audience && added.Length == 0 && removed.Length == 0 ? null : new AudienceChange(previousAudience, added, removed);
     }
 
-    private async Task CheckTeamAsync(Guid departmentId, Guid? teamId, CancellationToken ct)
-    {
-        if (teamId is { } id && await organisation.FindTeamAsync(departmentId, id, ct) is not { IsActive: true })
-        {
-            throw new RequestValidationException("defaultTeamId", "Choose an active team of this department.");
-        }
-    }
-
     private static FormAdminDto ToDto(RequestForm f, IEnumerable<FormFieldLinkDto> fields, IReadOnlyList<AudienceUserDto> audienceUsers) =>
-        new(f.Id, f.DepartmentId, f.Name, f.Description, f.IsActive, f.VisibleToRequesters, f.SortOrder, f.DefaultTeamId, f.DefaultPriority?.ToString(), f.TicketTypeId,
+        new(f.Id, f.DepartmentId, f.Name, f.Description, f.IsActive, f.VisibleToRequesters, f.SortOrder, f.DefaultPriority?.ToString(), f.TicketTypeId,
             [.. fields], ConcurrencyVersion.ToToken(f.Version), f.Audience, audienceUsers);
 
     private async Task SaveAsync(string duplicateMessage, CancellationToken ct)

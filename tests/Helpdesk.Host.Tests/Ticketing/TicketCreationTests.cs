@@ -21,7 +21,7 @@ public sealed class TicketCreationTests(HelpdeskFixture fixture) : IClassFixture
         Assert.Equal("Open", t.Str("status"));
         Assert.Equal("Normal", t.Str("priority"));
         Assert.Equal("Printer on fire", t.Str("subject"));
-        Assert.Equal(JsonValueKindNull, t.GetProperty("team").ValueKind.ToString());
+        Assert.False(t.TryGetProperty("team", out _)); // Departments are the workgroups: there is no team
         Assert.Equal(JsonValueKindNull, t.GetProperty("assignee").ValueKind.ToString());
         Assert.Equal(JsonValueKindNull, t.GetProperty("resolvedAt").ValueKind.ToString());
         Assert.Equal(JsonValueKindNull, t.GetProperty("closedAt").ValueKind.ToString());
@@ -226,7 +226,6 @@ public sealed class TicketCreationTests(HelpdeskFixture fixture) : IClassFixture
     {
         var d = await fixture.NewDeptAsync();
         var other = await fixture.NewDeptAsync();
-        var team = await fixture.CreateTeamAsync(d.Department);
         var url = $"{d.Department.Url}/tickets";
 
         (await d.Viewer.Client.PostAsync(url, TicketHelpers.NewTicketBody())).Expect(HttpStatusCode.Forbidden);
@@ -238,31 +237,22 @@ public sealed class TicketCreationTests(HelpdeskFixture fixture) : IClassFixture
         var self = (await d.Agent.Client.PostAsync(url, TicketHelpers.NewTicketBody(extra: new { AssigneeUserId = d.Agent.Id }))).Expect(HttpStatusCode.Created);
         Assert.Equal(d.Agent.Id, self.Json.GetProperty("assignee").GetProperty("id").GetGuid());
         (await d.Agent.Client.PostAsync(url, TicketHelpers.NewTicketBody(extra: new { AssigneeUserId = d.Lead.Id }))).Expect(HttpStatusCode.Forbidden);
-        (await d.Agent.Client.PostAsync(url, TicketHelpers.NewTicketBody(extra: new { TeamId = team.Id }))).Expect(HttpStatusCode.Forbidden);
-        (await d.Agent.Client.PostAsync(url, TicketHelpers.NewTicketBody(extra: new { TeamId = team.Id, AssigneeUserId = d.Agent.Id }))).Expect(HttpStatusCode.Forbidden);
 
-        // assign.any: team and any eligible assignee.
-        var full = (await d.Lead.Client.PostAsync(url, TicketHelpers.NewTicketBody(extra: new { TeamId = team.Id, AssigneeUserId = d.Agent.Id, Priority = "High" }))).Expect(HttpStatusCode.Created);
-        Assert.Equal(team.Id, full.Json.GetProperty("team").GetProperty("id").GetGuid());
-        Assert.Equal(team.Json.Str("name"), full.Json.GetProperty("team").Str("name"));
+        // assign.any: any eligible assignee.
+        var full = (await d.Lead.Client.PostAsync(url, TicketHelpers.NewTicketBody(extra: new { AssigneeUserId = d.Agent.Id, Priority = "High" }))).Expect(HttpStatusCode.Created);
+        Assert.Equal(d.Agent.Id, full.Json.GetProperty("assignee").GetProperty("id").GetGuid());
         Assert.Equal("High", full.Json.Str("priority"));
     }
 
     [Fact]
-    public async Task Create_rejects_invalid_team_or_assignee_with_invalid_state_and_inactive_department_with_inactive()
+    public async Task Create_rejects_invalid_assignee_with_invalid_state_and_inactive_department_with_inactive()
     {
         var d = await fixture.NewDeptAsync();
         var other = await fixture.NewDeptAsync();
-        var teamOfOther = await fixture.CreateTeamAsync(other.Department);
-        var inactiveTeam = await fixture.CreateTeamAsync(d.Department);
         var admin = await fixture.PlatformAdminAsync();
-        (await admin.Client.PatchAsync($"{d.Department.Url}/teams/{inactiveTeam.Id}", new { version = inactiveTeam.Version, isActive = false })).Expect(HttpStatusCode.OK);
         var url = $"{d.Department.Url}/tickets";
         var outsider = await fixture.NewUserAsync();
 
-        (await d.Lead.Client.PostAsync(url, TicketHelpers.NewTicketBody(extra: new { TeamId = teamOfOther.Id }))).ExpectCode(HttpStatusCode.Conflict, "invalid_state");
-        (await d.Lead.Client.PostAsync(url, TicketHelpers.NewTicketBody(extra: new { TeamId = Guid.NewGuid() }))).ExpectCode(HttpStatusCode.Conflict, "invalid_state");
-        (await d.Lead.Client.PostAsync(url, TicketHelpers.NewTicketBody(extra: new { TeamId = inactiveTeam.Id }))).ExpectCode(HttpStatusCode.Conflict, "invalid_state");
         (await d.Lead.Client.PostAsync(url, TicketHelpers.NewTicketBody(extra: new { AssigneeUserId = d.Viewer.Id }))).ExpectCode(HttpStatusCode.Conflict, "invalid_state"); // viewers cannot work tickets
         (await d.Lead.Client.PostAsync(url, TicketHelpers.NewTicketBody(extra: new { AssigneeUserId = other.Agent.Id }))).ExpectCode(HttpStatusCode.Conflict, "invalid_state"); // member of another department only
         (await d.Lead.Client.PostAsync(url, TicketHelpers.NewTicketBody(extra: new { AssigneeUserId = outsider.Id }))).ExpectCode(HttpStatusCode.Conflict, "invalid_state");

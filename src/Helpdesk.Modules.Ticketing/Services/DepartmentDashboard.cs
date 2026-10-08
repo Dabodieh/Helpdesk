@@ -15,9 +15,10 @@ internal sealed record DashboardSlaDto(int Overdue, int DueSoon, int DueSoonWind
 
 internal sealed record DashboardAgeBucketDto(string Key, string Label, int Count);
 
-internal sealed record DashboardOldestDto(string Reference, string Subject, string Status, string Priority, DateTimeOffset CreatedAt, string? Team, string? Assignee, bool SlaOverdue);
+internal sealed record DashboardOldestDto(string Reference, string Subject, string Status, string Priority, DateTimeOffset CreatedAt, string? Assignee, bool SlaOverdue);
 
-internal sealed record DashboardTeamDto(Guid? TeamId, string Name, int Total, int Unassigned, int Overdue);
+/// <summary>Current open backlog of one assignee (a person, or <c>UserId == null</c> for unassigned). A workload snapshot, not a performance measure.</summary>
+internal sealed record DashboardAgentDto(Guid? UserId, string Name, int Total, int Overdue);
 
 internal sealed record DashboardSendsDto(int FailedTickets, int UncertainTickets);
 
@@ -26,7 +27,7 @@ internal sealed record DashboardSendsDto(int FailedTickets, int UncertainTickets
 /// </summary>
 internal sealed record DepartmentDashboardDto(
     Guid DepartmentId, string DepartmentName, DateTimeOffset GeneratedAt, DashboardBacklogDto Backlog, DashboardSlaDto Sla,
-    IReadOnlyList<DashboardAgeBucketDto> Ageing, IReadOnlyList<DashboardOldestDto> Oldest, IReadOnlyList<DashboardTeamDto> Teams, DashboardSendsDto Sends,
+    IReadOnlyList<DashboardAgeBucketDto> Ageing, IReadOnlyList<DashboardOldestDto> Oldest, IReadOnlyList<DashboardAgentDto> Agents, DashboardSendsDto Sends,
     IReadOnlyList<MailboxHealthInfo>? Mailboxes);
 
 /// <summary>
@@ -80,17 +81,14 @@ internal sealed class DepartmentDashboardService(
         }
 
         var oldestRows = await backlog.OrderBy(t => t.CreatedAt).ThenBy(t => t.Id).Take(OldestCount)
-            .Select(t => new { t.Id, t.Reference, t.Subject, t.Status, t.Priority, t.CreatedAt, t.TeamId, t.AssigneeUserId }).ToListAsync(ct);
+            .Select(t => new { t.Id, t.Reference, t.Subject, t.Status, t.Priority, t.CreatedAt, t.AssigneeUserId }).ToListAsync(ct);
         var oldestIds = oldestRows.Select(r => r.Id).ToArray();
         var overdueIds = (await backlog.Where(breached).Where(t => oldestIds.Contains(t.Id)).Select(t => t.Id).ToListAsync(ct)).ToHashSet();
 
-        var load = await backlog.GroupBy(t => t.TeamId).Select(g => new { TeamId = g.Key, Total = g.Count(), Unassigned = g.Count(t => t.AssigneeUserId == null) }).ToListAsync(ct);
-        var loadOverdue = (await backlog.Where(breached).GroupBy(t => t.TeamId).Select(g => new { TeamId = g.Key, Count = g.Count() }).ToListAsync(ct)).ToDictionary(x => x.TeamId ?? Guid.Empty, x => x.Count);
+        var load = await backlog.GroupBy(t => t.AssigneeUserId).Select(g => new { UserId = g.Key, Total = g.Count() }).ToListAsync(ct);
+        var loadOverdue = (await backlog.Where(breached).GroupBy(t => t.AssigneeUserId).Select(g => new { UserId = g.Key, Count = g.Count() }).ToListAsync(ct)).ToDictionary(x => x.UserId ?? Guid.Empty, x => x.Count);
 
-        var teamIds = oldestRows.Select(r => r.TeamId).Concat(load.Select(l => l.TeamId)).OfType<Guid>().Distinct().ToArray();
-        var teams = await organisation.GetTeamsAsync(teamIds, ct);
-        var people = await users.GetManyAsync([.. oldestRows.Select(r => r.AssigneeUserId).OfType<Guid>().Distinct()], ct);
-        string? TeamName(Guid? id) => id is { } t && teams.TryGetValue(t, out var info) && info.DepartmentId == departmentId ? info.Name : null;
+        var people = await users.GetManyAsync([.. oldestRows.Select(r => r.AssigneeUserId).Concat(load.Select(l => l.UserId)).OfType<Guid>().Distinct()], ct);
 
         var failedTickets = await backlog.Where(QueuePredicates.SendProblem(db, uncertain: false)).CountAsync(ct);
         var uncertainTickets = await backlog.Where(QueuePredicates.SendProblem(db, uncertain: true)).CountAsync(ct);
@@ -107,10 +105,11 @@ internal sealed class DepartmentDashboardService(
             new DashboardSlaDto(overdue, dueSoon, (int)QueuePredicates.DueSoonWindow.TotalMinutes),
             ageing,
             [.. oldestRows.Select(r => new DashboardOldestDto(
-                r.Reference, r.Subject, r.Status.ToString(), r.Priority.ToString(), r.CreatedAt, TeamName(r.TeamId),
+                r.Reference, r.Subject, r.Status.ToString(), r.Priority.ToString(), r.CreatedAt,
                 r.AssigneeUserId is { } a && people.TryGetValue(a, out var p) ? p.DisplayName : null, overdueIds.Contains(r.Id)))],
-            [.. load.Select(l => new DashboardTeamDto(l.TeamId, l.TeamId is null ? "No team" : TeamName(l.TeamId) ?? "Unknown team", l.Total, l.Unassigned, loadOverdue.GetValueOrDefault(l.TeamId ?? Guid.Empty)))
-                .OrderByDescending(t => t.Total).ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase)],
+            // Alphabetical (unassigned last), deliberately not ordered by volume: the list shows who holds the backlog, it does not rank people.
+            [.. load.Select(l => new DashboardAgentDto(l.UserId, l.UserId is { } u ? people.TryGetValue(u, out var person) ? person.DisplayName : "Former member" : "Unassigned", l.Total, loadOverdue.GetValueOrDefault(l.UserId ?? Guid.Empty)))
+                .OrderBy(a => a.UserId is null).ThenBy(a => a.Name, StringComparer.OrdinalIgnoreCase)],
             new DashboardSendsDto(failedTickets, uncertainTickets),
             mailboxes);
     }

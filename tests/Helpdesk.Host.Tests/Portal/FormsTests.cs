@@ -26,10 +26,9 @@ public sealed class FormsTests(HelpdeskFixture fixture) : IClassFixture<Helpdesk
     private async Task<(Dept D, Guid FormId, PortalKit.Employee Alice)> SetupAsync()
     {
         var d = await fixture.NewDeptAsync();
-        var team = await fixture.CreateTeamAsync(d.Department);
         var (formId, _) = await d.FormAsync(fixture, 
             "Hardware issue",
-            new { DefaultTeamId = team.Id, DefaultPriority = "High", Description = "Broken equipment" },
+            new { DefaultPriority = "High", Description = "Broken equipment" },
             PortalKit.Field("Asset tag", "ShortText", required: true, key: "asset"),
             PortalKit.Field("Details", "LongText"),
             PortalKit.Field("Colour", "SingleSelect", options: Colours, key: "colour"),
@@ -75,7 +74,6 @@ public sealed class FormsTests(HelpdeskFixture fixture) : IClassFixture<Helpdesk
         (await admin.PostAsync($"{d.Department.Url}/ticket-fields", new { label = "Colour again", key = "colour", type = "ShortText" })).Expect(HttpStatusCode.Conflict);
         (await admin.PostAsync($"{d.Department.Url}/ticket-fields", new { label = "Nope", type = "ShortText", requesterVisible = false, requesterEditable = true })).Expect(HttpStatusCode.BadRequest);
         (await admin.PostAsync($"{d.Department.Url}/request-forms", new { name = "General" })).Expect(HttpStatusCode.Conflict);
-        (await admin.PostAsync($"{d.Department.Url}/request-forms", new { name = "x", defaultTeamId = Guid.NewGuid() })).Expect(HttpStatusCode.BadRequest);
 
         // Department isolation and permission.
         (await d.Agent.Client.GetAsync($"{d.Department.Url}/request-forms")).Expect(HttpStatusCode.Forbidden);
@@ -92,13 +90,12 @@ public sealed class FormsTests(HelpdeskFixture fixture) : IClassFixture<Helpdesk
         var (d, formId, alice) = await SetupAsync();
         var calendar = (await d.Admin.Client.PostAsync($"{d.Department.Url}/business-hours", new { name = "24h", timeZone = "UTC", weekly = Enum.GetNames<DayOfWeek>().Select(day => new { day, intervals = new[] { new { start = "00:00", end = "24:00" } } }).ToArray() })).Expect(HttpStatusCode.Created);
         (await d.Admin.Client.PostAsync($"{d.Department.Url}/sla-policies", new { name = "Std", calendarId = calendar.Id, firstResponseMinutes = 60, resolutionMinutes = 480 })).Expect(HttpStatusCode.Created);
-        var serviceDesk = await fixture.CreateTeamAsync(d.Department);
         (await d.Admin.Client.PostAsync($"{d.Department.Url}/automations", new
         {
             name = "Hardware routing",
             trigger = "TicketCreated",
             conditions = new object[] { new { field = "subjectContains", @operator = "contains", values = new[] { "laptop" } } },
-            actions = new object[] { new { type = "assignTeam", value = serviceDesk.Id.ToString() } },
+            actions = new object[] { new { type = "assignAgent", value = d.Agent.Id.ToString() } },
         })).Expect(HttpStatusCode.Created);
 
         var created = (await alice.User.Client.PostAsync("/api/portal/requests", new
@@ -109,7 +106,7 @@ public sealed class FormsTests(HelpdeskFixture fixture) : IClassFixture<Helpdesk
             submissionId = Guid.NewGuid(),
             fields = Fields(("asset", "A-1042"), ("colour", "red"), ("accessories", new[] { "mouse", "keyboard" }), ("meeting", true), ("needed_by", "2026-12-24"), ("quantity", 2)),
             // None of these can be chosen by a requester: unknown properties are ignored.
-            priority = "Urgent", teamId = Guid.NewGuid(), assigneeUserId = d.Agent.Id, departmentId = Guid.NewGuid(), mailboxId = Guid.NewGuid(), kind = "Internal", slaPolicyId = Guid.NewGuid(),
+            priority = "Urgent", assigneeUserId = d.Agent.Id, departmentId = Guid.NewGuid(), mailboxId = Guid.NewGuid(), kind = "Internal", slaPolicyId = Guid.NewGuid(),
         })).Expect(HttpStatusCode.Created).Json;
         var reference = created.GetProperty("reference").GetString()!;
         Assert.StartsWith(d.Key + "-", reference);
@@ -119,11 +116,10 @@ public sealed class FormsTests(HelpdeskFixture fixture) : IClassFixture<Helpdesk
         var ticket = (await d.Agent.Client.GetAsync($"/api/tickets/{reference}")).Expect(HttpStatusCode.OK).Json;
         Assert.Equal("portal", ticket.GetProperty("source").GetString());
         Assert.Equal("High", ticket.GetProperty("priority").GetString()); // the form's default, not "Urgent"
-        Assert.Equal(serviceDesk.Id, ticket.GetProperty("team").GetProperty("id").GetGuid()); // automation overrode the form's default team
-        Assert.Equal(JsonValueKind.Null, ticket.GetProperty("assignee").ValueKind);
+        Assert.Equal(d.Agent.Id, ticket.GetProperty("assignee").GetProperty("id").GetGuid()); // routing automation, not the requester's assigneeUserId
         Assert.Equal("Hardware issue", ticket.GetProperty("requestForm").GetString());
         Assert.Equal("Std", (await d.Agent.Client.GetAsync($"/api/tickets/{reference}/sla")).Expect(HttpStatusCode.OK).Json.GetProperty("policyName").GetString());
-        var queue = (await d.Agent.Client.GetAsync($"/api/tickets?queue=all&teamId={serviceDesk.Id}&limit=100")).Expect(HttpStatusCode.OK).Json.GetProperty("items");
+        var queue = (await d.Agent.Client.GetAsync($"/api/tickets?queue=all&assigneeUserId={d.Agent.Id}&limit=100")).Expect(HttpStatusCode.OK).Json.GetProperty("items");
         Assert.Contains(queue.EnumerateArray(), i => i.GetProperty("reference").GetString() == reference);
         var messages = (await d.Agent.Client.GetAsync($"/api/tickets/{reference}/messages")).Expect(HttpStatusCode.OK).Json.GetProperty("items");
         Assert.Equal("portal", Assert.Single(messages.EnumerateArray()).GetProperty("source").GetString());

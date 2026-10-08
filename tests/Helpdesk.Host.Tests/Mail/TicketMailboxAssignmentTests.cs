@@ -73,15 +73,14 @@ public sealed class TicketMailboxAssignmentTests(HelpdeskFixture fixture) : ICla
     }
 
     [Fact]
-    public async Task Agents_route_a_ticket_to_a_team_but_cannot_choose_another_person_as_assignee()
+    public async Task Agents_can_take_and_release_their_own_tickets_but_cannot_choose_another_person_as_assignee()
     {
         var d = await fixture.NewDeptAsync();
-        var team = await fixture.CreateTeamAsync(d.Department);
         var ticket = await d.Agent.CreateTicketAsync(d.Department);
 
-        var routed = (await d.Agent.AssignAsync(ticket.Id, ticket.Version, team.Id, null)).Expect(HttpStatusCode.OK);
-        Assert.Equal(team.Id, routed.Json.GetProperty("team").GetProperty("id").GetGuid());
-        (await d.Agent.AssignAsync(ticket.Id, routed.Version, team.Id, d.Lead.Id)).Expect(HttpStatusCode.Forbidden);
-        (await d.Viewer.AssignAsync(ticket.Id, routed.Version, null, null)).Expect(HttpStatusCode.Forbidden);
+        var taken = (await d.Agent.AssignAsync(ticket.Id, ticket.Version, d.Agent.Id)).Expect(HttpStatusCode.OK);
+        Assert.Equal(d.Agent.Id, taken.Json.GetProperty("assignee").GetProperty("id").GetGuid());
+        (await d.Agent.AssignAsync(ticket.Id, taken.Version, d.Lead.Id)).Expect(HttpStatusCode.Forbidden);
+        (await d.Viewer.AssignAsync(ticket.Id, taken.Version, null)).Expect(HttpStatusCode.Forbidden);
     }
 }

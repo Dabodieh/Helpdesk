@@ -18,22 +18,11 @@ internal sealed record OpOutcome(string Outcome, string? Detail, IReadOnlyList<T
 }
 
 /// <summary>
-/// Checks that every team, user and mailbox a rule names belongs to the rule's own department. Used when a rule is saved AND again
+/// Checks that every user and mailbox a rule names belongs to the rule's own department. Used when a rule is saved AND again
 /// when it runs, so a crafted payload or a later change can never make automation reach into another department.
 /// </summary>
 internal sealed class RuleReferenceChecker(IOrganisationDirectory organisation, IMailboxDirectory mailboxes, TicketingDbContext db)
 {
-    public async Task<string?> CheckTeamAsync(Guid departmentId, string value, bool requireActive, CancellationToken ct)
-    {
-        if (value == NoneValue.Value)
-        {
-            return null;
-        }
-
-        var team = Guid.TryParse(value, out var id) ? await organisation.FindTeamAsync(departmentId, id, ct) : null;
-        return team is null ? "The team does not belong to this department." : requireActive && !team.IsActive ? "The team is inactive." : null;
-    }
-
     /// <summary>Locks the assignee's membership until the surrounding transaction ends and re-checks eligibility under that lock (see <see cref="AssigneeLock"/>).</summary>
     public Task<bool> HoldAssigneeAsync(Guid departmentId, Guid userId, CancellationToken ct) => AssigneeLock.HoldAndCheckAsync(db, organisation, departmentId, userId, ct);
 
@@ -78,7 +67,6 @@ internal sealed class RuleReferenceChecker(IOrganisationDirectory organisation, 
             {
                 var problem = c.Field switch
                 {
-                    ConditionFields.Team => await CheckTeamAsync(departmentId, value, requireActive: false, ct),
                     ConditionFields.Assignee => await CheckKnownUserAsync(departmentId, value, ct),
                     ConditionFields.TicketType => await CheckTicketTypeAsync(departmentId, value, ct),
                     _ => await CheckMailboxAsync(departmentId, value, ct),
@@ -96,7 +84,6 @@ internal sealed class RuleReferenceChecker(IOrganisationDirectory organisation, 
             var a = actions[i];
             var problem = a.Type switch
             {
-                ActionTypes.AssignTeam => await CheckTeamAsync(departmentId, a.Value!, requireActive: true, ct),
                 ActionTypes.AssignAgent => await CheckAssigneeAsync(departmentId, a.Value!, ct),
                 _ => null,
             };
@@ -131,10 +118,9 @@ internal sealed class SystemTicketOps(
 {
     public async Task<OpOutcome> ApplyAsync(Guid departmentId, Guid ticketId, RuleAction action, Guid executionId, int index, CancellationToken ct)
     {
-        // Re-validate references at execution time: the department's teams and people may have changed since the rule was saved.
+        // Re-validate references at execution time: the department's people may have changed since the rule was saved.
         var problem = action.Type switch
         {
-            ActionTypes.AssignTeam => await references.CheckTeamAsync(departmentId, action.Value!, requireActive: true, ct),
             ActionTypes.AssignAgent => await references.CheckAssigneeAsync(departmentId, action.Value!, ct),
             _ => null,
         };
@@ -201,26 +187,6 @@ internal sealed class SystemTicketOps(
                 changes.Add(new TicketChange(ChangeKind.Priority, previous.ToString(), target.ToString()));
                 await sla.ReevaluateAsync(ticket, now, ct);
                 eventKind = TicketEventKinds.Priority;
-                break;
-            }
-
-            case ActionTypes.AssignTeam:
-            {
-                Guid? target = action.Value == NoneValue.Value ? null : Guid.Parse(action.Value!);
-                if (target == ticket.TeamId)
-                {
-                    return OpOutcome.NoChange();
-                }
-
-                var previous = ticket.TeamId;
-                ticket.TeamId = target;
-                ticket.UpdatedAt = now;
-                await db.SaveChangesAsync(ct);
-                await audit.WriteSystemAsync(TicketAuditActions.TeamChanged, TicketingAudit.TicketObject, ticket.Id, departmentId,
-                    new { teamId = previous }, new { teamId = target, reason = TicketAuditActions.ReasonAutomation, via }, ct);
-                changes.Add(new TicketChange(ChangeKind.Team, previous?.ToString(), target?.ToString()));
-                await sla.ReevaluateAsync(ticket, now, ct);
-                eventKind = TicketEventKinds.Assignment;
                 break;
             }
 

@@ -14,7 +14,6 @@ namespace Helpdesk.Modules.Ticketing.Services;
 internal sealed record ViewFilter(
     string? Queue,
     Guid? DepartmentId,
-    Guid? TeamId,
     Guid? AssigneeUserId,
     bool? Unassigned,
     string[]? Status,
@@ -23,8 +22,7 @@ internal sealed record ViewFilter(
     string? Sort,
     string? Sla = null,
     Guid? TypeId = null,
-    string? Send = null,
-    bool? NoTeam = null);
+    string? Send = null);
 
 internal sealed record SavedViewDto(Guid Id, string Name, ViewFilter Filter, bool IsPinned, string Version);
 
@@ -35,7 +33,7 @@ internal sealed record UpdateViewRequest(string? Version, string? Name, ViewFilt
 /// <summary>
 /// Personal saved views. They are owner-only (404 for anyone else) and store a validated filter. Running a view means calling the
 /// ordinary list endpoint with that filter (or <c>?view=</c>), so the department scope of the query always applies: a view can never
-/// return anything the caller could not list anyway, even if the stored department/team/assignee ids point elsewhere.
+/// return anything the caller could not list anyway, even if the stored department/assignee ids point elsewhere.
 /// </summary>
 internal sealed class SavedViewService(TicketingDbContext db, ICurrentUser current, TimeProvider clock)
 {
@@ -134,7 +132,7 @@ internal sealed class SavedViewService(TicketingDbContext db, ICurrentUser curre
     public async Task<ViewFilter> FilterOfAsync(Guid id, CancellationToken ct)
     {
         var view = await db.SavedViews.AsNoTracking().SingleOrDefaultAsync(v => v.Id == id && v.OwnerUserId == current.UserId, ct) ?? throw new NotFoundException();
-        return JsonSerializer.Deserialize<ViewFilter>(view.Filter, Json) ?? new ViewFilter(null, null, null, null, null, null, null, null, null);
+        return JsonSerializer.Deserialize<ViewFilter>(view.Filter, Json) ?? new ViewFilter(null, null, null, null, null, null, null, null);
     }
 
     private async Task<SavedView> FindAsync(Guid id, CancellationToken ct) =>
@@ -158,13 +156,13 @@ internal sealed class SavedViewService(TicketingDbContext db, ICurrentUser curre
         if (filter is null)
         {
             errors["filter"] = ["filter is required."];
-            return new ViewFilter(null, null, null, null, null, null, null, null, null);
+            return new ViewFilter(null, null, null, null, null, null, null, null);
         }
 
         var queue = (filter.Queue ?? "all").Trim().ToLowerInvariant();
-        if (queue is not ("my" or "team" or "unassigned" or "all" or "following"))
+        if (queue is not ("my" or "unassigned" or "all" or "following"))
         {
-            errors["filter.queue"] = ["queue must be one of my, team, unassigned, all, following."];
+            errors["filter.queue"] = ["queue must be one of my, unassigned, all, following."];
         }
 
         string[]? Canon<T>(string[]? raw, string field)
@@ -213,12 +211,12 @@ internal sealed class SavedViewService(TicketingDbContext db, ICurrentUser curre
             errors["filter.send"] = [$"send must be one of {string.Join(", ", TicketQueryService.SendFilters)}."];
         }
 
-        return new ViewFilter(queue, filter.DepartmentId, filter.TeamId, filter.AssigneeUserId, filter.Unassigned == true ? true : null, status, priority,
-            string.IsNullOrEmpty(q) ? null : q, sort, string.IsNullOrEmpty(sla) ? null : sla, filter.TypeId, string.IsNullOrEmpty(send) ? null : send, filter.NoTeam == true ? true : null);
+        return new ViewFilter(queue, filter.DepartmentId, filter.AssigneeUserId, filter.Unassigned == true ? true : null, status, priority,
+            string.IsNullOrEmpty(q) ? null : q, sort, string.IsNullOrEmpty(sla) ? null : sla, filter.TypeId, string.IsNullOrEmpty(send) ? null : send);
     }
 
     private SavedViewDto ToDto(SavedView v) =>
-        new(v.Id, v.Name, JsonSerializer.Deserialize<ViewFilter>(v.Filter, Json) ?? new ViewFilter(null, null, null, null, null, null, null, null, null), v.IsPinned,
+        new(v.Id, v.Name, JsonSerializer.Deserialize<ViewFilter>(v.Filter, Json) ?? new ViewFilter(null, null, null, null, null, null, null, null), v.IsPinned,
             ConcurrencyVersion.ToToken(v.Version));
 
     private async Task SaveAsync(CancellationToken ct)

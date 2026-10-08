@@ -29,7 +29,7 @@ public sealed class PermissionModelTests
             [PermissionCodes.PlatformAuditRead, PermissionCodes.PlatformDepartmentsManage, PermissionCodes.PlatformUsersManage],
             c => Assert.Equal(PermissionKind.Platform, PermissionCatalogue.Get(c).Kind));
         Assert.All(
-            [PermissionCodes.DepartmentRead, PermissionCodes.DepartmentManage, PermissionCodes.DepartmentMembersManage, PermissionCodes.TeamsManage, PermissionCodes.DepartmentAuditRead],
+            [PermissionCodes.DepartmentRead, PermissionCodes.DepartmentManage, PermissionCodes.DepartmentMembersManage, PermissionCodes.DepartmentAuditRead],
             c => Assert.Equal(PermissionKind.Administrative, PermissionCatalogue.Get(c).Kind));
     }
 
@@ -98,10 +98,8 @@ public sealed class PermissionModelTests
 
     [Theory]
     [InlineData(DepartmentRoles.Viewer, PermissionCodes.DepartmentManage, "Forbidden")]
-    [InlineData(DepartmentRoles.Agent, PermissionCodes.TeamsManage, "Forbidden")]
     [InlineData(DepartmentRoles.Agent, PermissionCodes.DepartmentAuditRead, "Forbidden")]
     [InlineData(DepartmentRoles.TeamLead, PermissionCodes.DepartmentAuditRead, "Allowed")]
-    [InlineData(DepartmentRoles.TeamLead, PermissionCodes.TeamsManage, "Forbidden")]
     [InlineData(DepartmentRoles.DepartmentAdmin, PermissionCodes.DepartmentMembersManage, "Allowed")]
     [InlineData(DepartmentRoles.Viewer, PermissionCodes.TicketsRead, "Allowed")]
     public void Member_decisions_follow_the_role_mapping(string role, string permission, string expected)

@@ -36,9 +36,9 @@ public sealed class SlaAlertBackfillTests(HelpdeskFixture fixture) : IClassFixtu
         var future = await w.NewTicketAsync(subject: "future"); // due 12:00, 80% at 11:36
         var paused = await w.NewTicketAsync(subject: "paused");
         var current = (await w.Lead.GetTicketAsync(past.Id)).Expect(HttpStatusCode.OK);
-        (await w.Lead.AssignAsync(past.Id, current.Version, null, w.Agent.Id)).Expect(HttpStatusCode.OK);
+        (await w.Lead.AssignAsync(past.Id, current.Version, w.Agent.Id)).Expect(HttpStatusCode.OK);
         current = (await w.Lead.GetTicketAsync(future.Id)).Expect(HttpStatusCode.OK);
-        (await w.Lead.AssignAsync(future.Id, current.Version, null, w.Agent.Id)).Expect(HttpStatusCode.OK);
+        (await w.Lead.AssignAsync(future.Id, current.Version, w.Agent.Id)).Expect(HttpStatusCode.OK);
         await DrainAsync(w);
         (await w.Agent.Client.PostAsync("/api/notifications/read-all")).Expect(HttpStatusCode.NoContent);
 

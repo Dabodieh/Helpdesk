@@ -39,22 +39,21 @@ public sealed class SlaLifecycleTests(HelpdeskFixture fixture) : IClassFixture<H
     }
 
     [Fact]
-    public async Task A_team_set_by_automation_after_creation_selects_the_team_policy()
+    public async Task A_priority_set_by_automation_after_creation_selects_the_matching_policy()
     {
         await using var w = await TimedWorld.CreateAsync(fixture, Start);
-        var team = await fixture.CreateTeamAsync(w.Dept.Department);
-        await w.PolicyAsync("Network team", null, 60, null, conditions: new[] { new { field = "team", @operator = "in", values = new[] { team.Id.ToString() } } });
+        await w.PolicyAsync("Urgent policy", null, 60, null, conditions: new[] { new { field = "priority", @operator = "in", values = new[] { "Urgent" } } });
         await w.PolicyAsync("Default", null, 480, null);
         (await w.Admin.Client.PostAsync($"{w.Base}/automations", new
         {
             name = "Route", trigger = "TicketCreated", isActive = true, stopProcessing = false, conditions = Array.Empty<object>(),
-            actions = new object[] { new { type = "assignTeam", value = team.Id.ToString() } },
+            actions = new object[] { new { type = "setPriority", value = "Urgent" } },
         })).Expect(HttpStatusCode.Created);
 
         var ticket = await w.NewTicketAsync();
 
         var sla = await w.SlaAsync(ticket.Id);
-        Assert.Equal("Network team", sla.GetProperty("policyName").GetString());
+        Assert.Equal("Urgent policy", sla.GetProperty("policyName").GetString());
         Assert.Equal(T("2026-01-12T11:00:00Z"), TimedWorld.At(sla, "firstResponse", "dueAt"));
     }
 

@@ -35,7 +35,6 @@ internal static class PermissionCatalogue
         new(PermissionCodes.DepartmentRead, PermissionKind.Administrative),
         new(PermissionCodes.DepartmentManage, PermissionKind.Administrative),
         new(PermissionCodes.DepartmentMembersManage, PermissionKind.Administrative),
-        new(PermissionCodes.TeamsManage, PermissionKind.Administrative),
         new(PermissionCodes.DepartmentMailboxesManage, PermissionKind.Administrative),
         new(PermissionCodes.DepartmentCannedManage, PermissionKind.Administrative),
         new(PermissionCodes.DepartmentSlaManage, PermissionKind.Administrative),
@@ -50,7 +49,6 @@ internal static class PermissionCatalogue
         new(PermissionCodes.TicketsNotesRead, PermissionKind.Content),
         new(PermissionCodes.TicketsUpdate, PermissionKind.Content),
         new(PermissionCodes.TicketsAssignSelf, PermissionKind.Content),
-        new(PermissionCodes.TicketsAssignTeam, PermissionKind.Content),
         new(PermissionCodes.TicketsAssignAny, PermissionKind.Content),
     ];
 
@@ -82,7 +80,6 @@ internal static class RoleCatalogue
         PermissionCodes.TicketsNote,
         PermissionCodes.TicketsUpdate,
         PermissionCodes.TicketsAssignSelf,
-        PermissionCodes.TicketsAssignTeam,
     ];
 
     private static readonly Dictionary<string, HashSet<string>> Grants = new(StringComparer.Ordinal)
@@ -97,7 +94,6 @@ internal static class RoleCatalogue
             PermissionCodes.DepartmentAuditRead,
             PermissionCodes.DepartmentManage,
             PermissionCodes.DepartmentMembersManage,
-            PermissionCodes.TeamsManage,
             PermissionCodes.DepartmentMailboxesManage,
             PermissionCodes.DepartmentCannedManage,
             PermissionCodes.DepartmentSlaManage,

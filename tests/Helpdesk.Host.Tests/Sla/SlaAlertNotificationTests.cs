@@ -31,7 +31,7 @@ public sealed class SlaAlertNotificationTests(HelpdeskFixture fixture) : IClassF
         var owned = await w.NewTicketAsync(subject: "owned");
         var orphan = await w.NewTicketAsync(subject: "orphan");
         var current = (await w.Lead.GetTicketAsync(owned.Id)).Expect(HttpStatusCode.OK);
-        (await w.Lead.AssignAsync(owned.Id, current.Version, null, w.Agent.Id)).Expect(HttpStatusCode.OK);
+        (await w.Lead.AssignAsync(owned.Id, current.Version, w.Agent.Id)).Expect(HttpStatusCode.OK);
         await DrainAsync(w);
         await ReadAllAsync(w.Agent);
 
@@ -66,7 +66,7 @@ public sealed class SlaAlertNotificationTests(HelpdeskFixture fixture) : IClassF
         await w.PolicyAsync("Escalate", await w.CalendarAsync(), firstResponse: null, resolution: 120);
         var t = await w.NewTicketAsync(subject: "escalate");
         var current = (await w.Lead.GetTicketAsync(t.Id)).Expect(HttpStatusCode.OK);
-        (await w.Lead.AssignAsync(t.Id, current.Version, null, w.Agent.Id)).Expect(HttpStatusCode.OK);
+        (await w.Lead.AssignAsync(t.Id, current.Version, w.Agent.Id)).Expect(HttpStatusCode.OK);
         await DrainAsync(w);
         await ReadAllAsync(w.Agent);
 
@@ -88,7 +88,7 @@ public sealed class SlaAlertNotificationTests(HelpdeskFixture fixture) : IClassF
         await w.PolicyAsync("Pausing", await w.CalendarAsync(), firstResponse: null, resolution: 120, pause: true);
         var t = await w.NewTicketAsync(subject: "paused");
         var current = (await w.Lead.GetTicketAsync(t.Id)).Expect(HttpStatusCode.OK);
-        (await w.Lead.AssignAsync(t.Id, current.Version, null, w.Agent.Id)).Expect(HttpStatusCode.OK);
+        (await w.Lead.AssignAsync(t.Id, current.Version, w.Agent.Id)).Expect(HttpStatusCode.OK);
         await DrainAsync(w);
         await ReadAllAsync(w.Agent);
 

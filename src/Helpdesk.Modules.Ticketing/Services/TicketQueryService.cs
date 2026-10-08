@@ -17,7 +17,6 @@ namespace Helpdesk.Modules.Ticketing.Services;
 internal sealed class TicketQueryService(
     TicketingDbContext db,
     IDepartmentScope scope,
-    IOrganisationDirectory organisation,
     TicketProjection projection,
     ICurrentUser current,
     IAuthorizer authorizer,
@@ -52,16 +51,15 @@ internal sealed class TicketQueryService(
             var f = await views.FilterOfAsync(viewId, ct);
             query = query with
             {
-                Queue = f.Queue, DepartmentId = f.DepartmentId, Status = f.Status, Priority = f.Priority, TeamId = f.TeamId,
-                AssigneeUserId = f.AssigneeUserId, Unassigned = f.Unassigned, Q = f.Q, Sort = f.Sort, Sla = f.Sla, TypeId = f.TypeId, Send = f.Send, NoTeam = f.NoTeam,
+                Queue = f.Queue, DepartmentId = f.DepartmentId, Status = f.Status, Priority = f.Priority, AssigneeUserId = f.AssigneeUserId, Unassigned = f.Unassigned, Q = f.Q, Sort = f.Sort, Sla = f.Sla, TypeId = f.TypeId, Send = f.Send,
             };
         }
 
         var errors = new Dictionary<string, string[]>();
         var queue = (query.Queue ?? "all").Trim().ToLowerInvariant();
-        if (queue is not ("my" or "team" or "unassigned" or "all" or "following"))
+        if (queue is not ("my" or "unassigned" or "all" or "following"))
         {
-            errors["queue"] = ["queue must be one of my, team, unassigned, all, following."];
+            errors["queue"] = ["queue must be one of my, unassigned, all, following."];
         }
 
         var statuses = new List<TicketStatus>();
@@ -124,10 +122,6 @@ internal sealed class TicketQueryService(
                 var me = current.UserId;
                 tickets = tickets.Where(t => t.AssigneeUserId == me);
                 break;
-            case "team":
-                var teamIds = (await organisation.GetTeamIdsOfUserAsync(current.UserId, scope.DepartmentIds, ct)).ToArray();
-                tickets = tickets.Where(t => t.TeamId != null && teamIds.Contains(t.TeamId.Value));
-                break;
             case "unassigned":
                 tickets = tickets.Where(t => t.AssigneeUserId == null);
                 break;
@@ -155,11 +149,6 @@ internal sealed class TicketQueryService(
             tickets = tickets.Where(t => priorityFilter.Contains(t.Priority));
         }
 
-        if (query.TeamId is { } filterTeam)
-        {
-            tickets = tickets.Where(t => t.TeamId == filterTeam);
-        }
-
         if (query.AssigneeUserId is { } filterAssignee)
         {
             tickets = tickets.Where(t => t.AssigneeUserId == filterAssignee);
@@ -168,11 +157,6 @@ internal sealed class TicketQueryService(
         if (query.Unassigned == true)
         {
             tickets = tickets.Where(t => t.AssigneeUserId == null);
-        }
-
-        if (query.NoTeam == true)
-        {
-            tickets = tickets.Where(t => t.TeamId == null);
         }
 
         if (sendFilter is "failed" or "uncertain")
@@ -232,7 +216,7 @@ internal sealed class TicketQueryService(
             .Take(take + 1)
             .Select(t => new TicketRow(
                 t.Id, t.Reference, t.DepartmentId, t.Subject, t.Status, t.Priority, t.RequesterId, t.Requester.DisplayName, t.Requester.Email,
-                t.TeamId, t.AssigneeUserId, t.CreatedAt, t.UpdatedAt, t.MergedIntoTicketId, t.Version))
+                t.AssigneeUserId, t.CreatedAt, t.UpdatedAt, t.MergedIntoTicketId, t.Version))
             .ToListAsync(ct);
 
         var hasMore = rows.Count > take;
@@ -314,7 +298,6 @@ internal sealed class TicketQueryService(
     {
         await scope.EnsureLoadedAsync(ct);
         var me = current.UserId;
-        var teamIds = (await organisation.GetTeamIdsOfUserAsync(me, scope.DepartmentIds, ct)).ToArray();
         var now = clock.GetUtcNow();
 
         // D25: every sidebar count is the set its link opens: the shared backlog (Open and Pending, never a merged source), and the SLA badges only for that backlog.
@@ -328,12 +311,11 @@ internal sealed class TicketQueryService(
                 All = g.Count(),
                 My = g.Count(t => t.AssigneeUserId == me),
                 Unassigned = g.Count(t => t.AssigneeUserId == null),
-                Team = g.Count(t => t.TeamId != null && teamIds.Contains(t.TeamId.Value)),
             })
             .SingleOrDefaultAsync(ct);
         var following = await db.Tickets.AsNoTracking()
             .Where(QueuePredicates.Backlog).CountAsync(t => db.TicketFollowers.Any(f => f.TicketId == t.Id && f.UserId == me), ct);
-        return counts is null ? new QueueCountsDto(0, 0, 0, 0, slaBreached, slaApproaching, following) : new QueueCountsDto(counts.My, counts.Team, counts.Unassigned, counts.All, slaBreached, slaApproaching, following);
+        return counts is null ? new QueueCountsDto(0, 0, 0, slaBreached, slaApproaching, following) : new QueueCountsDto(counts.My, counts.Unassigned, counts.All, slaBreached, slaApproaching, following);
     }
 
     // ----- sorting and keyset pagination -----

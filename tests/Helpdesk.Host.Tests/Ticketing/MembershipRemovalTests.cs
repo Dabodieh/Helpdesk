@@ -21,7 +21,7 @@ public sealed class MembershipRemovalTests(HelpdeskFixture fixture) : IClassFixt
     private static async Task<ApiResponse> AssignedTicketAsync(Dept d, Guid assignee)
     {
         var t = await d.Lead.CreateTicketAsync(d.Department);
-        (await d.Lead.AssignAsync(t.Id, t.Version, null, assignee)).Expect(HttpStatusCode.OK);
+        (await d.Lead.AssignAsync(t.Id, t.Version, assignee)).Expect(HttpStatusCode.OK);
         return t;
     }
 

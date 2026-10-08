@@ -29,18 +29,15 @@ public sealed class MembershipApiTests(HelpdeskFixture fixture) : IClassFixture<
     }
 
     [Fact]
-    public async Task Member_list_includes_roles_and_team_ids()
+    public async Task Member_list_includes_roles()
     {
         var department = await fixture.CreateDepartmentAsync();
-        var team = await fixture.CreateTeamAsync(department);
-        var admin = await fixture.PlatformAdminAsync();
         var agent = await fixture.NewMemberAsync(department, DepartmentRoles.Agent);
-        await admin.Client.PutAsync($"{department.Url}/teams/{team.Id}/members/{agent.Id}");
 
         var members = (await agent.Client.GetAsync($"{department.Url}/members")).Expect(HttpStatusCode.OK).Json.EnumerateArray().ToList();
         var me = Assert.Single(members, m => m.GetProperty("userId").GetGuid() == agent.Id);
         Assert.Equal(DepartmentRoles.Agent, me.GetProperty("role").GetString());
-        Assert.Equal(team.Id, Assert.Single(me.GetProperty("teamIds").EnumerateArray()).GetGuid());
+        Assert.False(me.TryGetProperty("teamIds", out _));
         Assert.False(string.IsNullOrEmpty(me.GetProperty("displayName").GetString()));
     }
 

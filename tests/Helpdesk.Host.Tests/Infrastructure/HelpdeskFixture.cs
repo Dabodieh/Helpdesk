@@ -114,12 +114,6 @@ public sealed class HelpdeskFixture : IAsyncLifetime
         return user;
     }
 
-    public async Task<ApiResponse> CreateTeamAsync(DepartmentRef department, string? name = null)
-    {
-        var admin = await PlatformAdminAsync();
-        return (await admin.Client.PostAsync($"{department.Url}/teams", new { name = name ?? $"Team {Unique.Id()}" })).Expect(HttpStatusCode.Created);
-    }
-
     /// <summary>Runs service-level code in a DI scope of the application under test.</summary>
     public async Task WithScopeAsync(Func<IServiceProvider, Task> action)
     {

@@ -44,8 +44,6 @@ public sealed class IsoWorld
     public required HelpdeskFixture Fixture { get; init; }
     public required DepartmentRef A { get; init; }
     public required DepartmentRef B { get; init; }
-    public required ApiResponse TeamA { get; init; }
-    public required ApiResponse TeamB { get; init; }
     public required TestUser Viewer { get; init; }
     public required TestUser Agent { get; init; }
     public required TestUser Lead { get; init; }
@@ -68,8 +66,6 @@ public sealed class IsoWorld
         var a = await f.CreateDepartmentAsync();
         var b = await f.CreateDepartmentAsync();
         var root = await f.PlatformAdminAsync();
-        var teamA = await f.CreateTeamAsync(a);
-        var teamB = await f.CreateTeamAsync(b);
         var viewer = await f.NewMemberAsync(a, DepartmentRoles.Viewer);
         var agent = await f.NewMemberAsync(a, DepartmentRoles.Agent);
         var lead = await f.NewMemberAsync(a, DepartmentRoles.TeamLead);
@@ -87,8 +83,6 @@ public sealed class IsoWorld
             Fixture = f,
             A = a,
             B = b,
-            TeamA = teamA,
-            TeamB = teamB,
             Viewer = viewer,
             Agent = agent,
             Lead = lead,
@@ -182,7 +176,7 @@ public static class IsoKit
         fixture.ScalarAsync<string>(
             """
             SELECT md5(coalesce(string_agg(t, '|' ORDER BY t), '')) FROM (
-              SELECT 'tk:'||id||':'||xmin::text||':'||subject||':'||status||':'||priority::text||':'||coalesce(team_id::text,'')||':'||coalesce(assignee_user_id::text,'')||':'||requester_id||':'||reference AS t
+              SELECT 'tk:'||id||':'||xmin::text||':'||subject||':'||status||':'||priority::text||':'||coalesce(assignee_user_id::text,'')||':'||requester_id||':'||reference AS t
                 FROM ticketing.tickets WHERE department_id = ANY(@ids)
               UNION ALL SELECT 'm:'||id||':'||kind||':'||author_type||':'||delivery_state||':'||md5(body) FROM ticketing.messages WHERE department_id = ANY(@ids)
               UNION ALL SELECT 'r:'||id||':'||email_normalised||':'||display_name FROM ticketing.requesters WHERE department_id = ANY(@ids)

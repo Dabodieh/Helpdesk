@@ -17,7 +17,6 @@ public sealed class MailAutomationTests(HelpdeskFixture fixture) : IClassFixture
         var other = await fixture.NewDeptAsync();
         var box = await fixture.CreateMailboxAsync(d);
         var otherBox = await fixture.CreateMailboxAsync(other);
-        var team = await fixture.CreateTeamAsync(d.Department);
         (await d.Admin.Client.PostAsync($"{d.Department.Url}/automations", new
         {
             name = "Mail routing",
@@ -29,7 +28,7 @@ public sealed class MailAutomationTests(HelpdeskFixture fixture) : IClassFixture
             },
             actions = new object[]
             {
-                new { type = "assignTeam", value = team.Id.ToString() },
+                new { type = "assignAgent", value = d.Agent.Id.ToString() },
                 new { type = "setPriority", value = "High" },
                 new { type = "addInternalNote", text = "Routed from the IT mailbox" },
             },
@@ -42,10 +41,10 @@ public sealed class MailAutomationTests(HelpdeskFixture fixture) : IClassFixture
         var ticket = Assert.Single(await d.Agent.TicketsAsync(d, subject));
         var ticketId = ticket.GetProperty("id").GetGuid();
         Assert.Equal("High", ticket.Str("priority"));
-        Assert.Equal(team.Id, ticket.GetProperty("team").GetProperty("id").GetGuid());
+        Assert.Equal(d.Agent.Id, ticket.GetProperty("assignee").GetProperty("id").GetGuid());
 
-        // The real queue query finds it by the routed team and priority, and only in the receiving department.
-        var routed = (await d.Agent.Client.GetAsync($"/api/tickets?queue=all&teamId={team.Id}&priority=High&limit=100")).Expect(HttpStatusCode.OK).Json.GetProperty("items");
+        // The real queue query finds it by the routed assignee and priority, and only in the receiving department.
+        var routed = (await d.Agent.Client.GetAsync($"/api/tickets?queue=all&assigneeUserId={d.Agent.Id}&priority=High&limit=100")).Expect(HttpStatusCode.OK).Json.GetProperty("items");
         Assert.Contains(routed.EnumerateArray(), i => i.GetProperty("id").GetGuid() == ticketId);
         Assert.Empty(await other.Agent.TicketsAsync(other, subject));
 
@@ -68,7 +67,7 @@ public sealed class MailAutomationTests(HelpdeskFixture fixture) : IClassFixture
         Assert.Equal(1, await fixture.CountAsync("SELECT count(*) FROM ticketing.tickets WHERE department_id = @d AND subject = @s", TicketKit.P("d", d.Id), TicketKit.P("s", subject)));
         Assert.Equal(1, Executions());
         Assert.Equal(1, Notes());
-        Assert.Equal(1, await fixture.CountAsync("SELECT count(*) FROM audit.audit_events WHERE object_id = @t AND action = 'ticket.team_changed'", TicketKit.P("t", ticketId)));
+        Assert.Equal(1, await fixture.CountAsync("SELECT count(*) FROM audit.audit_events WHERE object_id = @t AND action = 'ticket.assignee_changed'", TicketKit.P("t", ticketId)));
         Assert.Equal(1, await fixture.CountAsync("SELECT count(*) FROM audit.audit_events WHERE object_id = @t AND action = 'ticket.priority_changed'", TicketKit.P("t", ticketId)));
     }
 }

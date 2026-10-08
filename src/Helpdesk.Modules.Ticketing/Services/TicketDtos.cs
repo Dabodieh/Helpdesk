@@ -6,8 +6,6 @@ namespace Helpdesk.Modules.Ticketing.Services;
 
 internal sealed record RefDto(Guid Id, string DisplayName);
 
-internal sealed record TeamRefDto(Guid Id, string Name);
-
 internal sealed record RequesterRefDto(Guid Id, string DisplayName, string Email);
 
 internal sealed record RequesterDetailDto(Guid Id, string DisplayName, string Email, int OpenTicketCount, int TotalTicketCount);
@@ -23,7 +21,6 @@ internal sealed record TicketListItemDto(
     string Status,
     string Priority,
     RequesterRefDto Requester,
-    TeamRefDto? Team,
     RefDto? Assignee,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
@@ -50,7 +47,6 @@ internal sealed record TicketDetailDto(
     string Status,
     string Priority,
     RequesterDetailDto Requester,
-    TeamRefDto? Team,
     RefDto? Assignee,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
@@ -106,7 +102,7 @@ internal sealed record ActivityDto(Guid Id, DateTimeOffset OccurredAt, ActorDto?
 
 internal sealed record PageDto<T>(IReadOnlyList<T> Items, string? NextCursor);
 
-internal sealed record QueueCountsDto(int My, int Team, int Unassigned, int All, int SlaBreached = 0, int SlaApproaching = 0, int Following = 0);
+internal sealed record QueueCountsDto(int My, int Unassigned, int All, int SlaBreached = 0, int SlaApproaching = 0, int Following = 0);
 
 internal sealed record RequesterLookupDto(Guid Id, string DisplayName, string Email);
 
@@ -120,7 +116,6 @@ internal sealed record CreateTicketRequest(
     RequesterInput? Requester,
     Guid? RequesterId,
     string? Priority,
-    Guid? TeamId,
     Guid? AssigneeUserId,
     Guid? TicketTypeId = null,
     Dictionary<string, System.Text.Json.JsonElement>? Fields = null,
@@ -130,15 +125,15 @@ internal sealed record UpdateTicketRequest(string? Version, string? Subject, str
 
 internal sealed record AssignMailboxRequest(string? Version, Guid? MailboxId);
 
-internal sealed record AssignTicketRequest(string? Version, Guid? TeamId, Guid? AssigneeUserId);
+internal sealed record AssignTicketRequest(string? Version, Guid? AssigneeUserId);
 
 internal sealed record PostMessageRequest(string? Kind, string? Body, string? Status, IReadOnlyList<Guid>? MentionUserIds = null, string? ClientMessageId = null);
 
 internal sealed record IdChange(Guid? Id);
 
-/// <summary>Bulk change: only the fields present are applied (Team/Assignee present with a null id means "clear").</summary>
+/// <summary>Bulk change: only the fields present are applied (Assignee present with a null id means "clear").</summary>
 /// <param name="Versions">Optional per-ticket row versions the client saw when it selected the tickets (D19). A ticket that changed since is reported as <c>changed</c> and left alone; the others proceed.</param>
-internal sealed record BulkRequest(Guid[]? TicketIds, string? Status, string? Priority, IdChange? Team, IdChange? Assignee, Dictionary<Guid, string>? Versions = null);
+internal sealed record BulkRequest(Guid[]? TicketIds, string? Status, string? Priority, IdChange? Assignee, Dictionary<Guid, string>? Versions = null);
 
 internal sealed record BulkItemDto(Guid TicketId, string? Reference, string Outcome, string? Code);
 
@@ -152,7 +147,6 @@ internal sealed record TicketListQuery(
     Guid? DepartmentId,
     string[]? Status,
     string[]? Priority,
-    Guid? TeamId,
     Guid? AssigneeUserId,
     bool? Unassigned,
     string? Q,
@@ -162,5 +156,4 @@ internal sealed record TicketListQuery(
     Guid? View = null,
     string? Sla = null,
     Guid? TypeId = null,
-    string? Send = null,
-    bool? NoTeam = null);
+    string? Send = null);

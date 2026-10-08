@@ -188,7 +188,7 @@ public sealed class AuditTests(HelpdeskFixture fixture) : IClassFixture<Helpdesk
         var admin = await fixture.PlatformAdminAsync();
         for (var i = 0; i < 6; i++)
         {
-            await fixture.CreateTeamAsync(department);
+            await fixture.NewMemberAsync(department, DepartmentRoles.Agent);
         }
 
         var seen = new List<Guid>();
@@ -205,7 +205,7 @@ public sealed class AuditTests(HelpdeskFixture fixture) : IClassFixture<Helpdesk
         }
         while (cursor is not null && pages < 20);
 
-        Assert.Equal(7, seen.Count); // department.created + 6 team.created
+        Assert.Equal(7, seen.Count); // department.created + 6 membership.added
         Assert.Equal(seen.Count, seen.Distinct().Count());
         Assert.Equal(4, pages);
         var all = (await admin.Client.GetAsync($"{department.Url}/audit?limit=200")).Json.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetGuid()).ToList();
@@ -249,15 +249,9 @@ public sealed class AuditTests(HelpdeskFixture fixture) : IClassFixture<Helpdesk
         var renamed = (await admin.Client.PatchAsync(department.Url, new { version = department.Version, name = $"R {Unique.Id()}" })).Expect(HttpStatusCode.OK); // department.updated
         var off = (await admin.Client.PatchAsync(department.Url, new { version = renamed.Version, isActive = false })).Expect(HttpStatusCode.OK);              // department.deactivated
         (await admin.Client.PatchAsync(department.Url, new { version = off.Version, isActive = true })).Expect(HttpStatusCode.OK);                           // department.activated
-        var team = await fixture.CreateTeamAsync(department);                                                      // team.created
-        var teamRenamed = (await admin.Client.PatchAsync($"{department.Url}/teams/{team.Id}", new { version = team.Version, name = $"T {Unique.Id()}" })).Expect(HttpStatusCode.OK); // team.updated
-        var teamOff = (await admin.Client.PatchAsync($"{department.Url}/teams/{team.Id}", new { version = teamRenamed.Version, isActive = false })).Expect(HttpStatusCode.OK); // team.deactivated
-        (await admin.Client.PatchAsync($"{department.Url}/teams/{team.Id}", new { version = teamOff.Version, isActive = true })).Expect(HttpStatusCode.OK);               // team.activated
         var user = await fixture.NewUserAsync();                                                                   // user.provisioned
         await fixture.AddMemberAsync(department, user, DepartmentRoles.Agent);                                     // membership.added
         (await admin.Client.PutAsync($"{department.Url}/members/{user.Id}", new { role = DepartmentRoles.TeamLead })).Expect(HttpStatusCode.OK); // membership.role_changed
-        (await admin.Client.PutAsync($"{department.Url}/teams/{team.Id}/members/{user.Id}")).Expect(HttpStatusCode.NoContent);                // team_membership.added
-        (await admin.Client.DeleteAsync($"{department.Url}/teams/{team.Id}/members/{user.Id}")).Expect(HttpStatusCode.NoContent);             // team_membership.removed
         (await admin.Client.DeleteAsync($"{department.Url}/members/{user.Id}")).Expect(HttpStatusCode.NoContent);                             // membership.removed
         (await admin.Client.PutAsync($"/api/platform/users/{user.Id}/platform-admin", new { value = true })).Expect(HttpStatusCode.OK);        // user.platform_admin_changed
         (await admin.Client.PutAsync($"/api/platform/users/{user.Id}/platform-admin", new { value = false })).Expect(HttpStatusCode.OK);
@@ -266,9 +260,7 @@ public sealed class AuditTests(HelpdeskFixture fixture) : IClassFixture<Helpdesk
         string[] departmentActions =
         [
             "department.created", "department.updated", "department.deactivated", "department.activated",
-            "team.created", "team.updated", "team.deactivated", "team.activated",
             "membership.added", "membership.role_changed", "membership.removed",
-            "team_membership.added", "team_membership.removed",
         ];
         Assert.All(departmentActions, a => Assert.Contains(a, actions));
         Assert.Equal(1, await fixture.CountAuditAsync("user.provisioned", user.Id));

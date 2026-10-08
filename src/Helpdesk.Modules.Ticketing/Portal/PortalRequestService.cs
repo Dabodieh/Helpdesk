@@ -357,12 +357,6 @@ internal sealed class PortalRequestService(
         TicketValidation.ThrowIfAny(errors);
         var typeId = await types.ResolveForCreateAsync(form.DepartmentId, null, form.TicketTypeId, ct);
 
-        Guid? teamId = null;
-        if (form.DefaultTeamId is { } defaultTeam && await organisation.FindTeamAsync(form.DepartmentId, defaultTeam, ct) is { IsActive: true })
-        {
-            teamId = defaultTeam;
-        }
-
         var requesterId = await identity.EnsureRequesterAsync(form.DepartmentId, ct);
         var requester = await db.Requesters.AsNoTracking().IgnoreDepartmentScope().SingleAsync(r => r.Id == requesterId && r.DepartmentId == form.DepartmentId, ct);
         var submissionId = request.SubmissionId ?? Guid.CreateVersion7();
@@ -385,7 +379,6 @@ internal sealed class PortalRequestService(
                 Subject = request.Subject!.Trim(),
                 Status = TicketStatus.Open,
                 Priority = form.DefaultPriority ?? TicketPriority.Normal,
-                TeamId = teamId,
                 CreatedByUserId = current.UserId,
                 CreatedAt = now,
                 UpdatedAt = now,

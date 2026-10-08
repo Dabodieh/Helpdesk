@@ -113,7 +113,7 @@ public sealed class TicketChangeTests(HelpdeskFixture fixture) : IClassFixture<H
         var t = await d.Agent.CreateTicketAsync(d.Department);
         (await d.Agent.PatchTicketAsync(t, new { Priority = "High" })).Expect(HttpStatusCode.OK);
         (await d.Lead.PatchTicketAsync(t, new { Priority = "Low" })).ExpectCode(HttpStatusCode.Conflict, "version_conflict");
-        (await d.Lead.AssignAsync(t.Id, t.Version, null, d.Lead.Id)).ExpectCode(HttpStatusCode.Conflict, "version_conflict");
+        (await d.Lead.AssignAsync(t.Id, t.Version, d.Lead.Id)).ExpectCode(HttpStatusCode.Conflict, "version_conflict");
         Assert.Equal("High", (await d.Agent.GetTicketAsync(t.Id)).Json.Str("priority"));
 
         var fresh = (await d.Agent.GetTicketAsync(t.Id)).Expect(HttpStatusCode.OK);
@@ -128,30 +128,27 @@ public sealed class TicketChangeTests(HelpdeskFixture fixture) : IClassFixture<H
     // ----- assignment -----
 
     [Fact]
-    public async Task Assign_any_sets_team_and_assignee_and_audits_both()
+    public async Task Assign_any_sets_the_assignee_and_audits_it()
     {
         var d = await fixture.NewDeptAsync();
-        var team = await fixture.CreateTeamAsync(d.Department);
         var t = await d.Agent.CreateTicketAsync(d.Department);
 
-        var assigned = (await d.Lead.AssignAsync(t.Id, t.Version, team.Id, d.Agent.Id)).Expect(HttpStatusCode.OK);
-        Assert.Equal(team.Id, assigned.Json.GetProperty("team").GetProperty("id").GetGuid());
+        var assigned = (await d.Lead.AssignAsync(t.Id, t.Version, d.Agent.Id)).Expect(HttpStatusCode.OK);
         Assert.Equal(d.Agent.Id, assigned.Json.GetProperty("assignee").GetProperty("id").GetGuid());
         Assert.Equal((await d.Agent.Client.GetAsync("/api/me")).Json.Str("displayName"), assigned.Json.GetProperty("assignee").Str("displayName"));
 
         var rows = await fixture.AuditOfAsync(t.Id);
-        var team1 = rows.Single(r => r.Action == "ticket.team_changed");
-        Assert.Equal($$"""{"teamId": "{{team.Id}}"}""", team1.Next);
-        Assert.Equal("""{"teamId": null}""", team1.Previous);
-        Assert.Equal(d.Lead.Id, team1.ActorUserId);
-        Assert.Equal($$"""{"assigneeUserId": "{{d.Agent.Id}}"}""", rows.Single(r => r.Action == "ticket.assignee_changed").Next);
+        var change = rows.Single(r => r.Action == "ticket.assignee_changed");
+        Assert.Equal($$"""{"assigneeUserId": "{{d.Agent.Id}}"}""", change.Next);
+        Assert.Equal("""{"assigneeUserId": null}""", change.Previous);
+        Assert.Equal(d.Lead.Id, change.ActorUserId);
+        Assert.DoesNotContain(rows, r => r.Action == "ticket.team_changed");
 
-        // Replaces both: clearing the assignee only leaves the team untouched when it is sent again.
-        var cleared = (await d.Lead.AssignAsync(t.Id, assigned.Version, team.Id, null)).Expect(HttpStatusCode.OK);
+        // Clearing the assignee.
+        var cleared = (await d.Lead.AssignAsync(t.Id, assigned.Version, null)).Expect(HttpStatusCode.OK);
         Assert.Equal(System.Text.Json.JsonValueKind.Null, cleared.Json.GetProperty("assignee").ValueKind);
-        Assert.Equal(team.Id, cleared.Json.GetProperty("team").GetProperty("id").GetGuid());
         // No change = no new events and an unchanged version.
-        var same = (await d.Lead.AssignAsync(t.Id, cleared.Version, team.Id, null)).Expect(HttpStatusCode.OK);
+        var same = (await d.Lead.AssignAsync(t.Id, cleared.Version, null)).Expect(HttpStatusCode.OK);
         Assert.Equal(cleared.Version, same.Version);
     }
 
@@ -159,23 +156,21 @@ public sealed class TicketChangeTests(HelpdeskFixture fixture) : IClassFixture<H
     public async Task Assign_self_allows_taking_and_releasing_own_tickets_only()
     {
         var d = await fixture.NewDeptAsync();
-        var team = await fixture.CreateTeamAsync(d.Department);
         var t = await d.Agent.CreateTicketAsync(d.Department);
 
-        (await d.Viewer.AssignAsync(t.Id, t.Version, null, d.Viewer.Id)).Expect(HttpStatusCode.Forbidden); // no assign permission at all
-        (await d.Agent.AssignAsync(t.Id, t.Version, null, d.Lead.Id)).Expect(HttpStatusCode.Forbidden);     // someone else
-        (await d.Agent.AssignAsync(t.Id, t.Version, team.Id, d.Lead.Id)).Expect(HttpStatusCode.Forbidden); // routing is open to agents (D21), choosing another person is not
-        (await d.Agent.AssignAsync(t.Id, t.Version, null, null)).Expect(HttpStatusCode.Forbidden);          // not the assignee: nothing to release
+        (await d.Viewer.AssignAsync(t.Id, t.Version, d.Viewer.Id)).Expect(HttpStatusCode.Forbidden); // no assign permission at all
+        (await d.Agent.AssignAsync(t.Id, t.Version, d.Lead.Id)).Expect(HttpStatusCode.Forbidden);     // someone else
+        (await d.Agent.AssignAsync(t.Id, t.Version, null)).Expect(HttpStatusCode.Forbidden);          // not the assignee: nothing to release
 
-        var taken = (await d.Agent.AssignAsync(t.Id, t.Version, null, d.Agent.Id)).Expect(HttpStatusCode.OK);
+        var taken = (await d.Agent.AssignAsync(t.Id, t.Version, d.Agent.Id)).Expect(HttpStatusCode.OK);
         Assert.Equal(d.Agent.Id, taken.Json.GetProperty("assignee").GetProperty("id").GetGuid());
-        (await d.Agent.AssignAsync(t.Id, taken.Version, null, d.Lead.Id)).Expect(HttpStatusCode.Forbidden);
-        var released = (await d.Agent.AssignAsync(t.Id, taken.Version, null, null)).Expect(HttpStatusCode.OK);
+        (await d.Agent.AssignAsync(t.Id, taken.Version, d.Lead.Id)).Expect(HttpStatusCode.Forbidden);
+        var released = (await d.Agent.AssignAsync(t.Id, taken.Version, null)).Expect(HttpStatusCode.OK);
         Assert.Equal(System.Text.Json.JsonValueKind.Null, released.Json.GetProperty("assignee").ValueKind);
 
         // Others' tickets: an agent cannot release someone else's ticket.
-        var byLead = (await d.Lead.AssignAsync(t.Id, released.Version, null, d.Lead.Id)).Expect(HttpStatusCode.OK);
-        (await d.Agent.AssignAsync(t.Id, byLead.Version, null, null)).Expect(HttpStatusCode.Forbidden);
+        var byLead = (await d.Lead.AssignAsync(t.Id, released.Version, d.Lead.Id)).Expect(HttpStatusCode.OK);
+        (await d.Agent.AssignAsync(t.Id, byLead.Version, null)).Expect(HttpStatusCode.Forbidden);
     }
 
     [Fact]
@@ -184,59 +179,51 @@ public sealed class TicketChangeTests(HelpdeskFixture fixture) : IClassFixture<H
         var d = await fixture.NewDeptAsync();
         var t = await d.Agent.CreateTicketAsync(d.Department);
 
-        var ownedByLead = (await d.Lead.AssignAsync(t.Id, t.Version, null, d.Lead.Id)).Expect(HttpStatusCode.OK);
+        var ownedByLead = (await d.Lead.AssignAsync(t.Id, t.Version, d.Lead.Id)).Expect(HttpStatusCode.OK);
         // Already assigned to another agent: self-assign alone is not allowed to take it over, whatever the version.
-        (await d.Agent.AssignAsync(t.Id, ownedByLead.Version, null, d.Agent.Id)).Expect(HttpStatusCode.Forbidden);
+        (await d.Agent.AssignAsync(t.Id, ownedByLead.Version, d.Agent.Id)).Expect(HttpStatusCode.Forbidden);
         Assert.Equal(d.Lead.Id, (await d.Agent.GetTicketAsync(t.Id)).Json.GetProperty("assignee").GetProperty("id").GetGuid());
 
         // Reassignment of someone else's ticket needs the broader permission (TeamLead holds it).
-        var reassigned = (await d.Lead.AssignAsync(t.Id, ownedByLead.Version, null, d.Agent.Id)).Expect(HttpStatusCode.OK);
+        var reassigned = (await d.Lead.AssignAsync(t.Id, ownedByLead.Version, d.Agent.Id)).Expect(HttpStatusCode.OK);
         Assert.Equal(d.Agent.Id, reassigned.Json.GetProperty("assignee").GetProperty("id").GetGuid());
 
         // The assignee keeps it (idempotent), releases it, and then anybody may claim the unassigned ticket.
-        (await d.Agent.AssignAsync(t.Id, reassigned.Version, null, d.Agent.Id)).Expect(HttpStatusCode.OK);
-        var released = (await d.Agent.AssignAsync(t.Id, reassigned.Version, null, null)).Expect(HttpStatusCode.OK);
-        var claimed = (await d.Agent.AssignAsync(t.Id, released.Version, null, d.Agent.Id)).Expect(HttpStatusCode.OK);
+        (await d.Agent.AssignAsync(t.Id, reassigned.Version, d.Agent.Id)).Expect(HttpStatusCode.OK);
+        var released = (await d.Agent.AssignAsync(t.Id, reassigned.Version, null)).Expect(HttpStatusCode.OK);
+        var claimed = (await d.Agent.AssignAsync(t.Id, released.Version, d.Agent.Id)).Expect(HttpStatusCode.OK);
         Assert.Equal(d.Agent.Id, claimed.Json.GetProperty("assignee").GetProperty("id").GetGuid());
     }
 
     [Fact]
-    public async Task Assignment_to_a_team_or_user_outside_the_department_is_invalid_state()
+    public async Task Assignment_to_a_user_outside_the_department_is_invalid_state()
     {
         var d = await fixture.NewDeptAsync();
         var other = await fixture.NewDeptAsync();
-        var foreignTeam = await fixture.CreateTeamAsync(other.Department);
-        var inactive = await fixture.CreateTeamAsync(d.Department);
-        var admin = await fixture.PlatformAdminAsync();
-        (await admin.Client.PatchAsync($"{d.Department.Url}/teams/{inactive.Id}", new { version = inactive.Version, isActive = false })).Expect(HttpStatusCode.OK);
         var t = await d.Agent.CreateTicketAsync(d.Department);
 
-        (await d.Lead.AssignAsync(t.Id, t.Version, foreignTeam.Id, null)).ExpectCode(HttpStatusCode.Conflict, "invalid_state");
-        (await d.Lead.AssignAsync(t.Id, t.Version, inactive.Id, null)).ExpectCode(HttpStatusCode.Conflict, "invalid_state");
-        (await d.Lead.AssignAsync(t.Id, t.Version, null, other.Agent.Id)).ExpectCode(HttpStatusCode.Conflict, "invalid_state");
-        (await d.Lead.AssignAsync(t.Id, t.Version, null, d.Viewer.Id)).ExpectCode(HttpStatusCode.Conflict, "invalid_state");
+        (await d.Lead.AssignAsync(t.Id, t.Version, other.Agent.Id)).ExpectCode(HttpStatusCode.Conflict, "invalid_state");
+        (await d.Lead.AssignAsync(t.Id, t.Version, d.Viewer.Id)).ExpectCode(HttpStatusCode.Conflict, "invalid_state");
         Assert.Equal(t.Version, (await d.Agent.GetTicketAsync(t.Id)).Version);
     }
 
     [Fact]
-    public async Task The_database_composite_foreign_keys_reject_foreign_teams_and_assignees_and_cross_department_requesters()
+    public async Task The_database_composite_foreign_keys_reject_foreign_assignees_and_cross_department_requesters()
     {
         var d = await fixture.NewDeptAsync();
         var other = await fixture.NewDeptAsync();
-        var foreignTeam = await fixture.CreateTeamAsync(other.Department);
         var t = await d.Agent.CreateTicketAsync(d.Department);
         var otherTicket = await other.Agent.CreateTicketAsync(other.Department);
 
         async Task Rejects(string sql, string constraint)
         {
             var ex = await Assert.ThrowsAsync<PostgresException>(() => fixture.ExecuteAsync(
-                sql, TicketKit.P("t", t.Id), TicketKit.P("team", foreignTeam.Id), TicketKit.P("u", other.Agent.Id), TicketKit.P("viewerless", d.Viewer.Id),
+                sql, TicketKit.P("t", t.Id), TicketKit.P("u", other.Agent.Id), TicketKit.P("viewerless", d.Viewer.Id),
                 TicketKit.P("r", otherTicket.Json.GetProperty("requester").GetProperty("id").GetGuid())));
             Assert.Equal(PostgresErrorCodes.ForeignKeyViolation, ex.SqlState);
             Assert.Equal(constraint, ex.ConstraintName);
         }
 
-        await Rejects("UPDATE ticketing.tickets SET team_id = @team WHERE id = @t", "fk_tickets_team_department");
         await Rejects("UPDATE ticketing.tickets SET assignee_user_id = @u WHERE id = @t", "fk_tickets_assignee_membership");
         await Rejects("UPDATE ticketing.tickets SET requester_id = @r WHERE id = @t", "fk_tickets_requester_department");
         // A message cannot live in another department than its ticket, nor be authored by another department's requester.
@@ -256,7 +243,7 @@ public sealed class TicketChangeTests(HelpdeskFixture fixture) : IClassFixture<H
         var d = await fixture.NewDeptAsync();
         var leaving = await fixture.NewMemberAsync(d.Department, "Agent");
         var t = await d.Agent.CreateTicketAsync(d.Department);
-        var assigned = (await d.Lead.AssignAsync(t.Id, t.Version, null, leaving.Id)).Expect(HttpStatusCode.OK);
+        var assigned = (await d.Lead.AssignAsync(t.Id, t.Version, leaving.Id)).Expect(HttpStatusCode.OK);
         Assert.Equal(leaving.Id, assigned.Json.GetProperty("assignee").GetProperty("id").GetGuid());
 
         var admin = await fixture.PlatformAdminAsync();
@@ -274,8 +261,8 @@ public sealed class TicketChangeTests(HelpdeskFixture fixture) : IClassFixture<H
         var other = await fixture.NewDeptAsync();
         var t = await d.Agent.CreateTicketAsync(d.Department);
 
-        (await other.Lead.AssignAsync(t.Id, t.Version, null, null)).Expect(HttpStatusCode.NotFound);
-        (await d.Lead.Client.PutAsync(TicketKit.Url(t.Id, "/assignment"), new { teamId = (Guid?)null, assigneeUserId = d.Lead.Id })).Expect(HttpStatusCode.BadRequest);
-        (await d.Lead.AssignAsync(Guid.NewGuid(), t.Version, null, null)).Expect(HttpStatusCode.NotFound);
+        (await other.Lead.AssignAsync(t.Id, t.Version, null)).Expect(HttpStatusCode.NotFound);
+        (await d.Lead.Client.PutAsync(TicketKit.Url(t.Id, "/assignment"), new { assigneeUserId = d.Lead.Id })).Expect(HttpStatusCode.BadRequest);
+        (await d.Lead.AssignAsync(Guid.NewGuid(), t.Version, null)).Expect(HttpStatusCode.NotFound);
     }
 }

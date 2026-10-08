@@ -10,7 +10,6 @@ internal static class ConditionFields
 {
     public const string Status = "status";
     public const string Priority = "priority";
-    public const string Team = "team";
     public const string Assignee = "assignee";
     public const string Mailbox = "mailbox";
     public const string TicketType = "ticketType";
@@ -29,7 +28,7 @@ internal static class ConditionOperators
     public const string IsEqual = "equals";
 }
 
-/// <summary>Value used for "no team", "no assignee" and "no mailbox" in id conditions.</summary>
+/// <summary>Value used for "no assignee" and "no mailbox" in id conditions.</summary>
 internal static class NoneValue
 {
     public const string Value = "none";
@@ -55,7 +54,6 @@ internal static class SlaStates
 internal sealed record TicketFacts(
     TicketStatus Status,
     TicketPriority Priority,
-    Guid? TeamId,
     Guid? AssigneeUserId,
     Guid? MailboxId,
     string Subject,
@@ -79,7 +77,6 @@ internal static class ConditionCatalogue
     {
         [ConditionFields.Status] = [ConditionOperators.In, ConditionOperators.NotIn],
         [ConditionFields.Priority] = [ConditionOperators.In, ConditionOperators.NotIn],
-        [ConditionFields.Team] = [ConditionOperators.In, ConditionOperators.NotIn],
         [ConditionFields.Assignee] = [ConditionOperators.In, ConditionOperators.NotIn],
         [ConditionFields.Mailbox] = [ConditionOperators.In, ConditionOperators.NotIn],
         [ConditionFields.TicketType] = [ConditionOperators.In, ConditionOperators.NotIn],
@@ -93,13 +90,13 @@ internal static class ConditionCatalogue
     /// <summary>Fields usable for SLA policy matching (a policy is chosen when the ticket is created, so state-like fields do not apply).</summary>
     public static readonly string[] PolicyFields =
     [
-        ConditionFields.Priority, ConditionFields.Team, ConditionFields.Mailbox, ConditionFields.TicketType,
+        ConditionFields.Priority, ConditionFields.Mailbox, ConditionFields.TicketType,
         ConditionFields.SubjectContains, ConditionFields.RequesterEmail, ConditionFields.RequesterDomain,
     ];
 
     public static readonly string[] RuleFields = [.. Operators.Keys];
 
-    public static bool IsIdField(string field) => field is ConditionFields.Team or ConditionFields.Assignee or ConditionFields.Mailbox or ConditionFields.TicketType;
+    public static bool IsIdField(string field) => field is ConditionFields.Assignee or ConditionFields.Mailbox or ConditionFields.TicketType;
 
     /// <summary>Shape validation only (no database): known field and operator, value count and form. Returns field-path errors.</summary>
     public static Dictionary<string, string[]> Validate(IReadOnlyList<RuleCondition>? conditions, string[] allowedFields, string path)
@@ -163,7 +160,7 @@ internal static class ConditionCatalogue
                 return Enum.TryParse<TicketStatus>(value, out _) && Enum.IsDefined(Enum.Parse<TicketStatus>(value)) ? null : "Unknown status.";
             case ConditionFields.Priority:
                 return Enum.TryParse<TicketPriority>(value, out _) && Enum.IsDefined(Enum.Parse<TicketPriority>(value)) ? null : "Unknown priority.";
-            case ConditionFields.Team or ConditionFields.Assignee or ConditionFields.Mailbox or ConditionFields.TicketType:
+            case ConditionFields.Assignee or ConditionFields.Mailbox or ConditionFields.TicketType:
                 return value == NoneValue.Value || Guid.TryParse(value, out _) ? null : "Use an id, or 'none'.";
             case ConditionFields.SlaFirstResponse or ConditionFields.SlaResolution:
                 return SlaStates.All.Contains(value) ? null : "Unknown SLA state.";
@@ -198,7 +195,6 @@ internal static class ConditionEvaluator
         {
             ConditionFields.Status => InSet(f.Status.ToString(), c),
             ConditionFields.Priority => InSet(f.Priority.ToString(), c),
-            ConditionFields.Team => InSet(f.TeamId?.ToString() ?? NoneValue.Value, c),
             ConditionFields.Assignee => InSet(f.AssigneeUserId?.ToString() ?? NoneValue.Value, c),
             ConditionFields.Mailbox => InSet(f.MailboxId?.ToString() ?? NoneValue.Value, c),
             ConditionFields.TicketType => InSet(f.TicketTypeId?.ToString() ?? NoneValue.Value, c),

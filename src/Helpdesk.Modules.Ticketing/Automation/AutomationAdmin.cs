@@ -36,7 +36,7 @@ internal sealed record RuleTestResult(string Ticket, string Trigger, bool WouldC
 
 /// <summary>
 /// Rule administration, execution history and the "Test against ticket" dry run. Permission department.automation.manage is enforced by
-/// the endpoint filter; every query filters by the department itself and every referenced team, user or mailbox is checked against it.
+/// the endpoint filter; every query filters by the department itself and every referenced user or mailbox is checked against it.
 /// </summary>
 internal sealed class AutomationAdminService(
     TicketingDbContext db,
@@ -318,18 +318,6 @@ internal sealed class AutomationAdminService(
             {
                 var target = Enum.Parse<TicketPriority>(action.Value!);
                 return target == facts.Priority ? ("WouldNotChange", "Already " + target, facts) : ("WouldChange", $"{facts.Priority} to {target}", facts with { Priority = target });
-            }
-
-            case ActionTypes.AssignTeam:
-            {
-                var problem = await references.CheckTeamAsync(departmentId, action.Value!, requireActive: true, ct);
-                if (problem is not null)
-                {
-                    return ("WouldFail", problem, facts);
-                }
-
-                Guid? target = action.Value == NoneValue.Value ? null : Guid.Parse(action.Value!);
-                return target == facts.TeamId ? ("WouldNotChange", "Team already set", facts) : ("WouldChange", "Team would change", facts with { TeamId = target });
             }
 
             case ActionTypes.AssignAgent:

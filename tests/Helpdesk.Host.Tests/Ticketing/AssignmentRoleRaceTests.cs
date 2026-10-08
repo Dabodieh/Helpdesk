@@ -48,7 +48,7 @@ public sealed class AssignmentRoleRaceTests(HelpdeskFixture fixture) : IClassFix
 
         var attempt = entryPoint switch
         {
-            "assign" => d.Lead.AssignAsync(ticket.Id, ticket.Version, null, member.Id),
+            "assign" => d.Lead.AssignAsync(ticket.Id, ticket.Version, member.Id),
             "bulk" => d.Lead.Client.PostAsync("/api/tickets/bulk", new { ticketIds = new[] { ticket.Id }, assignee = new { id = member.Id } }),
             _ => d.Lead.Client.PostAsync($"{d.Department.Url}/tickets", TicketHelpers.NewTicketBody(extra: new { AssigneeUserId = member.Id })),
         };

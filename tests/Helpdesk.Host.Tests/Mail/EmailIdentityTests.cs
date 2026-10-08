@@ -90,19 +90,18 @@ public sealed class EmailIdentityTests(HelpdeskFixture fixture) : IClassFixture<
     }
 
     [Fact]
-    public async Task Every_reply_leaves_from_the_ticket_mailbox_with_that_mailbox_as_reply_to_whoever_sends_it_and_whichever_team_owns_the_ticket()
+    public async Task Every_reply_leaves_from_the_ticket_mailbox_with_that_mailbox_as_reply_to_whoever_sends_it_and_whoever_is_assigned_to_the_ticket()
     {
         var d = await fixture.NewDeptAsync();
         var boxA = await fixture.CreateMailboxAsync(d, isDefault: true);
         var boxB = await fixture.CreateMailboxAsync(d);
         var s = await StartAsync(boxB, d); // the ticket arrives at the NON-default mailbox
-        var team = await fixture.CreateTeamAsync(d.Department, "Network");
 
         // A forged sender in the request is not even a field; the agent's own address never becomes the sender.
         (await d.Agent.Client.PostAsync(TicketKit.Url(s.TicketId, "/messages"), new { kind = "Public", body = "First reply", from = "agent.personal@example.test", mailboxId = boxA.Id })).Expect(HttpStatusCode.Created);
         var current = (await d.Lead.GetTicketAsync(s.TicketId)).Expect(HttpStatusCode.OK);
-        (await d.Lead.AssignAsync(s.TicketId, current.Version, team.Id, d.Agent.Id)).Expect(HttpStatusCode.OK);
-        (await d.Lead.PostMessageAsync(s.TicketId, "Public", "Second reply after the team changed")).Expect(HttpStatusCode.Created);
+        (await d.Lead.AssignAsync(s.TicketId, current.Version, d.Agent.Id)).Expect(HttpStatusCode.OK);
+        (await d.Lead.PostMessageAsync(s.TicketId, "Public", "Second reply after the assignee changed")).Expect(HttpStatusCode.Created);
         await fixture.DispatchAsync();
 
         Assert.Empty(fixture.Fake().SentMail(boxA.Address));

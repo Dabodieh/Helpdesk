@@ -21,7 +21,7 @@ namespace Helpdesk.Host.Tests.Ticketing;
 public sealed class TicketIsolationLeakageTests(HelpdeskFixture fixture) : IClassFixture<HelpdeskFixture>
 {
     private static readonly string[] SortNames = ["updated_desc", "updated_asc", "created_desc", "created_asc", "priority_desc"];
-    private static readonly string[] QueueNames = ["all", "my", "team", "unassigned"];
+    private static readonly string[] QueueNames = ["all", "my", "unassigned"];
 
     // ----- internal notes (T4) -----
 
@@ -56,7 +56,7 @@ public sealed class TicketIsolationLeakageTests(HelpdeskFixture fixture) : IClas
         (await agent.PostMessageAsync(created.Id, "Public", pub)).Expect(HttpStatusCode.Created);
         (await agent.PostMessageAsync(created.Id, "Internal", note, status: "Pending")).Expect(HttpStatusCode.Created);
         var current = (await agent.GetTicketAsync(created.Id)).Expect(HttpStatusCode.OK);
-        (await lead.AssignAsync(created.Id, current.Version, w.TeamA.Id, w.Target.Id)).Expect(HttpStatusCode.OK);
+        (await lead.AssignAsync(created.Id, current.Version, w.Target.Id)).Expect(HttpStatusCode.OK);
         (await lead.PatchTicketAsync((await lead.GetTicketAsync(created.Id)), new { Subject = $"Subj2 {tag}", Priority = "High" })).Expect(HttpStatusCode.OK);
 
         string[] tokens = [desc, pub, note];
@@ -175,7 +175,7 @@ public sealed class TicketIsolationLeakageTests(HelpdeskFixture fixture) : IClas
             var lead = await fixture.SignInAsync(w.Lead.Subject, factory: noAssign);
             var current = (await lead.GetTicketAsync(f.Id)).Expect(HttpStatusCode.OK);
             var before = await IsoKit.SnapshotAsync(fixture, w.Ids);
-            (await lead.AssignAsync(f.Id, current.Version, null, lead.Id)).Expect(HttpStatusCode.Forbidden);
+            (await lead.AssignAsync(f.Id, current.Version, lead.Id)).Expect(HttpStatusCode.Forbidden);
             (await lead.Client.PostAsync($"{w.A.Url}/tickets", TicketHelpers.NewTicketBody(extra: new { AssigneeUserId = lead.Id }))).Expect(HttpStatusCode.Forbidden);
             Assert.Equal(before, await IsoKit.SnapshotAsync(fixture, w.Ids));
         }
@@ -278,11 +278,9 @@ public sealed class TicketIsolationLeakageTests(HelpdeskFixture fixture) : IClas
     // ----- assignment validity (T6) -----
 
     [Fact]
-    public async Task Invalid_teams_and_assignees_are_rejected_on_create_and_assignment_and_foreign_ids_look_like_random_ids()
+    public async Task Invalid_assignees_are_rejected_on_create_and_assignment_and_foreign_ids_look_like_random_ids()
     {
         var w = await IsoWorld.For(fixture);
-        var inactiveTeam = await fixture.CreateTeamAsync(w.A);
-        (await w.Root.Client.PatchAsync($"{w.A.Url}/teams/{inactiveTeam.Id}", new { version = inactiveTeam.Version, isActive = false })).Expect(HttpStatusCode.OK);
         var inactiveUser = await fixture.NewMemberAsync(w.A, "Agent");
         await fixture.ExecuteAsync("UPDATE identity.users SET is_active = false WHERE id = @u", TicketKit.P("u", inactiveUser.Id));
 
@@ -296,7 +294,6 @@ public sealed class TicketIsolationLeakageTests(HelpdeskFixture fixture) : IClas
             ["platform admin without membership"] = w.Root.Id,
             ["user without membership"] = w.NoMember.Id,
         };
-        var badTeams = new Dictionary<string, Guid> { ["team of B"] = w.TeamB.Id, ["random guid"] = Guid.NewGuid() };
         var f = await w.NewTicketAsync();
         var before = await IsoKit.SnapshotAsync(fixture, w.Ids);
 
@@ -305,30 +302,18 @@ public sealed class TicketIsolationLeakageTests(HelpdeskFixture fixture) : IClas
         {
             var created = await w.Lead.Client.PostAsync($"{w.A.Url}/tickets", TicketHelpers.NewTicketBody(extra: new { AssigneeUserId = id }));
             created.ExpectCode(HttpStatusCode.Conflict, "invalid_state");
-            var assigned = (await w.Lead.AssignAsync(f.Id, f.Version, null, id)).ExpectCode(HttpStatusCode.Conflict, "invalid_state");
-            var admin = (await w.Admin.AssignAsync(f.Id, f.Version, null, id)).ExpectCode(HttpStatusCode.Conflict, "invalid_state");
+            var assigned = (await w.Lead.AssignAsync(f.Id, f.Version, id)).ExpectCode(HttpStatusCode.Conflict, "invalid_state");
+            var admin = (await w.Admin.AssignAsync(f.Id, f.Version, id)).ExpectCode(HttpStatusCode.Conflict, "invalid_state");
             assigneeResponses.Add($"{name}|{IsoKit.Fingerprint(created)}|{IsoKit.Fingerprint(assigned)}|{IsoKit.Fingerprint(admin)}");
         }
 
         // Every reason an assignee is refused reads the same: nothing says whether the user exists, is in another department or is inactive.
         Assert.Single(assigneeResponses.Select(r => string.Join('|', r.Split('|')[1..])).Distinct());
 
-        var teamResponses = new List<string>();
-        foreach (var (_, id) in badTeams)
-        {
-            var created = (await w.Lead.Client.PostAsync($"{w.A.Url}/tickets", TicketHelpers.NewTicketBody(extra: new { TeamId = id }))).ExpectCode(HttpStatusCode.Conflict, "invalid_state");
-            var assigned = (await w.Lead.AssignAsync(f.Id, f.Version, id, null)).ExpectCode(HttpStatusCode.Conflict, "invalid_state");
-            teamResponses.Add(IsoKit.Fingerprint(created) + "|" + IsoKit.Fingerprint(assigned));
-        }
-
-        Assert.Single(teamResponses.Distinct()); // a team of another department == a team that does not exist
-        (await w.Lead.Client.PostAsync($"{w.A.Url}/tickets", TicketHelpers.NewTicketBody(extra: new { TeamId = inactiveTeam.Id }))).ExpectCode(HttpStatusCode.Conflict, "invalid_state");
-        (await w.Lead.AssignAsync(f.Id, f.Version, inactiveTeam.Id, null)).ExpectCode(HttpStatusCode.Conflict, "invalid_state");
-
         // An agent with only assign.self gets 403 (never a hint about the object) for anyone but themself.
         foreach (var id in badAssignees.Values)
         {
-            (await w.Agent.AssignAsync(f.Id, f.Version, null, id)).Expect(HttpStatusCode.Forbidden);
+            (await w.Agent.AssignAsync(f.Id, f.Version, id)).Expect(HttpStatusCode.Forbidden);
         }
 
         Assert.Equal(before, await IsoKit.SnapshotAsync(fixture, w.Ids));
@@ -337,21 +322,16 @@ public sealed class TicketIsolationLeakageTests(HelpdeskFixture fixture) : IClas
     }
 
     [Fact]
-    public async Task Assign_self_covers_taking_and_releasing_only_never_other_users_or_team_changes()
+    public async Task Assign_self_covers_taking_and_releasing_only_never_other_users()
     {
         var w = await IsoWorld.For(fixture);
         var f = await w.NewTicketAsync();
-        var teamed = (await w.Lead.AssignAsync(f.Id, f.Version, w.TeamA.Id, null)).Expect(HttpStatusCode.OK);
-
-        (await w.Agent.AssignAsync(f.Id, teamed.Version, null, w.Lead.Id)).Expect(HttpStatusCode.Forbidden);           // clearing the team (routing, D21) never also lets an agent pick someone else
-        (await w.Agent.AssignAsync(f.Id, teamed.Version, w.TeamB.Id, w.Lead.Id)).Expect(HttpStatusCode.Forbidden);     // a team change never lets an agent pick someone else either
-        (await w.Agent.AssignAsync(f.Id, teamed.Version, w.TeamA.Id, w.Lead.Id)).Expect(HttpStatusCode.Forbidden);    // someone else
-        (await w.Agent.AssignAsync(f.Id, teamed.Version, w.TeamA.Id, null)).Expect(HttpStatusCode.Forbidden);          // not the assignee: nothing to release
-        (await w.Viewer.AssignAsync(f.Id, teamed.Version, w.TeamA.Id, w.Viewer.Id)).Expect(HttpStatusCode.Forbidden);
-        var taken = (await w.Agent.AssignAsync(f.Id, teamed.Version, w.TeamA.Id, w.Agent.Id)).Expect(HttpStatusCode.OK);
-        (await w.Target.AssignAsync(f.Id, taken.Version, w.TeamA.Id, null)).Expect(HttpStatusCode.Forbidden);          // cannot release another agent's ticket
-        var released = (await w.Agent.AssignAsync(f.Id, taken.Version, w.TeamA.Id, null)).Expect(HttpStatusCode.OK);
-        Assert.Equal(w.TeamA.Id, released.Json.GetProperty("team").GetProperty("id").GetGuid());
+        (await w.Agent.AssignAsync(f.Id, f.Version, w.Lead.Id)).Expect(HttpStatusCode.Forbidden);    // someone else
+        (await w.Agent.AssignAsync(f.Id, f.Version, null)).Expect(HttpStatusCode.Forbidden);          // not the assignee: nothing to release
+        (await w.Viewer.AssignAsync(f.Id, f.Version, w.Viewer.Id)).Expect(HttpStatusCode.Forbidden);
+        var taken = (await w.Agent.AssignAsync(f.Id, f.Version, w.Agent.Id)).Expect(HttpStatusCode.OK);
+        (await w.Target.AssignAsync(f.Id, taken.Version, null)).Expect(HttpStatusCode.Forbidden);          // cannot release another agent's ticket
+        var released = (await w.Agent.AssignAsync(f.Id, taken.Version, null)).Expect(HttpStatusCode.OK);
         Assert.Equal(JsonValueKind.Null, released.Json.GetProperty("assignee").ValueKind);
     }
 
@@ -375,7 +355,7 @@ public sealed class TicketIsolationLeakageTests(HelpdeskFixture fixture) : IClas
             {
                 foreach (var sort in SortNames)
                 {
-                    foreach (var extra in new[] { "", $"&departmentId={w.A.Id}", $"&departmentId={w.B.Id}", $"&teamId={w.TeamA.Id}", $"&assigneeUserId={w.Target.Id}", "&unassigned=true" })
+                    foreach (var extra in new[] { "", $"&departmentId={w.A.Id}", $"&departmentId={w.B.Id}", $"&assigneeUserId={w.Target.Id}", "&unassigned=true" })
                     {
                         string? cursor = null;
                         for (var page = 0; page < 8; page++)
@@ -746,7 +726,7 @@ public sealed class TicketIsolationLeakageTests(HelpdeskFixture fixture) : IClas
         var patch = await w.Lead.Client.PatchAsync($"/api/tickets/{f.Id}", new
         {
             version = f.Version, priority = "High", reference = "HACK-2", number = 5, departmentId = w.B.Id, requesterId = w.TicketB.Json.GetProperty("requester").GetProperty("id").GetGuid(),
-            assigneeUserId = w.Lead.Id, teamId = w.TeamA.Id, resolvedAt = old, closedAt = old, createdAt = old, createdByUserId = w.Lead.Id, id = injectedId,
+            assigneeUserId = w.Lead.Id, teamId = Guid.NewGuid(), resolvedAt = old, closedAt = old, createdAt = old, createdByUserId = w.Lead.Id, id = injectedId,
         });
         Assert.True(patch.Status is HttpStatusCode.OK or HttpStatusCode.BadRequest, patch.Body);
         var row = await fixture.ScalarAsync<string>(
@@ -759,7 +739,7 @@ public sealed class TicketIsolationLeakageTests(HelpdeskFixture fixture) : IClas
         var fresh = (await w.Lead.GetTicketAsync(f.Id)).Expect(HttpStatusCode.OK);
         var assign = await w.Lead.Client.PutAsync($"/api/tickets/{f.Id}/assignment", new
         {
-            version = fresh.Version, teamId = (Guid?)null, assigneeUserId = w.Target.Id, status = "Closed", priority = "Low", subject = "pwned", departmentId = w.B.Id, reference = "HACK-3",
+            version = fresh.Version, assigneeUserId = w.Target.Id, status = "Closed", priority = "Low", subject = "pwned", departmentId = w.B.Id, reference = "HACK-3",
         });
         Assert.True(assign.Status is HttpStatusCode.OK or HttpStatusCode.BadRequest, assign.Body);
         var afterAssign = (await w.Lead.GetTicketAsync(f.Id)).Expect(HttpStatusCode.OK).Json;
@@ -810,7 +790,7 @@ public sealed class TicketIsolationLeakageTests(HelpdeskFixture fixture) : IClas
             "POST create" => (HttpMethod.Post, $"{w.A.Url}/tickets", TicketHelpers.NewTicketBody()),
             "POST message" => (HttpMethod.Post, $"/api/tickets/{f.Id}/messages", (object)new { kind = "Internal", body = "csrf" }),
             "PATCH ticket" => (HttpMethod.Patch, $"/api/tickets/{f.Id}", (object)new { version = f.Version, priority = "Urgent" }),
-            _ => (HttpMethod.Put, $"/api/tickets/{f.Id}/assignment", (object)new { version = f.Version, teamId = (Guid?)null, assigneeUserId = w.Target.Id }),
+            _ => (HttpMethod.Put, $"/api/tickets/{f.Id}/assignment", (object)new { version = f.Version, assigneeUserId = w.Target.Id }),
         };
         var admin = w.Actors[IsoWorld.AdminA].Client;
         var othersToken = await IsoKit.CsrfTokenOfAsync(w.Actors[IsoWorld.LeadA].Client);
@@ -886,8 +866,8 @@ public sealed class TicketIsolationLeakageTests(HelpdeskFixture fixture) : IClas
         var w = await IsoWorld.For(fixture);
         var f = await w.NewTicketAsync();
         var patch = w.Agent.Client.PatchAsync($"/api/tickets/{f.Id}", new { version = f.Version, priority = "Urgent" });
-        var assign = w.Lead.AssignAsync(f.Id, f.Version, null, w.Target.Id);
-        var assign2 = w.Admin.AssignAsync(f.Id, f.Version, null, w.Agent.Id);
+        var assign = w.Lead.AssignAsync(f.Id, f.Version, w.Target.Id);
+        var assign2 = w.Admin.AssignAsync(f.Id, f.Version, w.Agent.Id);
         var message = w.Agent.PostMessageAsync(f.Id, "Public", "concurrent reply");
         await Task.WhenAll(patch, assign, assign2, message);
 
@@ -913,7 +893,7 @@ public sealed class TicketIsolationLeakageTests(HelpdeskFixture fixture) : IClas
         var posted = (await w.Agent.PostMessageAsync(f.Id, "Public", "while you were editing")).Expect(HttpStatusCode.Created);
         Assert.NotEqual(editorsView.Version, posted.Json.GetProperty("ticket").Str("version"));
         (await w.Lead.PatchTicketAsync(editorsView, new { Priority = "High" })).ExpectCode(HttpStatusCode.Conflict, "version_conflict");
-        (await w.Lead.AssignAsync(f.Id, editorsView.Version, null, w.Lead.Id)).ExpectCode(HttpStatusCode.Conflict, "version_conflict");
+        (await w.Lead.AssignAsync(f.Id, editorsView.Version, w.Lead.Id)).ExpectCode(HttpStatusCode.Conflict, "version_conflict");
 
         // Reloading resolves it, and the reply is still there.
         var reloaded = (await w.Lead.GetTicketAsync(f.Id)).Expect(HttpStatusCode.OK);
@@ -934,7 +914,7 @@ public sealed class TicketIsolationLeakageTests(HelpdeskFixture fixture) : IClas
         {
             var member = await fixture.NewMemberAsync(w.A, "Agent");
             var f = await w.NewTicketAsync();
-            var assign = w.Lead.AssignAsync(f.Id, f.Version, null, member.Id);
+            var assign = w.Lead.AssignAsync(f.Id, f.Version, member.Id);
             var remove = w.Root.Client.DeleteAsync($"{w.A.Url}/members/{member.Id}");
             await Task.WhenAll(assign, remove);
 

@@ -85,7 +85,7 @@ public sealed class ReportingFoundationTests(HelpdeskFixture fixture) : IClassFi
         {
             var keys = await fixture.ScalarAsync<string>(
                 "SELECT string_agg(k, ',' ORDER BY k) FROM (SELECT jsonb_object_keys(next) AS k FROM audit.audit_events WHERE object_id = @t AND action = 'ticket.created') x", TicketKit.P("t", id));
-            Assert.Equal("assigneeUserId,formId,mailboxId,priority,reference,source,status,teamId,ticketTypeId", keys);
+            Assert.Equal("assigneeUserId,formId,mailboxId,priority,reference,source,status,ticketTypeId", keys);
             Assert.Equal(source, await fixture.ScalarAsync<string>("SELECT next->>'source' FROM audit.audit_events WHERE object_id = @t AND action = 'ticket.created'", TicketKit.P("t", id)));
         }
     }

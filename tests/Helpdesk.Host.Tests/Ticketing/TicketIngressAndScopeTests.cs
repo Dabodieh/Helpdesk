@@ -15,7 +15,7 @@ namespace Helpdesk.Host.Tests.Ticketing;
 /// <summary>ITicketIngress (D-15 reopen rules), the fail-closed department scope and the ticket permission model.</summary>
 public sealed class TicketIngressAndScopeTests(HelpdeskFixture fixture) : IClassFixture<HelpdeskFixture>
 {
-    private static readonly string[] AgentTicketPermissions = ["tickets.create", "tickets.note", "tickets.notes.read", "tickets.read", "tickets.reply", "tickets.assign.self", "tickets.assign.team", "tickets.update"];
+    private static readonly string[] AgentTicketPermissions = ["tickets.create", "tickets.note", "tickets.notes.read", "tickets.read", "tickets.reply", "tickets.assign.self", "tickets.update"];
 
     private static Guid RequesterOf(ApiResponse ticket) => ticket.Json.GetProperty("requester").GetProperty("id").GetGuid();
 
@@ -30,11 +30,10 @@ public sealed class TicketIngressAndScopeTests(HelpdeskFixture fixture) : IClass
     [InlineData("Closed")]
     [InlineData("Resolved")]
     [InlineData("Pending")]
-    public async Task A_requester_reply_reopens_the_same_ticket_and_keeps_team_and_assignee(string status)
+    public async Task A_requester_reply_reopens_the_same_ticket_and_keeps_the_assignee(string status)
     {
         var d = await fixture.NewDeptAsync();
-        var team = await fixture.CreateTeamAsync(d.Department);
-        var t = await d.Lead.CreateTicketAsync(d.Department, TicketHelpers.NewTicketBody(extra: new { TeamId = team.Id, AssigneeUserId = d.Agent.Id }));
+        var t = await d.Lead.CreateTicketAsync(d.Department, TicketHelpers.NewTicketBody(extra: new { AssigneeUserId = d.Agent.Id }));
         var changed = (await d.Lead.PatchTicketAsync(t, new { Status = status })).Expect(HttpStatusCode.OK);
 
         var result = await IngestAsync(d.Id, t.Id, RequesterOf(t));
@@ -44,7 +43,6 @@ public sealed class TicketIngressAndScopeTests(HelpdeskFixture fixture) : IClass
         Assert.Equal("Open", after.Str("status"));
         Assert.Equal(t.Json.Str("reference"), after.Str("reference"));
         Assert.Equal(d.Id, after.GetProperty("departmentId").GetGuid());
-        Assert.Equal(team.Id, after.GetProperty("team").GetProperty("id").GetGuid());
         Assert.Equal(d.Agent.Id, after.GetProperty("assignee").GetProperty("id").GetGuid());
         Assert.Equal(System.Text.Json.JsonValueKind.Null, after.GetProperty("closedAt").ValueKind);
         Assert.Equal(System.Text.Json.JsonValueKind.Null, after.GetProperty("resolvedAt").ValueKind);
@@ -173,7 +171,7 @@ public sealed class TicketIngressAndScopeTests(HelpdeskFixture fixture) : IClass
         {
             id => u.GetTicketAsync(id),
             id => u.Client.PatchAsync(TicketKit.Url(id), new { version = "1", status = "Closed" }),
-            id => u.AssignAsync(id, "1", null, u.Id),
+            id => u.AssignAsync(id, "1", u.Id),
             id => u.PostMessageAsync(id, "Public", "x"),
             id => u.Client.GetAsync(TicketKit.Url(id, "/messages")),
             id => u.Client.GetAsync(TicketKit.Url(id, "/activity")),
@@ -200,13 +198,13 @@ public sealed class TicketIngressAndScopeTests(HelpdeskFixture fixture) : IClass
         string[] codes =
         [
             PermissionCodes.TicketsRead, PermissionCodes.TicketsCreate, PermissionCodes.TicketsReply, PermissionCodes.TicketsNote,
-            PermissionCodes.TicketsNotesRead, PermissionCodes.TicketsUpdate, PermissionCodes.TicketsAssignSelf, PermissionCodes.TicketsAssignTeam, PermissionCodes.TicketsAssignAny,
+            PermissionCodes.TicketsNotesRead, PermissionCodes.TicketsUpdate, PermissionCodes.TicketsAssignSelf, PermissionCodes.TicketsAssignAny,
         ];
         Assert.All(codes, c => Assert.Equal(PermissionKind.Content, PermissionCatalogue.Get(c).Kind));
         Assert.All(codes, c => Assert.Equal(EvaluationOutcome.NotFound, PermissionEvaluator.Evaluate(PermissionCatalogue.Get(c), true, null, true))); // never via the platform flag
 
         string[] viewer = [PermissionCodes.TicketsRead, PermissionCodes.TicketsNotesRead];
-        string[] agent = [.. viewer, PermissionCodes.TicketsCreate, PermissionCodes.TicketsReply, PermissionCodes.TicketsNote, PermissionCodes.TicketsUpdate, PermissionCodes.TicketsAssignSelf, PermissionCodes.TicketsAssignTeam];
+        string[] agent = [.. viewer, PermissionCodes.TicketsCreate, PermissionCodes.TicketsReply, PermissionCodes.TicketsNote, PermissionCodes.TicketsUpdate, PermissionCodes.TicketsAssignSelf];
         string[] lead = [.. agent, PermissionCodes.TicketsAssignAny];
         foreach (var (role, expected) in new[] { (DepartmentRoles.Viewer, viewer), (DepartmentRoles.Agent, agent), (DepartmentRoles.TeamLead, lead), (DepartmentRoles.DepartmentAdmin, lead) })
         {

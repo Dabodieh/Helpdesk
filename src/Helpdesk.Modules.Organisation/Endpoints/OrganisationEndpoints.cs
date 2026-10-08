@@ -15,7 +15,6 @@ internal static class OrganisationEndpoints
             .WithTags("Auth");
 
         MapDepartments(app);
-        MapTeams(app);
         MapMembers(app);
     }
 
@@ -46,48 +45,6 @@ internal static class OrganisationEndpoints
                     TypedResults.Ok(await departments.UpdateAsync(departmentId, body, ct)))
             .RequirePermission(PermissionCodes.DepartmentRead)
             .WithTags("Departments");
-    }
-
-    private static void MapTeams(IEndpointRouteBuilder app)
-    {
-        var teams = app.MapGroup("/api/departments/{departmentId:guid}/teams").WithTags("Teams");
-
-        teams.MapGet("", async (Guid departmentId, TeamService service, CancellationToken ct) => TypedResults.Ok(await service.ListAsync(departmentId, ct)))
-            .RequirePermission(PermissionCodes.DepartmentRead);
-
-        teams.MapPost("", async (Guid departmentId, CreateTeamRequest body, TeamService service, CancellationToken ct) =>
-            {
-                var created = await service.CreateAsync(departmentId, body, ct);
-                return TypedResults.Created($"/api/departments/{departmentId}/teams/{created.Id}", created);
-            })
-            .RequirePermission(PermissionCodes.TeamsManage);
-
-        teams.MapGet("/{teamId:guid}",
-                async (Guid departmentId, Guid teamId, TeamService service, CancellationToken ct) => TypedResults.Ok(await service.GetAsync(departmentId, teamId, ct)))
-            .RequirePermission(PermissionCodes.DepartmentRead);
-
-        teams.MapPatch("/{teamId:guid}",
-                async (Guid departmentId, Guid teamId, UpdateTeamRequest body, TeamService service, CancellationToken ct) =>
-                    TypedResults.Ok(await service.UpdateAsync(departmentId, teamId, body, ct)))
-            .RequirePermission(PermissionCodes.TeamsManage);
-
-        teams.MapGet("/{teamId:guid}/members",
-                async (Guid departmentId, Guid teamId, TeamService service, CancellationToken ct) => TypedResults.Ok(await service.MembersAsync(departmentId, teamId, ct)))
-            .RequirePermission(PermissionCodes.DepartmentRead);
-
-        teams.MapPut("/{teamId:guid}/members/{userId:guid}", async (Guid departmentId, Guid teamId, Guid userId, TeamService service, CancellationToken ct) =>
-            {
-                await service.AddMemberAsync(departmentId, teamId, userId, ct);
-                return TypedResults.NoContent();
-            })
-            .RequirePermission(PermissionCodes.TeamsManage);
-
-        teams.MapDelete("/{teamId:guid}/members/{userId:guid}", async (Guid departmentId, Guid teamId, Guid userId, TeamService service, CancellationToken ct) =>
-            {
-                await service.RemoveMemberAsync(departmentId, teamId, userId, ct);
-                return TypedResults.NoContent();
-            })
-            .RequirePermission(PermissionCodes.TeamsManage);
     }
 
     private static void MapMembers(IEndpointRouteBuilder app)

@@ -33,7 +33,6 @@ public static class OrganisationModule
 
         services.AddScoped<OrganisationAudit>();
         services.AddScoped<DepartmentService>();
-        services.AddScoped<TeamService>();
         services.AddScoped<MembershipService>();
         services.AddScoped<MeService>();
         services.AddScoped<IOrganisationDirectory, OrganisationDirectory>();

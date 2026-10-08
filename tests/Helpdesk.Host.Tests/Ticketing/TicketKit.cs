@@ -42,8 +42,8 @@ public static class TicketKit
         return await user.Client.PatchAsync(Url(ticket.Id), body);
     }
 
-    public static Task<ApiResponse> AssignAsync(this TestUser user, Guid ticketId, string version, Guid? teamId, Guid? assigneeUserId) =>
-        user.Client.PutAsync(Url(ticketId, "/assignment"), new { version, teamId, assigneeUserId });
+    public static Task<ApiResponse> AssignAsync(this TestUser user, Guid ticketId, string version, Guid? assigneeUserId) =>
+        user.Client.PutAsync(Url(ticketId, "/assignment"), new { version, assigneeUserId });
 
     public static Task<ApiResponse> PostMessageAsync(this TestUser user, Guid ticketId, string kind, string body, string? status = null) =>
         user.Client.PostAsync(Url(ticketId, "/messages"), status is null ? new { kind, body } : new { kind, body, status });

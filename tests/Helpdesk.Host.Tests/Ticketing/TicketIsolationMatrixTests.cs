@@ -50,9 +50,8 @@ public sealed class TicketIsolationMatrixTests(HelpdeskFixture fixture) : IClass
         new("GET ticket by reference (lower)", Scope.Ticket, Form.RefLower, (w, f, a, r) => new(HttpMethod.Get, Tk(r)), AllRoles, HttpStatusCode.OK),
         new("PATCH ticket", Scope.Ticket, Form.Guid, (w, f, a, r) => new(HttpMethod.Patch, Tk(r), new { version = f.Version, priority = "High" }), Working, HttpStatusCode.OK),
         new("PATCH ticket by reference", Scope.Ticket, Form.RefLower, (w, f, a, r) => new(HttpMethod.Patch, Tk(r), new { version = f.Version, status = "Pending" }), Working, HttpStatusCode.OK),
-        new("PUT assignment to another agent", Scope.Ticket, Form.Guid, (w, f, a, r) => new(HttpMethod.Put, Tk(r, "/assignment"), new { version = f.Version, teamId = (Guid?)null, assigneeUserId = w.Target.Id }), Assigners, HttpStatusCode.OK),
-        new("PUT assignment to self", Scope.Ticket, Form.Guid, (w, f, a, r) => new(HttpMethod.Put, Tk(r, "/assignment"), new { version = f.Version, teamId = (Guid?)null, assigneeUserId = a.UserId }), Working, HttpStatusCode.OK),
-        new("PUT assignment of a team", Scope.Ticket, Form.RefUpper, (w, f, a, r) => new(HttpMethod.Put, Tk(r, "/assignment"), new { version = f.Version, teamId = w.TeamA.Id, assigneeUserId = (Guid?)null }), Working, HttpStatusCode.OK), // routing (tickets.assign.team) is open to every working role (D21)
+        new("PUT assignment to another agent", Scope.Ticket, Form.Guid, (w, f, a, r) => new(HttpMethod.Put, Tk(r, "/assignment"), new { version = f.Version, assigneeUserId = w.Target.Id }), Assigners, HttpStatusCode.OK),
+        new("PUT assignment to self", Scope.Ticket, Form.Guid, (w, f, a, r) => new(HttpMethod.Put, Tk(r, "/assignment"), new { version = f.Version, assigneeUserId = a.UserId }), Working, HttpStatusCode.OK),
         new("GET messages", Scope.Ticket, Form.Guid, (w, f, a, r) => new(HttpMethod.Get, Tk(r, "/messages")), AllRoles, HttpStatusCode.OK),
         new("GET messages (invalid limit)", Scope.Ticket, Form.Guid, (w, f, a, r) => new(HttpMethod.Get, Tk(r, "/messages?limit=0")), AllRoles, HttpStatusCode.BadRequest),
         new("POST message (public)", Scope.Ticket, Form.Guid, (w, f, a, r) => new(HttpMethod.Post, Tk(r, "/messages"), new { kind = "Public", body = "matrix reply" }), Working, HttpStatusCode.Created),
@@ -212,7 +211,7 @@ public sealed class TicketIsolationMatrixTests(HelpdeskFixture fixture) : IClass
 
     private static readonly string[] ListQueries =
     [
-        "", "?queue=all", "?queue=unassigned", "?queue=my", "?queue=team", "?sort=priority_desc&limit=100", "?sort=created_asc",
+        "", "?queue=all", "?queue=unassigned", "?queue=my", "?sort=priority_desc&limit=100", "?sort=created_asc",
         "?status=Open&status=Pending&status=Resolved&status=Closed&limit=100",
     ];
 
@@ -242,7 +241,7 @@ public sealed class TicketIsolationMatrixTests(HelpdeskFixture fixture) : IClass
         var foreign = idsA.Concat(idsB).Except(ownOnly).ToHashSet();
 
         var queries = ListQueries.Concat([
-            $"?departmentId={w.A.Id}", $"?departmentId={w.B.Id}", $"?teamId={w.TeamA.Id}", $"?teamId={w.TeamB.Id}",
+            $"?departmentId={w.A.Id}", $"?departmentId={w.B.Id}",
             $"?assigneeUserId={w.Target.Id}", $"?assigneeUserId={w.UserB.Id}", $"?q={f.Reference}", $"?q={w.A.Key}", $"?q={w.B.Key}", $"?q={w.TicketB.Json.Str("subject")[..8]}",
         ]);
         var before = await IsoKit.SnapshotAsync(fixture, w.Ids);
@@ -285,7 +284,7 @@ public sealed class TicketIsolationMatrixTests(HelpdeskFixture fixture) : IClass
             Assert.Equal(expectedAll, counts.Json.GetProperty("all").GetInt64());
             Assert.True(counts.Json.GetProperty("unassigned").GetInt64() <= expectedAll);
             Assert.True(counts.Json.GetProperty("my").GetInt64() <= expectedAll);
-            Assert.True(counts.Json.GetProperty("team").GetInt64() <= expectedAll);
+            Assert.False(counts.Json.TryGetProperty("team", out _));
         }
 
         Assert.Equal(before, await IsoKit.SnapshotAsync(fixture, w.Ids));
@@ -304,7 +303,6 @@ public sealed class TicketIsolationMatrixTests(HelpdeskFixture fixture) : IClass
         [
             ($"?departmentId={w.A.Id}", $"?departmentId={Guid.NewGuid()}"),
             ($"?departmentId={w.A.Id}&queue=unassigned", $"?departmentId={Guid.NewGuid()}&queue=unassigned"),
-            ($"?teamId={w.TeamA.Id}", $"?teamId={Guid.NewGuid()}"),
             ($"?assigneeUserId={w.Target.Id}", $"?assigneeUserId={Guid.NewGuid()}"),
             ($"?assigneeUserId={w.Agent.Id}&status=Open&status=Closed", $"?assigneeUserId={Guid.NewGuid()}&status=Open&status=Closed"),
             ($"?q={foreignRef}", $"?q={IsoWorld.RandomReference(w.A.Key)}"),
@@ -331,7 +329,6 @@ public sealed class TicketIsolationMatrixTests(HelpdeskFixture fixture) : IClass
         (string Foreign, string Ghost)[] viewerPairs =
         [
             ($"?departmentId={w.B.Id}", $"?departmentId={Guid.NewGuid()}"),
-            ($"?teamId={w.TeamB.Id}", $"?teamId={Guid.NewGuid()}"),
             ($"?assigneeUserId={w.UserB.Id}", $"?assigneeUserId={Guid.NewGuid()}"),
             ($"?q={w.TicketB.Json.Str("reference")}", $"?q={IsoWorld.RandomReference(w.B.Key)}"),
             ($"?q={Uri.EscapeDataString(w.TicketB.Json.Str("subject"))}", $"?q={Uri.EscapeDataString("Bsubject " + Unique.Id())}"),

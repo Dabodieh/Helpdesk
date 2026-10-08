@@ -21,9 +21,9 @@ internal sealed record QueuePreferencesRequest(IReadOnlyList<string>? Columns, s
 internal sealed class QueuePreferencesService(TicketingDbContext db, ICurrentUser current, TimeProvider clock)
 {
     /// <summary>The optional columns a user may show and order. Ref and Subject are always present.</summary>
-    public static readonly string[] SupportedColumns = ["requester", "status", "priority", "sla", "team", "assignee", "updated"];
+    public static readonly string[] SupportedColumns = ["requester", "status", "priority", "sla", "assignee", "updated"];
 
-    public static readonly string[] Queues = ["my", "team", "unassigned", "all", "following"];
+    public static readonly string[] Queues = ["my", "unassigned", "all", "following"];
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 

@@ -12,7 +12,6 @@ internal enum ChangeKind
     AgentPublicReply,
     Status,
     Priority,
-    Team,
     Assignee,
 
     /// <summary>The ticket type changed. Not an automation trigger; it only re-evaluates the SLA policy (D17).</summary>
@@ -81,7 +80,7 @@ internal sealed class SlaEngine(TicketingDbContext db)
             .Where(p => p.DepartmentId == ticket.DepartmentId && p.IsActive)
             .OrderBy(p => p.SortOrder).ThenBy(p => p.CreatedAt).ThenBy(p => p.Id)
             .ToListAsync(ct);
-        var facts = new TicketFacts(ticket.Status, ticket.Priority, ticket.TeamId, ticket.AssigneeUserId, ticket.MailboxId, ticket.Subject, requesterEmailNormalised, SlaStates.None, SlaStates.None, ticket.TicketTypeId);
+        var facts = new TicketFacts(ticket.Status, ticket.Priority, ticket.AssigneeUserId, ticket.MailboxId, ticket.Subject, requesterEmailNormalised, SlaStates.None, SlaStates.None, ticket.TicketTypeId);
         return policies.FirstOrDefault(p => ConditionEvaluator.AllMatch(ConditionEvaluator.Evaluate(StoredJson.Conditions(p.Conditions), facts)));
     }
 
@@ -147,8 +146,8 @@ internal sealed class SlaEngine(TicketingDbContext db)
     /// <summary>Applies the effect of ticket changes to the ticket's clocks (inside the changing transaction). Returns notifications that must be published after commit.</summary>
     public async Task<TicketSla?> OnChangesAsync(Ticket ticket, IReadOnlyList<TicketChange> changes, DateTimeOffset now, CancellationToken ct)
     {
-        // D17: a change of Team, Type or Priority can change which policy applies.
-        if (changes.Any(c => c.Kind is ChangeKind.Team or ChangeKind.Priority or ChangeKind.Type))
+        // D17: a change of Type or Priority can change which policy applies.
+        if (changes.Any(c => c.Kind is ChangeKind.Priority or ChangeKind.Type))
         {
             await ReevaluateAsync(ticket, now, ct);
         }
@@ -211,7 +210,7 @@ internal sealed class SlaEngine(TicketingDbContext db)
     }
 
     /// <summary>
-    /// D17: the applicable policy is chosen again when Team, Type or Priority changes. The SLA cycle never restarts because the policy changed: targets are recalculated from the
+    /// D17: the applicable policy is chosen again when Type or Priority changes. The SLA cycle never restarts because the policy changed: targets are recalculated from the
     /// ORIGINAL cycle timing (ticket creation, or the reopen that started the current resolution cycle), the business time already spent (running or paused) is kept, and a target
     /// that is already exceeded is shown as exceeded instead of being given a fresh clock. A ticket with no SLA yet that now matches a policy gets one counted from its creation.
     /// When no policy matches any more, the policy the ticket has stays (nothing is removed). Finished tickets (Resolved, Closed) are left alone.

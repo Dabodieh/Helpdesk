@@ -12,7 +12,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Helpdesk.Modules.Organisation.Services;
 
-internal sealed record MemberDto(Guid UserId, string DisplayName, string? Email, string Role, IReadOnlyList<Guid> TeamIds);
+internal sealed record MemberDto(Guid UserId, string DisplayName, string? Email, string Role);
 
 internal sealed record SetRoleRequest(string? Role);
 
@@ -33,12 +33,9 @@ internal sealed class MembershipService(
     public async Task<IReadOnlyList<MemberDto>> ListAsync(Guid departmentId, CancellationToken ct)
     {
         var rows = await db.DepartmentMemberships.AsNoTracking().Where(m => m.DepartmentId == departmentId).ToListAsync(ct);
-        var teams = await db.TeamMemberships.AsNoTracking().Where(m => m.DepartmentId == departmentId)
-            .Select(m => new { m.UserId, m.TeamId }).ToListAsync(ct);
         var directory = await users.GetManyAsync(rows.Select(r => r.UserId).ToList(), ct);
         return rows.Where(r => directory.ContainsKey(r.UserId))
-            .Select(r => new MemberDto(r.UserId, directory[r.UserId].DisplayName, directory[r.UserId].Email, r.Role,
-                teams.Where(t => t.UserId == r.UserId).Select(t => t.TeamId).Order().ToList()))
+            .Select(r => new MemberDto(r.UserId, directory[r.UserId].DisplayName, directory[r.UserId].Email, r.Role))
             .OrderBy(m => m.DisplayName, StringComparer.OrdinalIgnoreCase).ThenBy(m => m.UserId).ToList();
     }
 
@@ -115,10 +112,8 @@ internal sealed class MembershipService(
             await NotifyAssignmentsEndedAsync(departmentId, userId, ct);
         }
 
-        var teamIds = await db.TeamMemberships.AsNoTracking().Where(m => m.DepartmentId == departmentId && m.UserId == userId)
-            .Select(m => m.TeamId).OrderBy(id => id).ToListAsync(ct);
         var summary = await users.FindAsync(userId, ct) ?? throw new NotFoundException();
-        return new MemberDto(userId, summary.DisplayName, summary.Email, role, teamIds);
+        return new MemberDto(userId, summary.DisplayName, summary.Email, role);
     }
 
     public async Task RemoveAsync(Guid departmentId, Guid userId, CancellationToken ct)
@@ -143,17 +138,8 @@ internal sealed class MembershipService(
             await listener.MembershipRemovingAsync(departmentId, userId, MemberAssignmentEndReasons.MembershipRemoved, transaction, ct);
         }
 
-        // Remove (and audit) team memberships explicitly; the composite FK cascade is only the backstop.
-        var teamMemberships = await db.TeamMemberships.Where(m => m.DepartmentId == departmentId && m.UserId == userId).ToListAsync(ct);
-        db.TeamMemberships.RemoveRange(teamMemberships);
         db.DepartmentMemberships.Remove(membership);
         await db.SaveChangesAsync(ct);
-
-        foreach (var tm in teamMemberships)
-        {
-            await audit.WriteAsync("team_membership.removed", "team_membership", tm.TeamId, departmentId,
-                new { teamId = tm.TeamId, userId }, new { reason = "department_membership_removed" }, ct);
-        }
 
         await audit.WriteAsync("membership.removed", "department_membership", userId, departmentId, new { role = membership.Role }, null, ct);
         await tx.CommitAsync(ct);
