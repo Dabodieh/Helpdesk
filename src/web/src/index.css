@@ -7,14 +7,14 @@
 /* Graphite: dark is the default; the explicit preference applies to every route. */
 :root {
   color-scheme: dark;
-  --bg: #17181c; --surface: #1e2025; --surface-2: #262830; --hover: #2e3039;
-  --border: #33363f; --border-strong: #4b4f5b; --text: #e8e9ee; --muted: #9fa3ad;
-  --accent: #f08c70; --accent-text: #271d17; --accent-soft: #3e2e27;
-  --danger: #f4a094; --danger-bg: #442d28; --ok: #9ac49d; --warn: #e3bf77; --info-bg: #262e3a;
-  --st-open: #a6c2d0; --st-pending: #e3bf77; --st-resolved: #9ac49d; --st-closed: #9fa3ad;
+  --bg: #121214; --surface: #1b1b1e; --surface-2: #232326; --hover: #2b2b30;
+  --border: #2e2e33; --border-strong: #45454c; --text: #ececf0; --muted: #9a9aa3;
+  --accent: #4a8cff; --accent-text: #07101f; --accent-soft: #14233d;
+  --danger: #f4a094; --danger-bg: #442d28; --ok: #9ac49d; --warn: #e3bf77; --info-bg: #172131;
+  --st-open: #a6c2d0; --st-pending: #e3bf77; --st-resolved: #9ac49d; --st-closed: #9a9aa3;
   --internal-bg: #302d21; --internal-stripe: #393324; --internal-border: #625332; --internal-text: #e3c588;
-  --public-bg: #1e2025; --requester-bg: #17181c;
-  --rail: #111216; --rail-text: #a3a7b1; --rail-active: #f2f3f7;
+  --public-bg: #1b1b1e; --requester-bg: #121214;
+  --rail: #0b0c0f; --rail-text: #a0a2ac; --rail-active: #f2f3f7; --rail-mark: #4a8cff;
   --sans: Manrope, 'Segoe UI', sans-serif; --mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
   --radius: 7px; --row-h: 38px; --ctl-h: 32px;
   font: 14px/1.5 var(--sans); color: var(--text); background: var(--bg);
@@ -28,7 +28,7 @@
   --st-open: #426479; --st-pending: #875c15; --st-resolved: #34704e; --st-closed: #62685f;
   --internal-bg: #fcf5e6; --internal-stripe: #f4ead1; --internal-border: #e6cd92; --internal-text: #765415;
   --public-bg: #fdfdfb; --requester-bg: #f6f6f3;
-  --rail: #25272c; --rail-text: #bcc0c8; --rail-active: #f8f6f1;
+  --rail: #25272c; --rail-text: #bcc0c8; --rail-active: #f8f6f1; --rail-mark: #e88f72;
 }
 
 * {
@@ -3368,7 +3368,7 @@ table.compact th {
 .rail-link { display:flex; align-items:center; justify-content:center; position:relative; width:44px; height:44px; padding:0; border:0; border-radius:8px; background:transparent; color:inherit; }
 .rail-link .icon { width:22px; height:22px; }
 .rail-link:hover, .rail-link.active { color:var(--rail-active); background:#ffffff15; }
-.rail-link.active:before { content:''; position:absolute; left:-14px; top:12px; width:3px; height:20px; border-radius:0 2px 2px 0; background:#e88f72; }
+.rail-link.active:before { content:''; position:absolute; left:-14px; top:12px; width:3px; height:20px; border-radius:0 2px 2px 0; background:var(--rail-mark); }
 .app-rail .usermenu-trigger { width:44px; height:44px; padding:6px; justify-content:center; color:inherit; }
 .app-rail .usermenu-name { display:none; }
 .app-rail .avatar { width:32px; height:32px; background:#3a3d45; border:0; color:#edf1e5; }
