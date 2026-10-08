@@ -3804,3 +3804,16 @@ a.team-name:hover { text-decoration: underline; color: var(--accent); }
   .dash-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dash-panel.span-4 { grid-column: span 12; }
 }
+
+/* Collapsible workspace sidebar: icons only when collapsed (the choice is remembered in the browser) */
+.nav-collapse { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 28px; margin: 0 0 8px; padding: 2px 9px; border: 0; background: transparent; color: var(--muted); font-size: 11px; text-align: left; border-radius: 6px; }
+.nav-collapse:hover { background: var(--hover); color: var(--text); }
+.nav-collapse > span:first-child { font-size: 15px; line-height: 1; width: 14px; text-align: center; }
+.shell-workspace.nav-collapsed { grid-template-columns: 72px 58px minmax(0, 1fr); }
+.nav-collapsed .workspace-nav { padding: 18px 6px; overflow-x: hidden; }
+.nav-collapsed .workspace-nav .nav-label, .nav-collapsed .workspace-nav .rail-heading { display: none; }
+.nav-collapsed .workspace-nav nav a, .nav-collapsed .nav-collapse { justify-content: center; padding-left: 0; padding-right: 0; }
+.nav-collapsed .workspace-nav .count { position: absolute; top: 1px; right: 1px; min-width: 15px; padding: 0 3px; font-size: 9px; line-height: 14px; text-align: center; }
+.nav-collapsed .workspace-nav nav a { position: relative; }
+@media (max-width: 1000px) { .shell-workspace.nav-collapsed { grid-template-columns: 60px 58px minmax(0, 1fr); } }
+@media (max-width: 700px) { .nav-collapse { display: none; } }

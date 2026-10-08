@@ -429,3 +429,20 @@ test('new ticket: the ticket type can be chosen (default preselected) and is pos
   expect(await screen.findByRole('heading', { name: 'Brand new', level: 2 })).toBeInTheDocument()
   expect((calls.find((c) => c.method === 'POST' && c.path === '/api/departments/d1/tickets')?.body as { ticketTypeId?: string }).ticketTypeId).toBe('ty2')
 })
+
+test('the workspace sidebar collapses to icons, expands again and remembers the choice', async () => {
+  window.localStorage.removeItem('helpdesk.nav.collapsed')
+  mockFetch({ ...workspaceRoutes(agentMe()) })
+  renderApp('/queue/my')
+  const toggle = await screen.findByRole('button', { name: 'Collapse sidebar' })
+  expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  fireEvent.click(toggle)
+  const expand = await screen.findByRole('button', { name: 'Expand sidebar' })
+  expect(expand).toHaveAttribute('aria-expanded', 'false')
+  expect(document.querySelector('.shell')).toHaveClass('nav-collapsed')
+  expect(window.localStorage.getItem('helpdesk.nav.collapsed')).toBe('1')
+  expect(screen.getByRole('link', { name: /My Queue/ })).toHaveAttribute('title', 'My Queue') // still reachable and named when only the icon shows
+  fireEvent.click(expand)
+  expect(await screen.findByRole('button', { name: 'Collapse sidebar' })).toBeInTheDocument()
+  expect(window.localStorage.getItem('helpdesk.nav.collapsed')).toBe('0')
+})

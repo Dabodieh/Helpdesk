@@ -57,12 +57,30 @@ function GlobalSearch() {
   )
 }
 
+const NAV_COLLAPSED_KEY = 'helpdesk.nav.collapsed'
+
 export default function AppShell({ children }: { children: ReactNode }) {
   const me = useMe()
   const qc = useQueryClient()
   const navigate = useNavigate()
   const location = useLocation()
   const [dialog, setDialog] = useState<'ticket' | 'help' | null>(null)
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem(NAV_COLLAPSED_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
+  const toggleNav = () =>
+    setCollapsed((c) => {
+      try {
+        window.localStorage.setItem(NAV_COLLAPSED_KEY, c ? '0' : '1')
+      } catch {
+        /* a private window: the choice just is not remembered */
+      }
+      return !c
+    })
   const hasTickets = hasAnyPermission(me, 'tickets.read')
   const canCreate = hasAnyPermission(me, 'tickets.create')
   const counts = useQueueCounts(hasTickets)
@@ -96,7 +114,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <ShellContext.Provider value={api}>
-      <div className={`shell${inWorkspace ? ' shell-workspace' : ''}`}>
+      <div className={`shell${inWorkspace ? ' shell-workspace' : ''}${inWorkspace && collapsed ? ' nav-collapsed' : ''}`}>
         <a className="skip-link" href="#main-content">Skip to content</a>
         <aside className="app-rail" aria-label="Application">
           <Link to="/" className="graphite-brand" aria-label="Helpdesk home"><span /><span /><span /></Link>
@@ -106,9 +124,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <NavLink to="/dashboard" className="rail-link" aria-label="Dashboard" title="Dashboard"><Icon name="views" /></NavLink>
             </>}
             <NavLink to="/portal/knowledge" className="rail-link" aria-label="Knowledge" title="Knowledge"><Icon name="file" /></NavLink>
-            {canAdminister(me) && <NavLink to="/admin" className="rail-link" aria-label="Administration" title="Administration"><Icon name="admin" /></NavLink>}
           </nav>
           <div className="app-rail-foot">
+            {canAdminister(me) && <NavLink to="/admin" className="rail-link" aria-label="Administration" title="Administration"><Icon name="admin" /></NavLink>}
             <ThemeToggle />
             <button type="button" className="rail-link" aria-label="Keyboard shortcuts" title="Keyboard shortcuts" onClick={() => setDialog('help')}><Icon name="help" /></button>
             <UserMenu onSignOut={() => void signOut()} onHelp={() => setDialog('help')} />
@@ -123,20 +141,24 @@ export default function AppShell({ children }: { children: ReactNode }) {
           {hasTickets && <NotificationBell />}
         </header>
         {inWorkspace && <aside className="rail workspace-nav">
+          <button type="button" className="nav-collapse" onClick={toggleNav} aria-expanded={!collapsed} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+            <span aria-hidden="true">{collapsed ? '»' : '«'}</span>
+            <span className="nav-label">Collapse</span>
+          </button>
           <nav aria-label="Queues">
             {hasTickets && (
               <>
                 <h2 className="rail-heading">Workspace</h2>
                 <ul>
                   <li>
-                    <NavLink to="/dashboard">
+                    <NavLink to="/dashboard" title="Dashboard">
                       <Icon name="views" />
                       <span className="nav-label">Dashboard</span>
                     </NavLink>
                   </li>
                   {QUEUE_NAV.map((n) => (
                     <li key={n.to}>
-                      <NavLink to={n.to} className={() => (location.pathname.startsWith(n.to) && !activeView ? 'active' : undefined)}>
+                      <NavLink to={n.to} title={n.label} className={() => (location.pathname.startsWith(n.to) && !activeView ? 'active' : undefined)}>
                         <Icon name={n.icon} />
                         <span className="nav-label">{n.label}</span>
                         {counts.data && (
@@ -164,13 +186,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 <h2 className="rail-heading">Tools</h2>
                 <ul>
                   <li>
-                    <NavLink to="/portal/knowledge">
+                    <NavLink to="/portal/knowledge" title="Knowledge">
                       <Icon name="file" />
                       <span className="nav-label">Knowledge</span>
                     </NavLink>
                   </li>
                   <li>
-                    <NavLink to="/search">
+                    <NavLink to="/search" title="Search">
                       <Icon name="search" />
                       <span className="nav-label">Search</span>
                     </NavLink>
