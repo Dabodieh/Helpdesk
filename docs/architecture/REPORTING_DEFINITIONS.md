@@ -5,7 +5,7 @@ The one place that says what a headline figure means. The code lives in `QueuePr
 | Figure | Definition | Where |
 |--------|------------|-------|
 | Backlog / open work | Status Open or Pending, and not a merged source ticket | `QueuePredicates.Backlog` |
-| Sidebar counts (My, Team, Unassigned, All, Following) | Backlog, narrowed as the name says. Open + Pending, not Open only | `TicketQueryService.QueueCountsAsync` |
+| Sidebar counts (My, Unassigned, All, Following) | Backlog, narrowed as the name says. Open + Pending, not Open only | `TicketQueryService.QueueCountsAsync` |
 | SLA badges (breached, near deadline) | Backlog tickets with a deadline passed / inside the policy's own warning lead | `QueuePredicates.SlaBreached`, `SlaApproaching` |
 | Due within 4 hours | Backlog tickets whose deadline falls in the next 4 wall-clock hours. Not the same idea as "near deadline" | `QueuePredicates.SlaDueSoon` |
 | Awaiting first response | Backlog tickets with no PUBLIC message by a human agent yet. Independent of any SLA policy; an acknowledgement or an internal note never counts | `QueuePredicates.AwaitingFirstResponse` |
@@ -20,9 +20,9 @@ The one place that says what a headline figure means. The code lives in `QueuePr
 
 ## Sources of history
 - Lifecycle columns (`resolved_at`, `closed_at`, the requester's name and address) hold the **current** value only.
-- **`ticketing.ticket_lifecycle_events`** is the content-free history reports read: ticket, department, kind (`created`, `status`, `priority`, `team`, `assignee`, `message`, `merged`), the previous and new value (enumerations and ids only) and the time. It has no actor, subject, address or body and no foreign keys, so it survives any later anonymisation or deletion of audit detail or tickets (D7b). It is written in the same transaction as the audit event and was back-filled from the audit stream when it was created.
+- **`ticketing.ticket_lifecycle_events`** is the content-free history reports read: ticket, department, kind (`created`, `status`, `priority`, `assignee`, `message`, `merged`), the previous and new value (enumerations and ids only) and the time. It has no actor, subject, address or body and no foreign keys, so it survives any later anonymisation or deletion of audit detail or tickets (D7b). It is written in the same transaction as the audit event and was back-filled from the audit stream when it was created.
 - SLA history lives in `sla_events` (applied, met, paused, resumed, reopened, policy changed, breached, not applicable). Reopen counts and first-resolution times come from these two streams.
-- Creation events of every channel share one payload: `reference, source, status, priority, teamId, assigneeUserId, ticketTypeId, mailboxId, formId`.
+- Creation events of every channel share one payload: `reference, source, status, priority, assigneeUserId, ticketTypeId, mailboxId, formId`.
 
 ## Caveats a report must state
 - Distinct-requester counts are **approximate**: requesters are per department and per address; only a linked account joins rows (DATA-009).

@@ -32,7 +32,7 @@ Modules are introduced when their functionality is required, not pre-created.
 | Module | Phase | Responsibility |
 |---|---|---|
 | Identity | 1 | OIDC login, internal users, external-identity mapping, current-user context |
-| Organisation | 1 | Departments, teams, memberships, roles, permission catalogue and `IAuthorizer` (Permissions folded in, ADR-009) |
+| Organisation | 1 | Departments, memberships, roles, permission catalogue and `IAuthorizer` (Permissions folded in, ADR-009) |
 | Audit | 1 | Append-only audit events, `IAuditWriter` |
 | Ticketing (requesters, tickets, conversation) | 2 | Tickets, department-scoped requesters, public messages and internal notes, per-department references, queues; `ITicketIngress` for Phase 3 (ADR-012, `TICKETING.md`) |
 | Mail | 3 | Mailboxes, `IMailProvider` (Graph + simulator), webhooks/delta, inbound pipeline, outbox, attention list (ADR-013) |
@@ -66,7 +66,7 @@ Linux + Docker + Docker Compose + PostgreSQL + S3-compatible object storage, beh
 src/Helpdesk.SharedKernel      current-principal abstraction (ICurrentUser), authorization primitives (IAuthorizer, PermissionRequirement,
                                DepartmentResource, permission codes, endpoint metadata), module migration runner, DB helpers, problem exceptions
 src/Helpdesk.Modules.Identity  (Contracts/ + internals) users, external identities, provisioning, cookie/OIDC/dev sign-in, CSRF, platform-user endpoints
-src/Helpdesk.Modules.Organisation  departments, teams, memberships, permission catalogue, roles, IAuthorizer implementation and handler
+src/Helpdesk.Modules.Organisation  departments, memberships, permission catalogue, roles, IAuthorizer implementation and handler
 src/Helpdesk.Modules.Audit     audit.audit_events, IAuditWriter, audit read endpoints
 src/Helpdesk.Host              composition root: AddXModule/MapXEndpoints wiring, middleware order, exception mapping, `migrate` command
 tests/Helpdesk.ArchitectureTests, tests/Helpdesk.Host.Tests (PostgreSQL-backed integration harness)

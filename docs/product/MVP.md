@@ -14,7 +14,7 @@ The MVP is the **central technical proof**: the full email loop, correctly isola
 
 ## MVP includes
 - Entra ID OIDC login, user provisioning on first login (no self-assigned access).
-- Departments, teams, department memberships with roles, platform admin role.
+- Departments, department memberships with roles, platform admin role.
 - Mailboxes (Graph), inbound processing, outbound replies, attachments (object storage), HTML sanitisation.
 - Requesters (auto-created from sender), tickets, public replies, internal notes, status, priority, assignment, participants (CC).
 - Ticket list (per-department, my tickets), ticket detail workspace.

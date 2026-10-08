@@ -65,7 +65,7 @@ Extend existing mechanisms first.
 
 Department is the HARD security boundary.
 
-Teams are routing/assignment groups only, not security boundaries.
+There are no Teams: a Department is the team (ADR-034). Tickets belong to a Department and are assigned to a member or unassigned.
 
 Every Department-scoped operation is authorised server-side via `IAuthorizer`. Cross-department leakage is Critical.
 
@@ -140,7 +140,7 @@ Locked behaviour:
 - ticket mailbox owns From
 - ticket mailbox owns Reply-To
 - agent personal email is never From
-- team/assignee/status/type changes never change mailbox
+- assignee/status/type changes never change mailbox
 - manually-created tickets store a valid Department mailbox
 - do not silently switch mailbox if the stored mailbox is unavailable
 

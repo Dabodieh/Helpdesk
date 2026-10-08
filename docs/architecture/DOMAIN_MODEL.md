@@ -8,9 +8,9 @@ Direction, not a final schema. Each module refines its slice before implementing
 ## Organisation
 - **User**: person known to the system (from Entra: `tenant_id`+`object_id` unique, email, display name, `is_active`, `is_platform_admin`). Not a requester by definition; an agent may also raise tickets.
 - **Department**: name, key (short prefix for ticket numbers), `is_active`, branding/config (later).
-- **Team**: belongs to exactly one department; name; used for assignment and queues.
+- **Team**: removed (ADR-034): a Department is the team. The legacy tables remain until the stage-2 drop.
 - **DepartmentMembership**: (user, department, role). A user has at most one role per department; no row = no access.
-- **TeamMembership**: (user, team); user must hold a membership in the team's department (enforced by composite FK/constraint + service check).
+- **TeamMembership**: removed with Teams (ADR-034); department membership is the only membership.
 
 ## Permissions
 - **Role** (system roles in v1: DepartmentAdmin, TeamLead, Agent, Viewer) maps to a fixed set of **Permission** codes defined in code (`tickets.read`, `tickets.reply`, ...). Custom per-department roles are backlog; the schema stores role as a stable code so it can be generalised later. See PERMISSIONS.md.
@@ -26,7 +26,7 @@ Direction, not a final schema. Each module refines its slice before implementing
 ## Tickets
 > Implemented in Phase 2 as specified in `TICKETING.md` (the authoritative description). Fields listed here that are not in that document (source, due date, mailbox, participants, HTML bodies, attachments) belong to later phases.
 - **Requester**: external or internal person who raises tickets. Department-scoped identity record (`department_id`, email unique per department) so one department's requester history is invisible to another. Optional link to a `User`.
-- **Ticket**: department_id, number (`{DEPT_KEY}-{seq}`), subject, status, priority, requester, assignee (user), team, source (email/web/agent), due date, mailbox (originating), created/updated/resolved/closed times, row version.
+- **Ticket**: department_id, number (`{DEPT_KEY}-{seq}`), subject, status, priority, requester, assignee (user), source (email/web/agent), due date, mailbox (originating), created/updated/resolved/closed times, row version.
 - **TicketParticipant**: (ticket, email/requester or user, kind: CC | Follower).
 - **Conversation/Message**: ticket entries: kind (PublicReply | InternalNote | Inbound | System), author (agent/requester), body (sanitised HTML + text), link to `MailMessage` when email-backed. Notes never leave the system.
 - **Attachment**: metadata only (name, content type, size, sha256, storage key, scan state); binary in object storage; department_id denormalised.
@@ -46,10 +46,9 @@ BusinessHours, SlaPolicy, SlaInstance(ticket), AutomationRule (+ execution log):
 Per-department monotonically increasing integer from a `departments`-keyed counter row updated in the ticket-creation transaction (`UPDATE ... RETURNING`), displayed as `KEY-1234`. Gaps are acceptable on rollback-free design; uniqueness enforced `(department_id, number)`.
 
 ## Phase 1 organisation constraints (implemented)
-- `departments`: `key` unique (case-insensitive, immutable after creation), `name` unique (case-insensitive); departments and teams are **deactivated, never hard-deleted** (no soft-delete framework; an `is_active` flag). Optimistic concurrency via PostgreSQL `xmin`.
-- `teams`: unique `(department_id, lower(name))`; unique `(id, department_id)` to serve as a composite FK target.
+- `departments`: `key` unique (case-insensitive, immutable after creation), `name` unique (case-insensitive); departments are **deactivated, never hard-deleted** (no soft-delete framework; an `is_active` flag). Optimistic concurrency via PostgreSQL `xmin`.
+- `teams`, `team_memberships`, `tickets.team_id`, `request_forms.default_team_id`: legacy, no longer read or written (ADR-034); dropped in stage 2.
 - `department_memberships`: PK `(user_id, department_id)`; role is constrained text; FK to `departments`; user reference to `identity.users`.
-- `team_memberships`: PK `(team_id, user_id)`, carries `department_id`; composite FK `(team_id, department_id)` → `teams(id, department_id)` and `(user_id, department_id)` → `department_memberships(user_id, department_id)` (`ON DELETE CASCADE`), so a team membership can neither cross departments nor outlive the department membership.
 - Identity: `identity.users` (internal id; display name, email, `is_active`, `is_platform_admin`) and `identity.external_identities` (`provider`, `issuer_tenant`, `subject` unique; subject = Entra `oid`). Email/UPN/display name are mutable attributes, never keys.
 - `audit.audit_events`: append-only (see ARCHITECTURE/SECURITY). Columns: `id`, `occurred_at`, `category` (`organisation`|`identity`), `action`, `actor_user_id` + `actor_display_name` (snapshot, so names survive renames), `object_type`, `object_id`, `department_id` (nullable), `previous`/`next` (jsonb, minimal/redacted), `source`, `correlation_id`. No foreign keys (audit outlives its subjects). A database trigger rejects UPDATE, DELETE and TRUNCATE for every role; separate DB roles/grants are a deployment hardening still to do.
 - Cross-schema integrity: `organisation.department_memberships.user_id` -> `identity.users(id)` (`ON DELETE RESTRICT`) is created in migration SQL. Unique indexes on `lower(key)`, `lower(name)` and `(department_id, lower(name))` are also migration SQL; a trigger makes `departments.key` immutable. Memberships store `role` as constrained text (`DepartmentAdmin|TeamLead|Agent|Viewer`).
