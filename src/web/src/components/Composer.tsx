@@ -245,12 +245,15 @@ ${draft}` : draft
         }}
       />
       {internal && query.length >= 2 && found.data && (
-        <div className="mention-picker" role="listbox" aria-label="Mention a colleague">
+        <div className="mention-picker" role="group" aria-label="Mention a colleague">
+          <span className="sr-only" role="status">
+            {found.data.length === 0 ? 'No colleagues found' : `${found.data.length} colleague${found.data.length === 1 ? '' : 's'} found`}
+          </span>
           {found.data.length === 0 ? (
             <span className="muted small">No colleague with that name can read internal notes here.</span>
           ) : (
             found.data.map((p) => (
-              <button key={p.userId} type="button" role="option" aria-selected="false" onClick={() => pickMention(p)}>
+              <button key={p.userId} type="button" onClick={() => pickMention(p)}>
                 @{p.displayName}
               </button>
             ))

@@ -262,7 +262,7 @@ export default function BusinessHoursSection({ department }: { department: Depar
                 </td>
                 <td className="row-actions">
                   <button type="button" onClick={() => setEditing(c)}>
-                    Edit
+                    Edit<span className="sr-only"> {c.name}</span>
                   </button>
                   <button type="button" aria-expanded={checking === c.id} onClick={() => setChecking(checking === c.id ? null : c.id)}>
                     Check a deadline

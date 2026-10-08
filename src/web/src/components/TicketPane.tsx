@@ -145,7 +145,7 @@ export default function TicketPane({ ticketRef, backTo, composerRef }: Props) {
             History
           </button>
         </div>
-        {tab === 'conversation' ? <Conversation ticketId={t.id} /> : <History ticket={t} />}
+        {tab === 'conversation' ? <Conversation ticketId={t.id} departmentId={t.departmentId} /> : <History ticket={t} />}
         {t.mergedInto ? (
           <p className="empty small" role="note">
             Replies and notes are disabled on a merged ticket. Continue on {t.mergedInto.reference}.

@@ -80,6 +80,7 @@ export default function HelpTopicsSection({ department }: { department: Departme
   const reorder = useMutation({ mutationFn: (ids: string[]) => reorderHelpTopics(department.id, ids), onSuccess: (d) => qc.setQueryData(topicsKey(department.id), d) })
   const topics = q.data ?? []
   const move = (i: number, d: -1 | 1) => {
+    if (reorder.isPending) return
     const ids = topics.map((t) => t.id)
     const j = i + d
     if (j < 0 || j >= ids.length) return
@@ -105,10 +106,10 @@ export default function HelpTopicsSection({ department }: { department: Departme
           {topics.map((t, i) => (
             <li key={t.id} className="row">
               <span className="row-actions">
-                <button type="button" className="ghost" aria-label={`Move ${t.name} up`} disabled={i === 0 || reorder.isPending} onClick={() => move(i, -1)}>
+                <button type="button" className="ghost" aria-label={`Move ${t.name} up`} aria-disabled={i === 0 || reorder.isPending} onClick={() => move(i, -1)}>
                   ↑
                 </button>
-                <button type="button" className="ghost" aria-label={`Move ${t.name} down`} disabled={i === topics.length - 1 || reorder.isPending} onClick={() => move(i, 1)}>
+                <button type="button" className="ghost" aria-label={`Move ${t.name} down`} aria-disabled={i === topics.length - 1 || reorder.isPending} onClick={() => move(i, 1)}>
                   ↓
                 </button>
               </span>
@@ -123,7 +124,7 @@ export default function HelpTopicsSection({ department }: { department: Departme
                 </p>
               </div>
               <button type="button" onClick={() => setEditing(t)}>
-                Edit
+                Edit<span className="sr-only"> {t.name}</span>
               </button>
             </li>
           ))}

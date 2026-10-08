@@ -55,6 +55,7 @@ export function MoreMenu({ onOpen }: { onOpen: (dialog: TicketDialogName) => voi
     <button
       type="button"
       onClick={() => {
+        trigger.current?.focus() // the dialog returns focus to whatever had it when it opened: the menu trigger, not the page (UX-007)
         setOpen(false)
         onOpen(dialog)
       }}

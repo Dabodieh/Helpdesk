@@ -301,6 +301,9 @@ ul.plain li {
   padding: 0.3rem 0;
   border-bottom: 1px solid var(--border);
 }
+.table-scroll {
+  overflow-x: auto;
+}
 .sr-only {
   position: absolute;
   width: 1px;
@@ -1618,7 +1621,8 @@ th[aria-sort='descending'] .th-sort {
   margin-bottom: 1rem;
   overflow-x: auto;
 }
-.tablist [role='tab'] {
+.tablist [role='tab'],
+.tablist.pressed button {
   background: none;
   border: 0;
   border-bottom: 3px solid transparent;
@@ -1627,11 +1631,13 @@ th[aria-sort='descending'] .th-sort {
   color: var(--muted);
   font-weight: 600;
 }
-.tablist [role='tab']:hover {
+.tablist [role='tab']:hover,
+.tablist.pressed button:hover {
   color: var(--text);
   background: var(--hover);
 }
-.tablist [role='tab'][aria-selected='true'] {
+.tablist [role='tab'][aria-selected='true'],
+.tablist.pressed button[aria-pressed='true'] {
   color: var(--text);
   border-bottom-color: var(--accent);
 }

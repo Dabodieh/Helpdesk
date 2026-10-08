@@ -197,7 +197,7 @@ export default function DashboardPage() {
     <div className="page dashboard">
       <PageHeader
         title={q.data ? `${q.data.departmentName} dashboard` : 'Dashboard'}
-        subtitle={q.data ? `Current state as of ${formatDateTime(q.data.generatedAt)}. Not a history: reports come later.` : undefined}
+        subtitle={q.data ? `Current state as of ${formatDateTime(q.data.generatedAt)}.` : undefined}
         actions={
           <>
             {readable.length > 1 && <Link to="/dashboard">Change department</Link>}

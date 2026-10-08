@@ -72,7 +72,7 @@ const FAILURE_TEXT: Record<string, string> = {
   provider_unavailable: 'Not sent: the mail service is temporarily unavailable.',
 }
 
-function Delivery({ message: m }: { message: Message }) {
+function Delivery({ message: m, departmentId }: { message: Message; departmentId: string }) {
   const qc = useQueryClient()
   const me = useMe()
   const retry = useMutation({
@@ -80,7 +80,7 @@ function Delivery({ message: m }: { message: Message }) {
     onSettled: () => qc.invalidateQueries({ queryKey: ['ticket'] }),
   })
   if (m.authorType !== 'Agent' || m.kind !== 'Public') return null
-  const canRetry = me.memberships.some((x) => canTicket(me, 'tickets.reply', x.departmentId))
+  const canRetry = canTicket(me, 'tickets.reply', departmentId)
   switch (m.deliveryState) {
     case 'NotDelivered':
       return (
@@ -138,18 +138,13 @@ function withMentions(body: string, names: string[]) {
 }
 
 /** One conversation entry. Public vs internal differ by label, icon, border style and background, never colour alone. */
-export function MessageItem({ message: m }: { message: Message }) {
-  const location = useLocation()
+export function MessageItem({ message: m, departmentId }: { message: Message; departmentId: string }) {
   const internal = m.kind === 'Internal'
   const label = internal ? 'Internal note' : m.authorType === 'Requester' ? 'Requester message' : 'Public reply'
   const [formatted, setFormatted] = useState(false)
   return (
     <article
       id={`msg-${m.id}`}
-      ref={(el) => {
-        // Arriving from a notification: bring that note into view.
-        if (el && location.hash === `#msg-${m.id}`) el.scrollIntoView?.({ block: 'center' })
-      }}
       className={`msg ${internal ? 'msg-internal' : 'msg-public'} author-${m.authorType.toLowerCase()}`}
       aria-label={`${label} from ${m.author.displayName}`}
     >
@@ -178,12 +173,13 @@ export function MessageItem({ message: m }: { message: Message }) {
         </button>
       )}
       {m.attachments.length > 0 && <AttachmentList ticketId={m.ticketId} items={m.attachments} />}
-      <Delivery message={m} />
+      <Delivery message={m} departmentId={departmentId} />
     </article>
   )
 }
 
-export default function Conversation({ ticketId }: { ticketId: string }) {
+export default function Conversation({ ticketId, departmentId }: { ticketId: string; departmentId: string }) {
+  const location = useLocation()
   const q = useInfiniteQuery({
     queryKey: ['ticket', ticketId, 'messages'],
     queryFn: ({ pageParam }) => listMessages(ticketId, pageParam),
@@ -203,10 +199,24 @@ export default function Conversation({ ticketId }: { ticketId: string }) {
 
   const scroller = useRef<HTMLDivElement>(null)
   const newest = messages[messages.length - 1]?.id
+  const deepLinked = useRef<string | null>(null)
+  const lastNewest = useRef<string | undefined>(undefined)
   useEffect(() => {
     const el = scroller.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [newest, ticketId])
+    if (!el) return
+    // Arriving from a notification (#msg-...): go to that message ONCE, after the messages are there, instead of the bottom (UX-002).
+    const target = location.hash.startsWith('#msg-') ? document.getElementById(location.hash.slice(1)) : null
+    if (target && deepLinked.current !== location.hash) {
+      deepLinked.current = location.hash
+      lastNewest.current = newest
+      target.scrollIntoView?.({ block: 'center' })
+      return
+    }
+
+    // Otherwise follow the conversation to its newest message, but never pull a reader back from a message they were taken to.
+    if (!deepLinked.current || lastNewest.current !== newest) el.scrollTop = el.scrollHeight
+    lastNewest.current = newest
+  }, [newest, ticketId, location.hash, messages.length])
 
   return (
     <div className="conv-scroll" ref={scroller} tabIndex={0}>
@@ -221,7 +231,7 @@ export default function Conversation({ ticketId }: { ticketId: string }) {
       )}
       {q.isSuccess && messages.length === 0 && <p className="empty">No messages yet.</p>}
       {messages.map((m) => (
-        <MessageItem key={m.id} message={m} />
+        <MessageItem key={m.id} message={m} departmentId={departmentId} />
       ))}
     </div>
   )

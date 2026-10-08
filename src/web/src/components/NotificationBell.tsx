@@ -77,6 +77,7 @@ export default function NotificationBell() {
               Mark all read
             </button>
           </div>
+          {q.isPending && <p className="muted small" role="status">Loading notifications…</p>}
           {q.isError && <p className="field-error small">Notifications could not be loaded.</p>}
           {q.isSuccess && items.length === 0 && <p className="empty small">Nothing needs your attention. You are told when a ticket is assigned to you, a requester replies, or a ticket you follow changes.</p>}
           <ul className="notify-list">

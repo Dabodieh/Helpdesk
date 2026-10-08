@@ -50,7 +50,7 @@ test('administration: create a topic by choosing an existing form, and reorder t
   })
   renderApp(`/admin/departments/${DEPT.id}?section=ticketing`)
   fireEvent.click(await screen.findByRole('tab', { name: 'Help topics' }))
-  expect(await screen.findByText('First')).toBeInTheDocument()
+  expect(await screen.findAllByText('First')).not.toHaveLength(0)
   fireEvent.click(screen.getByRole('button', { name: 'Move First down' }))
   await waitFor(() => expect(calls.find((c) => c.method === 'PUT')?.body).toEqual({ ids: ['t2', 't1'] }))
 

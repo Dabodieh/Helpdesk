@@ -52,7 +52,7 @@ export default function DepartmentPage() {
       <PageHeader
         crumbs={
           <>
-            <Link to="/admin">Administration</Link> / <Link to="/admin">Departments</Link> / {d.name}
+            <Link to="/admin">Administration</Link> / {d.name}
           </>
         }
         title={

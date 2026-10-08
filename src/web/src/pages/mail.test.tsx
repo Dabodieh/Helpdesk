@@ -174,13 +174,13 @@ test('mailbox administration: shows health and mail needing attention, and faile
   renderApp('/admin/departments/d1')
   fireEvent.click(await screen.findByRole('tab', { name: 'Mailboxes' }))
   expect(await screen.findByRole('heading', { name: 'Mailboxes' })).toBeInTheDocument()
-  expect(await screen.findByText('desk@helpdesk.test')).toBeInTheDocument()
+  expect(await (await screen.findAllByText('desk@helpdesk.test'))[0]).toBeInTheDocument()
   expect(screen.getByText('Default')).toBeInTheDocument()
   expect(screen.getByText(/1 failed/)).toBeInTheDocument()
   expect(await screen.findByText('Ignored: automatic reply')).toBeInTheDocument()
   expect(screen.getByText(/Failed \(TransientProviderException\) after 5 attempt/)).toBeInTheDocument()
-  expect(screen.getAllByRole('button', { name: 'Retry' })).toHaveLength(1) // only failed mail is retryable
-  fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+  expect(screen.getAllByRole('button', { name: /^Retry/  })).toHaveLength(1) // only failed mail is retryable
+  fireEvent.click(screen.getByRole('button', { name: /^Retry/  }))
   await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.path.endsWith('/mail/x1/retry'))).toBe(true))
 })
 
@@ -243,8 +243,8 @@ test('mailbox health shows its status and reasons, and an uncertain send is reso
   expect(await screen.findByText('Attention')).toBeInTheDocument()
   expect(screen.getByText(/Inbound subscription renewal is overdue · Some sends have an uncertain outcome/)).toBeInTheDocument()
   expect(await screen.findByText('Send outcome uncertain (not retried automatically)')).toBeInTheDocument()
-  expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument() // no plain retry for an uncertain send
-  fireEvent.click(screen.getByRole('button', { name: 'Resolve…' }))
+  expect(screen.queryByRole('button', { name: /^Retry/  })).not.toBeInTheDocument() // no plain retry for an uncertain send
+  fireEvent.click(screen.getByRole('button', { name: /^Resolve…/  }))
   const dialog = await screen.findByRole('dialog', { name: 'Send outcome uncertain' })
   fireEvent.click(within(dialog).getByRole('button', { name: 'Check with the mail service' }))
   expect(await within(dialog).findByText(/requester receives it twice/)).toBeInTheDocument()

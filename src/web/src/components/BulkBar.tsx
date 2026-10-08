@@ -16,6 +16,7 @@ export default function BulkBar({ tickets, onClear }: { tickets: TicketListItem[
   const departmentIds = [...new Set(tickets.map((t) => t.departmentId))]
   const single = departmentIds.length === 1 ? departmentIds[0] : undefined
   const dir = useDirectory(single)
+  const needDept = !single
   const canUpdate = departmentIds.every((d) => canTicket(me, 'tickets.update', d))
   const canAssignAny = departmentIds.every((d) => canTicket(me, 'tickets.assign.any', d))
   const canAssignSelf = departmentIds.every((d) => canTicket(me, 'tickets.assign.self', d))
@@ -31,8 +32,9 @@ export default function BulkBar({ tickets, onClear }: { tickets: TicketListItem[
   const change: BulkChange = {}
   if (status) change.status = status
   if (priority) change.priority = priority
-  if (team) change.team = { id: team === 'none' ? null : team }
-  if (assignee) change.assignee = { id: assignee === 'none' ? null : assignee === 'me' ? me.id : assignee }
+  // Team and assignee choices only apply within ONE department: once the selection spans several, a stale choice is not sent (UX-009).
+  if (team && !needDept) change.team = { id: team === 'none' ? null : team }
+  if (assignee && (!needDept || assignee === 'me')) change.assignee = { id: assignee === 'none' ? null : assignee === 'me' ? me.id : assignee }
   const anything = Object.keys(change).length > 0
 
   const apply = useMutation({
@@ -54,7 +56,6 @@ export default function BulkBar({ tickets, onClear }: { tickets: TicketListItem[
 
   const eligible = dir.members.filter((m) => m.role !== 'Viewer')
   const assignOptions = canAssignAny ? eligible.map((m) => ({ id: m.userId, name: m.displayName })) : []
-  const needDept = !single
 
   return (
     <div className="bulk-bar" role="region" aria-label="Bulk actions">

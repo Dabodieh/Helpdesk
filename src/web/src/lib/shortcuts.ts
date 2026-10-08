@@ -3,6 +3,8 @@ import { useEffect, useRef } from 'react'
 /** True when the key event comes from somewhere the user is typing, or carries a modifier that would collide with browser/OS shortcuts. */
 export function shouldIgnoreShortcut(e: KeyboardEvent): boolean {
   if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return true
+  // A modal dialog owns the keyboard: workspace shortcuts must not act on the page behind it (UX-001).
+  if (typeof document !== 'undefined' && document.querySelector('[role="dialog"][aria-modal="true"]')) return true
   const t = e.target
   if (!(t instanceof HTMLElement)) return false
   if (t.isContentEditable) return true

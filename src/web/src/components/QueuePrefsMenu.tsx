@@ -44,10 +44,10 @@ export default function QueuePrefsMenu({ queue, onClose }: { queue: Queue; onClo
               <input type="checkbox" checked={r.shown} onChange={() => setRows(rows.map((x) => (x.key === r.key ? { ...x, shown: !x.shown } : x)))} /> {COLUMN_LABELS[r.key]}
             </label>
             <span className="row-actions">
-              <button type="button" className="ghost" aria-label={`Move ${COLUMN_LABELS[r.key]} up`} disabled={i === 0} onClick={() => move(i, -1)}>
+              <button type="button" className="ghost" aria-label={`Move ${COLUMN_LABELS[r.key]} up`} aria-disabled={i === 0} onClick={() => move(i, -1)}>
                 ↑
               </button>
-              <button type="button" className="ghost" aria-label={`Move ${COLUMN_LABELS[r.key]} down`} disabled={i === rows.length - 1} onClick={() => move(i, 1)}>
+              <button type="button" className="ghost" aria-label={`Move ${COLUMN_LABELS[r.key]} down`} aria-disabled={i === rows.length - 1} onClick={() => move(i, 1)}>
                 ↓
               </button>
             </span>

@@ -203,7 +203,7 @@ export default function SlaPoliciesSection({ department }: { department: Departm
                 </td>
                 <td className="row-actions">
                   <button type="button" onClick={() => setEditing(p)}>
-                    Edit
+                    Edit<span className="sr-only"> {p.name}</span>
                   </button>
                 </td>
               </tr>

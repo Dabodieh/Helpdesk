@@ -205,7 +205,7 @@ export default function TicketTypesSection({ department }: { department: Departm
             </div>
             <span className="row-actions">
               <button type="button" onClick={() => setEditing(t)}>
-                Edit
+                Edit<span className="sr-only"> {t.name}</span>
               </button>
               <button type="button" onClick={() => setFieldsFor(t)}>
                 Fields

@@ -44,6 +44,9 @@ export default function ViewsMenu({ filters, onClose }: { filters: TicketFilters
     },
   })
   const remove = useMutation({ mutationFn: (v: SavedView) => deleteView(v.id), onSettled: refresh })
+  const confirmDelete = (v: SavedView) => {
+    if (window.confirm(`Delete the saved view “${v.name}”?`)) remove.mutate(v) // like removing a member, deleting is confirmed (UX-011)
+  }
   const server = fieldErrors(create.error)
 
   function submit(e: FormEvent) {
@@ -98,7 +101,7 @@ export default function ViewsMenu({ filters, onClose }: { filters: TicketFilters
                     Update to current filters
                   </button>
                 )}
-                <button type="button" className="ghost danger-text" aria-label={`Delete ${v.name}`} disabled={remove.isPending} onClick={() => remove.mutate(v)}>
+                <button type="button" className="ghost danger-text" aria-label={`Delete ${v.name}`} disabled={remove.isPending} onClick={() => confirmDelete(v)}>
                   Delete
                 </button>
               </li>

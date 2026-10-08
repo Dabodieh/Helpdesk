@@ -344,7 +344,7 @@ export default function FormsSection({ department }: { department: Department })
             </div>
             <span className="row-actions">
               <button type="button" onClick={() => setEditing(f)}>
-                Edit
+                Edit<span className="sr-only"> {f.name}</span>
               </button>
               <button type="button" onClick={() => setFieldsFor(f)}>
                 Fields

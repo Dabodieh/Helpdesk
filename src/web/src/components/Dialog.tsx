@@ -1,12 +1,19 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react'
 
 /** Minimal modal: Esc closes, focus moves in and returns to the opener, Tab is kept inside. */
-export default function Dialog({ title, onClose, children, variant }: { title: string; onClose: () => void; children: ReactNode; variant?: 'drawer' }) {
+export default function Dialog({ title, onClose, children, variant, dirty = false }: { title: string; onClose: () => void; children: ReactNode; variant?: 'drawer'; dirty?: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
   const titleId = useId()
   const closeRef = useRef(onClose)
+  // Esc and Close ask before throwing away typed work (UX-008); programmatic closes after a save go through onClose directly and are never asked.
+  const requestClose = () => {
+    if (dirty && !window.confirm('Discard what you have typed?')) return
+    onClose()
+  }
+  const requestRef = useRef(requestClose)
   useEffect(() => {
     closeRef.current = onClose
+    requestRef.current = requestClose
   })
 
   useEffect(() => {
@@ -22,7 +29,7 @@ export default function Dialog({ title, onClose, children, variant }: { title: s
       if (e.key === 'Escape') {
         e.preventDefault()
         e.stopPropagation()
-        closeRef.current()
+        requestRef.current()
       } else if (e.key === 'Tab') {
         const f = focusables()
         if (f.length === 0) return
@@ -48,7 +55,7 @@ export default function Dialog({ title, onClose, children, variant }: { title: s
       <div ref={ref} className={variant === 'drawer' ? 'dialog drawer' : 'dialog'} role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <div className="dialog-head">
           <h2 id={titleId}>{title}</h2>
-          <button type="button" className="ghost" onClick={onClose} aria-label="Close dialog">
+          <button type="button" className="ghost" onClick={requestClose} aria-label="Close dialog">
             Close
           </button>
         </div>

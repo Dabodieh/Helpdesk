@@ -110,16 +110,33 @@ function MailboxRow({ departmentId, mailbox: m }: { departmentId: string; mailbo
         </td>
         <td>{m.attentionCount > 0 ? <strong>{m.attentionCount} failed</strong> : 0}</td>
         <td className="row-actions">
-          <button type="button" onClick={() => setEditing((v) => !v)} aria-expanded={editing}>
+          <button
+            type="button"
+            onClick={() => {
+              if (!editing) setName(m.displayName) // always start from the stored name, never a stale one (UX-015)
+              setEditing((v) => !v)
+            }}
+            aria-expanded={editing}
+          >
             {editing ? 'Close' : 'Edit'}
+            <span className="sr-only"> {m.address}</span>
           </button>
           {m.isActive && !m.isDefault && (
             <button type="button" disabled={patch.isPending} onClick={() => patch.mutate({ isDefault: true })}>
-              Make default
+              Make default<span className="sr-only"> {m.address}</span>
             </button>
           )}
-          <button type="button" disabled={patch.isPending} onClick={() => patch.mutate({ isActive: !m.isActive })}>
+          <button
+            type="button"
+            disabled={patch.isPending}
+            onClick={() => {
+              // D28: deactivating is allowed (even the default mailbox) but never silently.
+              if (m.isActive && !window.confirm(`Deactivate ${m.address}? Tickets that use this mailbox will not be able to email public replies until it is activated again (replies are recorded as not delivered, and the sender is never switched).${m.isDefault ? ' It is the default mailbox: new requests and tickets will have no sender until another default exists.' : ''}`)) return
+              patch.mutate({ isActive: !m.isActive })
+            }}
+          >
             {m.isActive ? 'Deactivate' : 'Activate'}
+            <span className="sr-only"> {m.address}</span>
           </button>
         </td>
       </tr>
@@ -227,7 +244,9 @@ function Attention({ departmentId }: { departmentId: string }) {
             <th scope="col">From / to</th>
             <th scope="col">Subject</th>
             <th scope="col">Outcome</th>
-            <th scope="col" />
+            <th scope="col">
+              <span className="sr-only">Actions</span>
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -249,7 +268,7 @@ function Attention({ departmentId }: { departmentId: string }) {
               <td>
                 {i.state === 'Uncertain' && (
                   <button type="button" onClick={() => setUncertain(i)}>
-                    Resolve…
+                    Resolve…<span className="sr-only"> {i.subject || i.address}</span>
                   </button>
                 )}
                 {i.state === 'Ignored' && RELEASABLE.has(i.ignoreReason ?? '') && (
@@ -260,7 +279,7 @@ function Attention({ departmentId }: { departmentId: string }) {
                 )}
                 {i.state === 'Failed' && (
                   <button type="button" disabled={retry.isPending} onClick={() => retry.mutate(i)}>
-                    Retry
+                    Retry<span className="sr-only"> {i.subject || i.address}</span>
                   </button>
                 )}
               </td>
@@ -299,6 +318,7 @@ export default function MailboxesSection({ department }: { department: Departmen
         {q.isError && <ErrorNotice error={q.error} onRetry={() => void q.refetch()} />}
         {q.isSuccess && q.data.length === 0 && <p className="empty">No mailbox configured yet: replies are recorded but not emailed.</p>}
         {q.isSuccess && q.data.length > 0 && (
+          <div className="table-scroll">
           <table className="grid">
             <caption className="sr-only">Mailboxes of {department.name}</caption>
             <thead>
@@ -310,7 +330,9 @@ export default function MailboxesSection({ department }: { department: Departmen
                 <th scope="col">Webhook subscription</th>
                 <th scope="col">Last sync</th>
                 <th scope="col">Mail needing attention</th>
-                <th scope="col" />
+                <th scope="col">
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -319,6 +341,7 @@ export default function MailboxesSection({ department }: { department: Departmen
               ))}
             </tbody>
           </table>
+          </div>
         )}
         {adding && <CreateMailbox departmentId={department.id} onClose={() => setAdding(false)} />}
       </section>

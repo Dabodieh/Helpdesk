@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState, type FormEvent } from 'react'
+import { useDebounced } from '../lib/useDebounced'
 import { fieldErrors } from '../api/errors'
 import {
   archiveArticle,
@@ -66,6 +67,11 @@ function EditorForm({ department, article, categories, onClose, onChanged }: { d
     mutationFn: async (action: 'draft' | 'publish' | 'archive') => {
       const input = { title: title.trim(), summary: summary.trim(), body, visibility, categoryId: categoryId || null, clearCategory: !categoryId }
       const base = confirmed.current
+      if (action === 'archive' && base) {
+        // Archiving does not save the typed edits as a draft behind the author's back (UX-011): it archives the article as it is stored.
+        return { current: remember(await archiveArticle(department.id, base.id, base.version)), action }
+      }
+
       let current = remember(base ? await saveDraft(department.id, base.id, { ...input, version: base.version }) : await createArticle(department.id, input))
       if (action === 'publish') current = remember(await publishArticle(department.id, current.id, current.version))
       if (action === 'archive') current = remember(await archiveArticle(department.id, current.id, current.version))
@@ -83,8 +89,9 @@ function EditorForm({ department, article, categories, onClose, onChanged }: { d
     if (title.trim()) save.mutate('draft')
   }
   const published = article?.status === 'Published'
+  const edited = title !== (article?.draft.title ?? '') || summary !== (article?.draft.summary ?? '') || body !== (article?.draft.body ?? '') || (categoryId || '') !== (article?.categoryId ?? '')
   return (
-    <Dialog title={article ? `Edit “${article.draft.title || 'article'}”` : 'New article'} onClose={onClose}>
+    <Dialog title={article ? `Edit “${article.draft.title || 'article'}”` : 'New article'} onClose={onClose} dirty={edited}>
       <form className="dialog-form wide" onSubmit={submit} aria-label="Article">
         {article && (
           <p className="muted small" role="status">
@@ -143,7 +150,14 @@ function EditorForm({ department, article, categories, onClose, onChanged }: { d
             Close
           </button>
           {published && (
-            <button type="button" disabled={save.isPending} onClick={() => save.mutate('archive')}>
+            <button
+              type="button"
+              disabled={save.isPending}
+              onClick={() => {
+                if (edited && !window.confirm('Archive without saving your edits? They will be discarded.')) return
+                save.mutate('archive')
+              }}
+            >
               Archive
             </button>
           )}
@@ -243,6 +257,7 @@ function CategoryDialog({ department, categories, onClose }: { department: Depar
   const reorder = useMutation({ mutationFn: (ids: string[]) => reorderCategories(department.id, ids), onSuccess: (d) => qc.setQueryData(['knowledge-categories', department.id], d) })
   const server = fieldErrors(add.error)
   const move = (i: number, d: -1 | 1) => {
+    if (reorder.isPending) return // a second click while the first order is saving would send an order built from stale data
     const ids = categories.map((c) => c.id)
     const j = i + d
     if (j < 0 || j >= ids.length) return
@@ -256,10 +271,10 @@ function CategoryDialog({ department, categories, onClose }: { department: Depar
         {categories.map((c, i) => (
           <li key={c.id}>
             <span className="row-actions">
-              <button type="button" className="ghost" aria-label={`Move ${c.name} up`} disabled={i === 0} onClick={() => move(i, -1)}>
+              <button type="button" className="ghost" aria-label={`Move ${c.name} up`} aria-disabled={i === 0 || reorder.isPending} onClick={() => move(i, -1)}>
                 ↑
               </button>
-              <button type="button" className="ghost" aria-label={`Move ${c.name} down`} disabled={i === categories.length - 1} onClick={() => move(i, 1)}>
+              <button type="button" className="ghost" aria-label={`Move ${c.name} down`} aria-disabled={i === categories.length - 1 || reorder.isPending} onClick={() => move(i, 1)}>
                 ↓
               </button>
             </span>
@@ -305,12 +320,13 @@ function CategoryDialog({ department, categories, onClose }: { department: Depar
 export default function KnowledgeSection({ department }: { department: Department }) {
   const [status, setStatus] = useState('')
   const [search, setSearch] = useState('')
+  const searchTerm = useDebounced(search, 300) // one request per pause in typing, not per key (UX-019)
   const [review, setReview] = useState('')
   const [maintaining, setMaintaining] = useState<string | null>(null)
   const [editing, setEditing] = useState<ArticleListItem | 'new' | null>(null)
   const [categoriesOpen, setCategoriesOpen] = useState(false)
   const categories = useQuery({ queryKey: ['knowledge-categories', department.id], queryFn: () => listCategories(department.id) })
-  const articles = useQuery({ queryKey: ['knowledge', 'articles', department.id, status, search, review], queryFn: () => listArticles(department.id, { status: status || undefined, q: search.trim() || undefined, review: review || undefined }) })
+  const articles = useQuery({ queryKey: ['knowledge', 'articles', department.id, status, searchTerm, review], queryFn: () => listArticles(department.id, { status: status || undefined, q: searchTerm.trim() || undefined, review: review || undefined }) })
   return (
     <section aria-labelledby="kb-h">
       <div className="section-head">
@@ -362,7 +378,9 @@ export default function KnowledgeSection({ department }: { department: Departmen
               <th scope="col">Owner</th>
               <th scope="col">Review by</th>
               <th scope="col">Updated</th>
-              <th scope="col" />
+              <th scope="col">
+                <span className="sr-only">Actions</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -382,10 +400,10 @@ export default function KnowledgeSection({ department }: { department: Departmen
                 <td>{formatDateTime(a.updatedAt)}</td>
                 <td className="row-actions">
                   <button type="button" onClick={() => setEditing(a)}>
-                    Edit
+                    Edit<span className="sr-only"> {a.title}</span>
                   </button>
                   <button type="button" onClick={() => setMaintaining(a.id)}>
-                    Owner &amp; review
+                    Owner &amp; review<span className="sr-only"> {a.title}</span>
                   </button>
                 </td>
               </tr>

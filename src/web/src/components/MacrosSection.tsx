@@ -333,7 +333,7 @@ export default function MacrosSection({ department }: { department: Department }
               <div className="muted small">{m.summary.join(' · ')}</div>
               <span>
                 <button type="button" onClick={() => setDialog({ existing: m })}>
-                  Edit
+                  Edit<span className="sr-only"> {m.name}</span>
                 </button>{' '}
                 <button type="button" disabled={toggle.isPending} onClick={() => toggle.mutate(m)}>
                   {m.isActive ? 'Deactivate' : 'Activate'}

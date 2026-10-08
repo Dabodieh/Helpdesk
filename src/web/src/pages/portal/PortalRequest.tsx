@@ -8,6 +8,8 @@ import { formatDateTime } from '../../lib/format'
 import { pollInterval } from '../../lib/realtime'
 import { StatusBadge } from './parts'
 
+const MAX_FILES = 5
+
 const formatBytes = (n: number) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`)
 
 /** One request: the public conversation only (there is no concept of internal notes here) and a reply box. */
@@ -26,11 +28,15 @@ function PortalRequest({ reference }: { reference: string }) {
   // One id per composed reply, kept across retries and double clicks so the server never posts it twice (BE-003); a new one once it was saved.
   const clientMessageId = useRef(crypto.randomUUID())
   const [notSaved, setNotSaved] = useState(0)
+  const [tooMany, setTooMany] = useState(false)
+  const [sent, setSent] = useState(false)
   const send = useMutation({
     mutationFn: () => replyToRequest(reference, text.trim(), files, clientMessageId.current),
     onSuccess: async (result) => {
       clientMessageId.current = crypto.randomUUID()
       setNotSaved(result.attachmentsNotSaved)
+      setSent(true)
+      setTooMany(false)
       setText('')
       setFiles([])
       if (picker.current) picker.current.value = ''
@@ -144,9 +150,31 @@ function PortalRequest({ reference }: { reference: string }) {
           {(p) => <textarea {...p} rows={4} value={text} onChange={(e) => setText(e.target.value)} />}
         </Field>
         <Field label="Attach files (optional)" error={server.files}>
-          {(p) => <input {...p} ref={picker} type="file" multiple onChange={(e) => setFiles([...(e.target.files ?? [])].slice(0, 5))} />}
+          {(p) => (
+            <input
+              {...p}
+              ref={picker}
+              type="file"
+              multiple
+              onChange={(e) => {
+                const chosen = [...(e.target.files ?? [])]
+                setTooMany(chosen.length > MAX_FILES)
+                setFiles(chosen.slice(0, MAX_FILES))
+              }}
+            />
+          )}
         </Field>
         <ErrorNotice error={send.error && Object.keys(server).length === 0 ? send.error : null} />
+        {tooMany && (
+          <p className="notice warn" role="status">
+            Only the first {MAX_FILES} files are attached. Send the others in another reply.
+          </p>
+        )}
+        {sent && notSaved === 0 && !send.isPending && (
+          <p className="notice info" role="status">
+            Your reply was sent.
+          </p>
+        )}
         {notSaved > 0 && (
           <p className="notice warn" role="status">
             Your reply was sent, but {notSaved === 1 ? '1 file' : `${notSaved} files`} could not be saved. Please attach {notSaved === 1 ? 'it' : 'them'} again in a new reply.

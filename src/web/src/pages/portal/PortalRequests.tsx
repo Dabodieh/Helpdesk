@@ -27,9 +27,9 @@ export default function PortalRequests() {
           Submit a request
         </Link>
       </div>
-      <div className="tablist" role="tablist" aria-label="Show requests">
+      <div className="tablist pressed" role="group" aria-label="Show requests">
         {REQUEST_FILTERS.map((f) => (
-          <button key={f} type="button" role="tab" aria-selected={f === filter} onClick={() => setParams(f === 'active' ? {} : { filter: f }, { replace: true })}>
+          <button key={f} type="button" aria-pressed={f === filter} onClick={() => setParams(f === 'active' ? {} : { filter: f }, { replace: true })}>
             {LABEL[f]}
           </button>
         ))}

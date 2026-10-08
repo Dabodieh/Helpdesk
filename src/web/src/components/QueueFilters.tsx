@@ -53,7 +53,7 @@ export default function QueueFilters({
     if (typeParam && types.isSuccess && !types.data.some((t) => t.id === typeParam)) setParams((p) => withParam(p, 'type', null), { replace: true })
   }, [typeParam, types.isSuccess, types.data, setParams])
 
-  const defaultStatuses =mode === 'search' ? STATUSES : ACTIVE_STATUSES
+  const defaultStatuses = mode === 'search' ? STATUSES : ACTIVE_STATUSES
   const rawStatus = params.get('status')
   const selected = new Set<string>(rawStatus === null ? defaultStatuses : rawStatus === '' ? [] : rawStatus.split(',').map((s) => s.trim()))
   function toggleStatus(s: string) {

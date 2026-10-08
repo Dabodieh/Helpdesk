@@ -72,7 +72,7 @@ export default function NewTicketDialog({ onClose, onCreated }: { onClose: () =>
   }
 
   return (
-    <Dialog title="New ticket" onClose={onClose}>
+    <Dialog title="New ticket" onClose={onClose} dirty={!!(subject.trim() || description.trim() || email.trim())}>
       <form className="form dialog-form" onSubmit={submit} noValidate>
         {departments.length > 1 && (
           <Field label="Department">

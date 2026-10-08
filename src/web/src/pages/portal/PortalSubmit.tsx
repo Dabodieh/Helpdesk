@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { fieldErrors } from '../../api/errors'
 import { createPortalRequest, getPortalForm, listPortalForms, listPortalHelpTopics, replyToRequest, searchKnowledge, type PortalFormListItem } from '../../api/portal'
@@ -65,6 +65,8 @@ function RequestForm({ formId }: { formId: string }) {
   const [description, setDescription] = useState('')
   const [values, setValues] = useState<Record<string, unknown>>({})
   const [files, setFiles] = useState<File[]>([])
+  const [tooMany, setTooMany] = useState(false)
+  const confirmation = useRef<HTMLHeadingElement>(null)
   const [submissionId] = useState(() => crypto.randomUUID())
   const [done, setDone] = useState<{ reference: string; label: string; filesFailed: boolean } | null>(null)
   const typed = useDebounced(subject.trim(), 350)
@@ -74,6 +76,10 @@ function RequestForm({ formId }: { formId: string }) {
     enabled: typed.length >= 3,
     staleTime: 30_000,
   })
+
+  useEffect(() => {
+    if (done) confirmation.current?.focus() // the confirmation replaces the form: keyboard and screen-reader users land on it
+  }, [done])
 
   const submit = useMutation({
     mutationFn: async () => {
@@ -99,7 +105,9 @@ function RequestForm({ formId }: { formId: string }) {
   if (done) {
     return (
       <section className="portal-success" role="status" aria-labelledby="done-h">
-        <h1 id="done-h">Request received</h1>
+        <h1 id="done-h" tabIndex={-1} ref={confirmation}>
+          Request received
+        </h1>
         <p>
           Your reference is <strong className="ref">{done.reference}</strong>. We’ll update you here and by email.
         </p>
@@ -153,8 +161,24 @@ function RequestForm({ formId }: { formId: string }) {
           <CustomField key={field.key} field={field} value={values[field.key]} error={server[`fields.${field.key}`]} onChange={(v) => setValues((cur) => ({ ...cur, [field.key]: v }))} />
         ))}
         <Field label="Attach files (optional)" hint="Screenshots, documents or logs. Files are checked before anyone can open them.">
-          {(p) => <input {...p} type="file" multiple onChange={(e) => setFiles([...(e.target.files ?? [])].slice(0, 5))} />}
+          {(p) => (
+            <input
+              {...p}
+              type="file"
+              multiple
+              onChange={(e) => {
+                const chosen = [...(e.target.files ?? [])]
+                setTooMany(chosen.length > 5)
+                setFiles(chosen.slice(0, 5))
+              }}
+            />
+          )}
         </Field>
+        {tooMany && (
+          <p className="notice warn" role="status">
+            Only the first 5 files are attached. You can add the others from the request page afterwards.
+          </p>
+        )}
         <ErrorNotice error={submit.error && Object.keys(server).length === 0 ? submit.error : null} />
         <button type="submit" className="primary big" disabled={submit.isPending || !subject.trim() || !description.trim()}>
           {submit.isPending ? 'Sending…' : 'Submit request'}

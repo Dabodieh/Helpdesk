@@ -325,7 +325,7 @@ export default function AutomationsSection({ department }: { department: Departm
                         </td>
                         <td className="row-actions">
                           <button type="button" onClick={() => setEditing(r)}>
-                            Edit
+                            Edit<span className="sr-only"> {r.name}</span>
                           </button>
                           <button type="button" onClick={() => setTesting(r)}>
                             Test

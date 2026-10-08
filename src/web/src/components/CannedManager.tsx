@@ -94,7 +94,7 @@ export default function CannedManager({ scope }: { scope: Scope }) {
                 </td>
                 <td className="row-actions">
                   <button type="button" disabled={!c.canManage} onClick={() => setEditing(c)}>
-                    Edit
+                    Edit<span className="sr-only"> {c.title}</span>
                   </button>
                   <button type="button" disabled={!c.canManage || toggle.isPending} onClick={() => toggle.mutate(c)}>
                     {c.isActive ? 'Deactivate' : 'Activate'}

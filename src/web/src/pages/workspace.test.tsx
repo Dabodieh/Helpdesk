@@ -322,7 +322,7 @@ test('internal note: typing @ offers eligible colleagues, picking one inserts th
   fireEvent.click(screen.getByRole('radio', { name: /Internal note/ }))
   const box = screen.getByRole('textbox', { name: 'Internal note' })
   fireEvent.change(box, { target: { value: 'Please look @Le', selectionStart: 15 } })
-  fireEvent.click(await screen.findByRole('option', { name: '@Lena Lead' }))
+  fireEvent.click(await screen.findByRole('button', { name: '@Lena Lead' }))
   expect((screen.getByRole('textbox', { name: 'Internal note' }) as HTMLTextAreaElement).value).toBe('Please look @Lena Lead ')
   fireEvent.click(screen.getByRole('button', { name: 'Add internal note' }))
   await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.path === '/api/tickets/t1/messages')).toBe(true))
