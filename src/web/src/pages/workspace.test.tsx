@@ -403,3 +403,29 @@ test('new ticket: typing the start of a name finds an earlier requester and pick
   expect(await within(dialog).findByText(/dana.whitfield@contoso.test/)).toBeInTheDocument()
   expect(within(dialog).getByRole('button', { name: 'Change requester' })).toBeInTheDocument()
 })
+
+test('new ticket: the ticket type can be chosen (default preselected) and is posted', async () => {
+  const calls = mockFetch({
+    ...ticketRoutes(),
+    'GET /api/departments/d1/requesters/lookup': () => [],
+    'GET /api/departments/d1/ticket-types/options': () => [
+      { id: 'ty1', name: 'Incident', isActive: true, isDefault: true },
+      { id: 'ty2', name: 'Service request', isActive: true, isDefault: false },
+    ],
+    'POST /api/departments/d1/tickets': () => json(makeDetail({ id: 't7', reference: 'IT-7', subject: 'Brand new' }), 201),
+    'GET /api/tickets/IT-7': () => makeDetail({ id: 't7', reference: 'IT-7', subject: 'Brand new' }),
+    'GET /api/tickets/t7/messages': () => page([]),
+  })
+  renderApp('/queue/my')
+  fireEvent.click(await screen.findByRole('button', { name: 'New ticket' }))
+  const dialog = await screen.findByRole('dialog', { name: 'New ticket' })
+  const select = (await within(dialog).findByLabelText('Ticket type')) as HTMLSelectElement
+  expect(select.value).toBe('ty1') // the department default
+  fireEvent.change(select, { target: { value: 'ty2' } })
+  fireEvent.change(within(dialog).getByLabelText('Requester email or name'), { target: { value: 'new@example.test' } })
+  fireEvent.change(within(dialog).getByLabelText('Subject'), { target: { value: 'Brand new' } })
+  fireEvent.change(within(dialog).getByLabelText('Description'), { target: { value: 'It broke' } })
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Create ticket' }))
+  expect(await screen.findByRole('heading', { name: 'Brand new', level: 2 })).toBeInTheDocument()
+  expect((calls.find((c) => c.method === 'POST' && c.path === '/api/departments/d1/tickets')?.body as { ticketTypeId?: string }).ticketTypeId).toBe('ty2')
+})

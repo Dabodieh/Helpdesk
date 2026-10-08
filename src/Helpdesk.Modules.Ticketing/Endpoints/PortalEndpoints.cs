@@ -155,6 +155,9 @@ internal static class PortalEndpoints
         var types = app.MapGroup("/api/departments/{departmentId:guid}/ticket-types").WithTags("Ticket types");
         types.MapGet("", async (Guid departmentId, TicketTypesService service, CancellationToken ct) => TypedResults.Ok(await service.ListAsync(departmentId, ct)))
             .RequirePermission(PermissionCodes.DepartmentFormsManage);
+        // Active types to choose from when creating a ticket: anyone who may create tickets in the department, no admin permission.
+        types.MapGet("options", async (Guid departmentId, TicketTypesService service, CancellationToken ct) => TypedResults.Ok(await service.OptionsAsync(departmentId, ct)))
+            .RequirePermission(PermissionCodes.TicketsCreate);
         types.MapPost("", async (Guid departmentId, TicketTypeRequest body, TicketTypesService service, CancellationToken ct) =>
             {
                 var created = await service.CreateAsync(departmentId, body, ct);

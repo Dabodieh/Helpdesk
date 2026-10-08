@@ -3,6 +3,7 @@ import { useState, type FormEvent } from 'react'
 import { fieldErrors } from '../api/errors'
 import { canTicket } from '../api/permissions'
 import { listOutboundMailboxes } from '../api/emailIdentity'
+import { listTicketTypeOptions } from '../api/ticketing'
 import { createTicket, lookupRequesters } from '../api/tickets'
 import { PRIORITIES, type Priority, type RequesterLookup, type TicketDetail } from '../api/ticketSchemas'
 import { useMe } from '../auth'
@@ -26,6 +27,7 @@ export default function NewTicketDialog({ onClose, onCreated }: { onClose: () =>
   const [assignee, setAssignee] = useState('')
   const [touched, setTouched] = useState(false)
   const [mailboxId, setMailboxId] = useState('')
+  const [typeId, setTypeId] = useState('')
 
   const canAssignAny = canTicket(me, 'tickets.assign.any', departmentId)
   const canAssignSelf = canTicket(me, 'tickets.assign.self', departmentId)
@@ -38,6 +40,12 @@ export default function NewTicketDialog({ onClose, onCreated }: { onClose: () =>
     enabled: !!departmentId && !chosen && term.length >= 2,
   })
 
+  // Ticket types: shown when the department has any; the default type is preselected, the server applies it anyway when none is sent.
+  const typeOptions = useQuery({ queryKey: ['ticket-type-options', departmentId], queryFn: () => listTicketTypeOptions(departmentId), enabled: !!departmentId })
+  const types = typeOptions.data ?? []
+  const defaultType = types.find((t) => t.isDefault)?.id ?? ''
+  const chosenType = typeId && types.some((t) => t.id === typeId) ? typeId : defaultType
+
   // The mailbox is the ticket's sender identity for good. With one choice (or none) nothing is asked; the server picks the default.
   const mailboxes = useQuery({ queryKey: ['outbound-mailboxes', departmentId], queryFn: () => listOutboundMailboxes(departmentId), enabled: !!departmentId })
   const create = useMutation({
@@ -45,6 +53,7 @@ export default function NewTicketDialog({ onClose, onCreated }: { onClose: () =>
       createTicket(departmentId, {
         subject: subject.trim(),
         description: description.trim(),
+        ...(chosenType ? { ticketTypeId: chosenType } : {}),
         requester: chosen ? { requesterId: chosen.id } : { email: email.trim(), displayName: name.trim() || undefined },
         priority,
         teamId: teamId || undefined,
@@ -172,6 +181,20 @@ export default function NewTicketDialog({ onClose, onCreated }: { onClose: () =>
               </select>
             )}
           </Field>
+          {types.length > 0 && (
+            <Field label="Ticket type">
+              {(p) => (
+                <select {...p} value={chosenType} onChange={(e) => setTypeId(e.target.value)}>
+                  {!defaultType && <option value="">No type</option>}
+                  {types.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </Field>
+          )}
           {canAssignAny && (
             <Field label="Team">
               {(p) => (

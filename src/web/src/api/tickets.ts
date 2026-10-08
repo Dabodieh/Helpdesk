@@ -118,6 +118,7 @@ export type NewTicket = {
   teamId?: string
   assigneeUserId?: string
   mailboxId?: string
+  ticketTypeId?: string
 }
 
 export function createTicket(departmentId: string, input: NewTicket) {

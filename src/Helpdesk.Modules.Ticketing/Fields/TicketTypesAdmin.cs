@@ -217,6 +217,11 @@ internal sealed class TicketTypesService(TicketingDbContext db, TicketingAudit a
         return await DefaultIdAsync(departmentId, ct);
     }
 
+    /// <summary>The active types of the department, in their configured order: what an agent may choose when creating a ticket (the admin list needs the forms permission; this one does not).</summary>
+    public async Task<IReadOnlyList<TypeOptionDto>> OptionsAsync(Guid departmentId, CancellationToken ct) =>
+        await db.TicketTypes.AsNoTracking().Where(t => t.DepartmentId == departmentId && t.IsActive).OrderBy(t => t.SortOrder).ThenBy(t => t.Name)
+            .Select(t => new TypeOptionDto(t.Id, t.Name, t.IsActive, t.IsDefault)).ToListAsync(ct);
+
     public Task<Guid?> DefaultIdAsync(Guid departmentId, CancellationToken ct) =>
         db.TicketTypes.AsNoTracking().Where(t => t.DepartmentId == departmentId && t.IsDefault && t.IsActive).Select(t => (Guid?)t.Id).SingleOrDefaultAsync(ct);
 

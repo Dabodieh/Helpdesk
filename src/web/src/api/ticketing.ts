@@ -48,6 +48,10 @@ export type TicketType = z.infer<typeof ticketTypeSchema>
 export type FieldLinkInput = { fieldId: string; required?: boolean | null }
 
 const typesBase = (d: string) => `/api/departments/${d}/ticket-types`
+export const typeOptionSchema = z.object({ id: z.string(), name: z.string(), isActive: z.boolean(), isDefault: z.boolean() })
+export type TypeOption = z.infer<typeof typeOptionSchema>
+/** Active ticket types to pick from when creating a ticket (needs only tickets.create, unlike the admin list below). */
+export const listTicketTypeOptions = (d: string) => api('GET', `${typesBase(d)}/options`, { schema: z.array(typeOptionSchema) })
 export const listTicketTypes = (d: string) => api('GET', typesBase(d), { schema: z.array(ticketTypeSchema) })
 export const createTicketType = (d: string, body: { name: string; description?: string; isActive?: boolean; isDefault?: boolean }) =>
   api('POST', typesBase(d), { body, schema: ticketTypeSchema })
