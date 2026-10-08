@@ -1,160 +1,106 @@
-import { useQuery } from '@tanstack/react-query'
+import { useIsFetching, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
-import { getDashboard, type Dashboard } from '../api/dashboard'
+import { getDashboard, getVolume, type Dashboard } from '../api/dashboard'
 import { canTicket } from '../api/permissions'
+import { listTickets } from '../api/tickets'
+import type { SlaFilter } from '../api/ticketSchemas'
 import { useMe } from '../auth'
-import { ErrorNotice, Loading, PageHeader, StatusBadge, type Tone } from '../components/common'
-import { formatDateTime } from '../lib/format'
-import { HEALTH_LABEL, HEALTH_REASON, HEALTH_TONE } from '../lib/mailHealth'
+import { ActivityChart, AttentionList, BacklogAge, KpiCard, OldestTable, Panel, ServiceHealth, TeamWorkload, queueUrl, type AttentionRow } from '../components/DashboardParts'
+import { ErrorNotice, Loading, PageHeader, StatusBadge } from '../components/common'
+import { Icon } from '../components/icons'
 
-/** Drill-downs are ordinary queue URLs (the queue engine is the only one): `dept` always names the department, so a figure and its list are the same set. */
-const queue = (dept: string, params: Record<string, string> = {}) => `/queue/all?${new URLSearchParams({ dept, ...params }).toString()}`
+const RANGES = [7, 14, 30] as const
+const isDashboardQuery = (key: readonly unknown[]) => typeof key[0] === 'string' && key[0].startsWith('dashboard')
 
-function Figure({ label, value, to, tone, hint }: { label: string; value: number; to?: string; tone?: Tone; hint?: string }) {
-  const body = (
-    <>
-      <span className="figure-value">{value}</span>
-      <span className="figure-label">
-        {label}
-        {hint && <span className="muted small"> {hint}</span>}
-      </span>
-    </>
+/** Tickets of one SLA state in this department (the queue engine's own filter, so the list and its "view all" link are the same set). */
+const attention = (departmentId: string, sla: SlaFilter) =>
+  listTickets({ queue: 'all', statuses: ['Open', 'Pending'], priorities: [], departmentId, sla, sort: 'sla_due_asc' }, null)
+
+function ActivityPanel({ departmentId }: { departmentId: string }) {
+  const [days, setDays] = useState<(typeof RANGES)[number]>(14)
+  const q = useQuery({ queryKey: ['dashboard-volume', departmentId, days], queryFn: () => getVolume(departmentId, days), refetchInterval: 120_000 })
+  return (
+    <Panel
+      title="Ticket activity"
+      id="activity-h"
+      className="span-7"
+      action={undefined}
+    >
+      <div className="dash-range" role="group" aria-label="Period">
+        {RANGES.map((r) => (
+          <button key={r} type="button" aria-pressed={days === r} className={days === r ? 'on' : ''} onClick={() => setDays(r)}>
+            {r} days
+          </button>
+        ))}
+      </div>
+      {q.isPending && <Loading label="Loading ticket activity" />}
+      {q.isError && !q.data && <ErrorNotice error={q.error} onRetry={() => void q.refetch()} />}
+      {q.data && <ActivityChart volume={q.data} />}
+    </Panel>
   )
-  const cls = `figure${value > 0 && tone ? ` figure-${tone}` : ''}`
-  return <li>{to ? <Link to={to} className={cls}>{body}</Link> : <span className={cls}>{body}</span>}</li>
+}
+
+function AttentionPanel({ d }: { d: Dashboard }) {
+  const id = d.departmentId
+  const overdue = useQuery({ queryKey: ['dashboard-attention', id, 'breached'], queryFn: () => attention(id, 'breached'), refetchInterval: 60_000, enabled: d.sla.overdue > 0 })
+  const soon = useQuery({ queryKey: ['dashboard-attention', id, 'duesoon'], queryFn: () => attention(id, 'duesoon'), refetchInterval: 60_000, enabled: d.sla.dueSoon > 0 })
+  const toRows = (items: { id: string; reference: string; subject: string; priority: string; assignee: { displayName: string } | null; sla?: { dueAt?: string | null } | null }[] | undefined, breached: boolean): AttentionRow[] =>
+    (items ?? []).map((t) => ({ id: t.id, reference: t.reference, subject: t.subject, priority: t.priority, assignee: t.assignee?.displayName ?? null, breached, dueAt: t.sla?.dueAt ?? null }))
+  const rows = [...toRows(overdue.data?.items, true), ...toRows(soon.data?.items, false)].slice(0, 6)
+  const total = d.sla.overdue + d.sla.dueSoon
+  const loading = (d.sla.overdue > 0 && overdue.isPending) || (d.sla.dueSoon > 0 && soon.isPending)
+  const failed = (overdue.isError && !overdue.data) || (soon.isError && !soon.data)
+  return (
+    <Panel title="Needs attention" id="attention-list-h" className="span-4" action={total > 0 ? { to: queueUrl(id, { sla: d.sla.overdue > 0 ? 'breached' : 'duesoon' }), label: 'Open queue' } : undefined}>
+      {loading && <Loading label="Loading tickets" />}
+      {failed && <ErrorNotice error={overdue.error ?? soon.error} onRetry={() => void Promise.all([overdue.refetch(), soon.refetch()])} />}
+      {!loading && !failed && <AttentionList rows={rows} total={total} />}
+    </Panel>
+  )
 }
 
 function Content({ d }: { d: Dashboard }) {
   const id = d.departmentId
-  const maxAge = Math.max(1, ...d.ageing.map((a) => a.count))
-  const total = d.backlog.open + d.backlog.pending
+  const active = d.backlog.open + d.backlog.pending
+  const delivery = d.sends.failedTickets + d.sends.uncertainTickets
   return (
-    <>
-      <section aria-labelledby="attention-h">
-        <h2 id="attention-h" className="section-title">
-          Needs attention now
-        </h2>
-        <ul className="figures" aria-label="Needs attention now">
-          <Figure label="SLA overdue" value={d.sla.overdue} to={queue(id, { sla: 'breached' })} tone="bad" />
-          <Figure label="Due soon" hint={`within ${d.sla.dueSoonWindowMinutes / 60} h`} value={d.sla.dueSoon} to={queue(id, { sla: 'duesoon' })} tone="warn" />
-          <Figure label="Unassigned" value={d.backlog.unassigned} to={queue(id, { assignee: 'none' })} tone="warn" />
-          <Figure label="Awaiting first response" hint="(human reply)" value={d.backlog.awaitingFirstResponse} to={queue(id, { sla: 'awaitingresponse' })} tone="warn" />
-          <Figure label="Replies not sent" value={d.sends.failedTickets} to={queue(id, { send: 'failed' })} tone="bad" hint="(email failed)" />
-          <Figure label="Send outcome uncertain" value={d.sends.uncertainTickets} to={queue(id, { send: 'uncertain' })} tone="warn" hint="(administrator to check)" />
-        </ul>
-      </section>
+    <div className="dash">
+      <ul className="dash-kpis" aria-label="Needs attention now">
+        <KpiCard label="Active tickets" value={active} sub={`${d.backlog.open} open · ${d.backlog.pending} pending`} to={queueUrl(id)} tone="neutral" icon="inbox" />
+        <KpiCard label="Unassigned" value={d.backlog.unassigned} sub="no assignee yet" to={queueUrl(id, { assignee: 'none' })} tone="warn" icon="unassigned" />
+        <KpiCard label="Awaiting first response" value={d.backlog.awaitingFirstResponse} sub="no human reply yet" to={queueUrl(id, { sla: 'awaitingresponse' })} tone="warn" icon="reply" />
+        <KpiCard label="SLA overdue" value={d.sla.overdue} sub="target already missed" to={queueUrl(id, { sla: 'breached' })} tone="bad" icon="alert" />
+        <KpiCard label="Due soon" value={d.sla.dueSoon} sub={`within ${d.sla.dueSoonWindowMinutes / 60} h`} to={queueUrl(id, { sla: 'duesoon' })} tone="warn" icon="clock" />
+        <KpiCard
+          label="Email delivery problems"
+          value={delivery}
+          sub={delivery > 0 ? `${d.sends.failedTickets} failed · ${d.sends.uncertainTickets} uncertain` : 'no failed replies'}
+          to={delivery > 0 ? queueUrl(id, { send: d.sends.failedTickets > 0 ? 'failed' : 'uncertain' }) : undefined}
+          tone={d.sends.failedTickets > 0 ? 'bad' : 'warn'}
+          icon="nomail"
+        />
+      </ul>
 
-      <section aria-labelledby="backlog-h">
-        <h2 id="backlog-h" className="section-title">
-          Backlog
-        </h2>
-        <ul className="figures" aria-label="Backlog">
-          <Figure label="Open" value={d.backlog.open} to={queue(id, { status: 'Open' })} />
-          <Figure label="Pending" value={d.backlog.pending} to={queue(id, { status: 'Pending' })} />
-          <Figure label="Open and pending" value={total} to={queue(id)} />
-        </ul>
-        <h3 className="section-title">Age of the backlog</h3>
-        <ul className="bars" aria-label="Backlog age">
-          {d.ageing.map((a) => (
-            <li key={a.key}>
-              <span className="bar-label">{a.label}</span>
-              <span className="bar-track" aria-hidden="true">
-                <span className="bar-fill" style={{ width: `${(a.count / maxAge) * 100}%` }} />
-              </span>
-              <span className="bar-count">{a.count}</span>
-            </li>
-          ))}
-        </ul>
-      </section>
+      <div className="dash-grid">
+        <ActivityPanel departmentId={id} />
+        <Panel title="Team workload" id="teams-h" className="span-5" action={{ to: queueUrl(id), label: 'All tickets' }}>
+          <TeamWorkload teams={d.teams} dept={id} />
+        </Panel>
 
-      <section aria-labelledby="teams-h">
-        <h2 id="teams-h" className="section-title">
-          Team workload
-        </h2>
-        {d.teams.length === 0 ? (
-          <p className="empty small">Nothing in the backlog.</p>
-        ) : (
-          <table className="grid compact">
-            <caption className="sr-only">Backlog by team</caption>
-            <thead>
-              <tr>
-                <th scope="col">Team</th>
-                <th scope="col">Open and pending</th>
-                <th scope="col">Unassigned</th>
-                <th scope="col">SLA overdue</th>
-              </tr>
-            </thead>
-            <tbody>
-              {d.teams.map((t) => (
-                <tr key={t.teamId ?? 'none'}>
-                  <td>{t.name}</td>
-                  <td>{t.teamId ? <Link to={queue(id, { team: t.teamId })}>{t.total}</Link> : t.total}</td>
-                  <td>{t.teamId && t.unassigned > 0 ? <Link to={queue(id, { team: t.teamId, assignee: 'none' })}>{t.unassigned}</Link> : t.unassigned}</td>
-                  <td>{t.overdue > 0 ? <strong>{t.overdue}</strong> : 0}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+        <Panel title="Backlog age" id="age-h" className="span-4">
+          <BacklogAge ageing={d.ageing} />
+        </Panel>
+        <AttentionPanel d={d} />
+        <Panel title="Service health" id="health-h" className="span-4">
+          <ServiceHealth d={d} />
+        </Panel>
 
-      <section aria-labelledby="oldest-h">
-        <h2 id="oldest-h" className="section-title">
-          Oldest unresolved
-        </h2>
-        {d.oldest.length === 0 ? (
-          <p className="empty small">No open or pending tickets.</p>
-        ) : (
-          <ul className="rows" aria-label="Oldest unresolved tickets">
-            {d.oldest.map((o) => (
-              <li key={o.reference} className="row">
-                <div className="row-main">
-                  <div className="row-title">
-                    <Link to={`/tickets/${encodeURIComponent(o.reference)}`} className="ref">
-                      {o.reference}
-                    </Link>
-                    <span>{o.subject}</span>
-                    {o.slaOverdue && <StatusBadge tone="bad">SLA overdue</StatusBadge>}
-                  </div>
-                  <p className="muted small row-sub">
-                    {o.status} · {o.priority} · opened {formatDateTime(o.createdAt)} · {o.assignee ?? 'Unassigned'}
-                    {o.team ? ` · ${o.team}` : ''}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {d.mailboxes && (
-        <section aria-labelledby="mail-h">
-          <h2 id="mail-h" className="section-title">
-            Mailboxes
-          </h2>
-          {d.mailboxes.length === 0 ? (
-            <p className="empty small">No mailbox is configured: replies are recorded but not emailed.</p>
-          ) : (
-            <ul className="rows" aria-label="Mailbox health">
-              {d.mailboxes.map((m) => (
-                <li key={m.mailboxId} className="row">
-                  <div className="row-main">
-                    <div className="row-title">
-                      <strong>{m.displayName}</strong>
-                      <StatusBadge tone={HEALTH_TONE[m.status] ?? 'off'}>{HEALTH_LABEL[m.status] ?? m.status}</StatusBadge>
-                    </div>
-                    {m.reasons.length > 0 && <p className="muted small row-sub">{m.reasons.map((r) => HEALTH_REASON[r] ?? r).join(' · ')}</p>}
-                  </div>
-                  <Link to={`/admin/departments/${id}?section=mailboxes`} className="row-action">
-                    Manage →
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
-    </>
+        <Panel title="Oldest unresolved" id="oldest-h" className="span-12" action={{ to: queueUrl(id), label: 'View in queue' }}>
+          <OldestTable oldest={d.oldest} />
+        </Panel>
+      </div>
+    </div>
   )
 }
 
@@ -162,8 +108,10 @@ function Content({ d }: { d: Dashboard }) {
 export default function DashboardPage() {
   const { departmentId } = useParams()
   const me = useMe()
+  const qc = useQueryClient()
   const readable = me.memberships.filter((m) => canTicket(me, 'tickets.read', m.departmentId))
   const q = useQuery({ queryKey: ['dashboard', departmentId], queryFn: () => getDashboard(departmentId!), enabled: !!departmentId, refetchInterval: 60_000 })
+  const refreshing = useIsFetching({ predicate: (query) => isDashboardQuery(query.queryKey) }) > 0
 
   if (!departmentId) {
     if (readable.length === 1) return <Navigate to={`/dashboard/${readable[0]!.departmentId}`} replace />
@@ -193,22 +141,29 @@ export default function DashboardPage() {
     )
   }
 
+  const updated = q.data ? new Date(q.data.generatedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : null
   return (
     <div className="page dashboard">
       <PageHeader
         title={q.data ? `${q.data.departmentName} dashboard` : 'Dashboard'}
-        subtitle={q.data ? `Current state as of ${formatDateTime(q.data.generatedAt)}.` : undefined}
+        subtitle={
+          q.data ? (
+            <>
+              Current state as of {updated}, refreshed every minute. {q.isError && <StatusBadge tone="warn">Could not refresh: showing the last data</StatusBadge>}
+            </>
+          ) : undefined
+        }
         actions={
           <>
             {readable.length > 1 && <Link to="/dashboard">Change department</Link>}
-            <button type="button" onClick={() => void q.refetch()} disabled={q.isFetching}>
-              Refresh
+            <button type="button" className="dash-refresh" onClick={() => void qc.invalidateQueries({ predicate: (query) => isDashboardQuery(query.queryKey) })} disabled={refreshing} aria-busy={refreshing}>
+              <Icon name="clock" /> {refreshing ? 'Refreshing…' : 'Refresh'}
             </button>
           </>
         }
       />
       {q.isPending && <Loading label="Loading the dashboard" />}
-      {q.isError && <ErrorNotice error={q.error} onRetry={() => void q.refetch()} />}
+      {q.isError && !q.data && <ErrorNotice error={q.error} onRetry={() => void q.refetch()} />}
       {q.data && <Content d={q.data} />}
     </div>
   )

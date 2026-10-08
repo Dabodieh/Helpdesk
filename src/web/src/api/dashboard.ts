@@ -39,3 +39,23 @@ export type Dashboard = z.infer<typeof dashboardSchema>
 
 /** Current operational state of one department. Never an aggregate across departments. */
 export const getDashboard = (departmentId: string) => api('GET', `/api/departments/${encodeURIComponent(departmentId)}/dashboard`, { schema: dashboardSchema })
+
+/** Received and resolved per Europe/London day, with the same definitions as the department volume report (`daily` adds up to the totals). */
+export const volumeSchema = z.object({
+  departmentId: z.string(),
+  from: z.string(),
+  to: z.string(),
+  received: z.number(),
+  resolved: z.number(),
+  daily: z.array(z.object({ date: z.string(), received: z.number(), resolved: z.number() })),
+})
+export type Volume = z.infer<typeof volumeSchema>
+
+const londonDay = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(d)
+
+/** The last `days` days including today. */
+export const getVolume = (departmentId: string, days: number, now = new Date()) => {
+  const from = londonDay(new Date(now.getTime() - (days - 1) * 86_400_000))
+  const to = londonDay(now)
+  return api('GET', `/api/departments/${encodeURIComponent(departmentId)}/reports/volume?from=${from}&to=${to}`, { schema: volumeSchema })
+}

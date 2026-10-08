@@ -37,6 +37,13 @@ public sealed class DepartmentVolumeReportTests(HelpdeskFixture fixture) : IClas
         Assert.Equal((3, 2), (both.GetProperty("received").GetInt32(), both.GetProperty("resolved").GetInt32()));
         Assert.Equal(3, both.GetProperty("teams").EnumerateArray().Sum(t => t.GetProperty("received").GetInt32()));
 
+        // The per-day series (for charts) adds up to the totals and puts each ticket on its own London day.
+        var days = both.GetProperty("daily").EnumerateArray().Select(x => (x.Str("date"), x.GetProperty("received").GetInt32(), x.GetProperty("resolved").GetInt32())).ToArray();
+        Assert.Equal([("2026-01-12", 3, 0), ("2026-01-13", 0, 2)], days);
+        var longer = await VolumeAsync(w.Agent, d, "?from=2025-06-01&to=2026-01-13");
+        Assert.Equal(0, longer.GetProperty("daily").GetArrayLength()); // over 62 days: totals only, never a truncated series
+        Assert.Equal(3, longer.GetProperty("received").GetInt32());
+
         (await w.Agent.Client.GetAsync($"{d.Url}/reports/volume?from=2026-01-14&to=2026-01-12")).Expect(HttpStatusCode.BadRequest);
         (await w.Agent.Client.GetAsync($"{d.Url}/reports/volume?from=junk")).Expect(HttpStatusCode.BadRequest);
         (await w.Agent.Client.GetAsync($"{d.Url}/reports/volume?from=2024-01-01&to=2026-01-12")).Expect(HttpStatusCode.BadRequest);

@@ -21,3 +21,6 @@ Maintained by the backend work; the frontend (Graphite redesign) owner ticks ite
 ## Status (2026-10-08, after the Graphite merge)
 - Done in the client: `unassigned` notification type (all seven types parse; text in the bell), canned responses inserted through `GET /api/tickets/{ticket}/canned-responses/{id}/render` (not the raw body), bulk `versions`, attachment controls gated by `GET /api/portal/capabilities`.
 - Still open in the client: warn when `emptyPlaceholders` is not empty after inserting a canned response; no UI yet for the Department volume report (`reports/volume`) or the late-mail list (`mail/waiting`) and the `nature` field of `mail/attention`.
+
+## Dashboard redesign (done in the client)
+Six KPI cards, a received-versus-resolved chart (`reports/volume` `daily` series, 7/14/30 days), team workload bars, backlog age bars, a "needs attention" list taken from the queue itself (`sla=breached`, then `sla=duesoon`), service health (email delivery and, for mailbox administrators, mailbox health) and the oldest unresolved tickets. Project rule reminder: the operational dashboard answers "what needs attention now"; the activity chart is the only historical element and is labelled as a period trend. Do not add agent rankings or per-person figures.

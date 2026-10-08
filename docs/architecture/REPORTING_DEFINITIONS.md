@@ -15,6 +15,7 @@ The one place that says what a headline figure means. The code lives in `QueuePr
 | Merged volume | Duplicates merged away, reported as their own figure, never as backlog or independent demand | `QueuePredicates.MergedAway` |
 | Received in a period | `GET /api/departments/{id}/reports/volume?from&to` (yyyy-MM-dd, Europe/London days, inclusive, max 366 days, default last 30). Same rule as Created in a period | `DepartmentVolumeReportService` |
 | Resolved in a period | Distinct tickets that moved into Resolved, or into Closed from an open state, in the period (lifecycle record); merged sources excluded; reopen and re-resolve counts once. Team split uses the ticket's current team | `DepartmentVolumeReportService` |
+| Received and resolved per day | The `daily` series of the volume report (Europe/London days, only for periods up to 62 days; longer periods return totals and an empty series). Days add up to the totals; a ticket resolved more than once counts on the day of its first qualifying move. Used by the dashboard activity chart, which is a short trend beside the live figures, not a replacement for the historical reports | `DepartmentVolumeReportService` |
 | Who spoke last | The latest PUBLIC message's author (requester or agent); notes never count | ticket list `lastPublicBy` |
 
 ## Sources of history
