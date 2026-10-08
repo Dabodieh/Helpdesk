@@ -4,6 +4,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { getDepartment, updateDepartment } from '../api/organisation'
 import { canInDepartment, canPlatform } from '../api/permissions'
 import { useMe } from '../auth'
+import { ROLE_LABEL } from '../api/schemas'
 import AutomationsSection from '../components/AutomationsSection'
 import BusinessHoursSection from '../components/BusinessHoursSection'
 import CannedManager from '../components/CannedManager'
@@ -63,7 +64,7 @@ export default function DepartmentPage() {
         subtitle={
           <>
             Department code: <code className="key-chip">{d.key}</code>
-            {d.myRole ? ` · Your role: ${d.myRole}` : ''}
+            {d.myRole ? ` · Your role: ${ROLE_LABEL[d.myRole] ?? d.myRole}` : ''}
           </>
         }
         actions={

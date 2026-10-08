@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { fieldErrors } from '../api/errors'
 import { createDepartment, listDepartments } from '../api/organisation'
 import { canPlatform, hasAnyPermission } from '../api/permissions'
-import { DEPARTMENT_KEY } from '../api/schemas'
+import { DEPARTMENT_KEY, ROLE_LABEL } from '../api/schemas'
 import { useMe } from '../auth'
 import { ActiveBadge, ErrorNotice, Field, Loading, PageHeader } from '../components/common'
 import Dialog from '../components/Dialog'
@@ -131,7 +131,7 @@ export default function DepartmentsPage() {
                 <tbody>{visible.map(d => <tr key={d.id}>
                   <td><div className="department-cell"><span className="department-icon"><Icon name="team" /></span><div><Link to={`/admin/departments/${d.id}`} className="dept-link">{d.name}</Link>{d.description && <p className="muted small">{d.description}</p>}</div></div></td>
                   <td><code className="key-chip">{d.key}</code></td><td><ActiveBadge active={d.isActive} /></td>
-                  <td className="muted small">{d.myRole ?? 'Metadata only'}</td>
+                  <td className="muted small">{d.myRole ? ROLE_LABEL[d.myRole] ?? d.myRole : 'Metadata only'}</td>
                   <td><Link to={`/admin/departments/${d.id}`} className="row-action" aria-label={`Manage ${d.name}`}>Manage →</Link></td>
                 </tr>)}</tbody>
               </table>

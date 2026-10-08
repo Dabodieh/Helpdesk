@@ -1,3 +1,4 @@
+import { useAttachmentsEnabled } from '../../hooks/useAttachmentsEnabled'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
@@ -20,6 +21,7 @@ export default function PortalRequestPage() {
 }
 
 function PortalRequest({ reference }: { reference: string }) {
+  const attachmentsEnabled = useAttachmentsEnabled()
   const qc = useQueryClient()
   const request = useQuery({ queryKey: ['portal', 'request', reference], queryFn: () => getPortalRequest(reference), refetchInterval: () => pollInterval() })
   const [text, setText] = useState('')
@@ -31,7 +33,7 @@ function PortalRequest({ reference }: { reference: string }) {
   const [tooMany, setTooMany] = useState(false)
   const [sent, setSent] = useState(false)
   const send = useMutation({
-    mutationFn: () => replyToRequest(reference, text.trim(), files, clientMessageId.current),
+    mutationFn: () => replyToRequest(reference, text.trim(), attachmentsEnabled ? files : [], clientMessageId.current),
     onSuccess: async (result) => {
       clientMessageId.current = crypto.randomUUID()
       setNotSaved(result.attachmentsNotSaved)
@@ -149,23 +151,25 @@ function PortalRequest({ reference }: { reference: string }) {
         <Field label="Add a reply" error={server.body}>
           {(p) => <textarea {...p} rows={4} value={text} onChange={(e) => setText(e.target.value)} />}
         </Field>
-        <Field label="Attach files (optional)" error={server.files}>
-          {(p) => (
-            <input
-              {...p}
-              ref={picker}
-              type="file"
-              multiple
-              onChange={(e) => {
-                const chosen = [...(e.target.files ?? [])]
-                setTooMany(chosen.length > MAX_FILES)
-                setFiles(chosen.slice(0, MAX_FILES))
-              }}
-            />
-          )}
-        </Field>
+        {attachmentsEnabled && (
+          <Field label="Attach files (optional)" error={server.files}>
+            {(p) => (
+              <input
+                {...p}
+                ref={picker}
+                type="file"
+                multiple
+                onChange={(e) => {
+                  const chosen = [...(e.target.files ?? [])]
+                  setTooMany(chosen.length > MAX_FILES)
+                  setFiles(chosen.slice(0, MAX_FILES))
+                }}
+              />
+            )}
+          </Field>
+        )}
         <ErrorNotice error={send.error && Object.keys(server).length === 0 ? send.error : null} />
-        {tooMany && (
+        {attachmentsEnabled && tooMany && (
           <p className="notice warn" role="status">
             Only the first {MAX_FILES} files are attached. Send the others in another reply.
           </p>

@@ -6,6 +6,7 @@ import { canAdminister, hasAnyPermission } from '../api/permissions'
 import { useMe } from '../auth'
 import { useRealtime } from '../lib/realtime'
 import { endSession } from '../queryClient'
+import ThemeToggle from './ThemeToggle'
 
 /**
  * The requester portal frame: its own navigation and layout, deliberately not the agent workspace. It works on a phone (the navigation wraps,
@@ -34,28 +35,29 @@ export default function PortalShell({ children }: { children: ReactNode }) {
       <header className="portal-header">
         <div className="portal-bar">
           <Link to="/portal" className="portal-brand">
-            <span className="brand-mark" aria-hidden="true">
-              H
-            </span>
-            Help &amp; support
+            <span className="wordmark">helpdesk<span>.</span></span>
+            <span className="portal-brand-label">Help &amp; support</span>
           </Link>
-          <div className="portal-account">
-            <button type="button" className="ghost" aria-expanded={open} aria-controls="portal-account-menu" onClick={() => setOpen(!open)}>
-              {me.displayName}
-            </button>
-            {open && (
-              <div id="portal-account-menu" className="popover" role="group" aria-label="Account">
-                <p className="muted small">{me.email ?? me.displayName}</p>
-                {isAgent && (
-                  <Link to="/" onClick={() => setOpen(false)}>
-                    Switch to the agent workspace
-                  </Link>
-                )}
-                <button type="button" onClick={() => void signOut()}>
-                  Sign out
-                </button>
-              </div>
-            )}
+          <div className="portal-tools">
+            <ThemeToggle />
+            <div className="portal-account">
+              <button type="button" className="ghost" aria-expanded={open} aria-controls="portal-account-menu" onClick={() => setOpen(!open)}>
+                {me.displayName}
+              </button>
+              {open && (
+                <div id="portal-account-menu" className="popover" role="group" aria-label="Account">
+                  <p className="muted small">{me.email ?? me.displayName}</p>
+                  {isAgent && (
+                    <Link to="/" onClick={() => setOpen(false)}>
+                      Switch to the agent workspace
+                    </Link>
+                  )}
+                  <button type="button" onClick={() => void signOut()}>
+                    Sign out
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
         <nav className="portal-nav" aria-label="Portal">

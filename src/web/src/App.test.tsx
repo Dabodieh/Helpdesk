@@ -16,10 +16,12 @@ test('signed-in users get the shell and the status page shows API health', async
   mockFetch({
     'GET /api/me': () => makeMe(),
     'GET /api/departments': () => [DEPT],
-    'GET /health/ready': () => new Response('Healthy', { status: 200 }),
+    'GET /health/ready': [() => new Response('Healthy', { status: 200 }), () => new Response('Unhealthy', { status: 503 })],
   })
   renderApp('/admin/status')
   expect(await screen.findByText('API: Healthy')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh status' }))
+  expect(await screen.findByText('API: Unhealthy')).toBeInTheDocument()
   expect(screen.getByRole('navigation', { name: 'Main' })).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
   expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()

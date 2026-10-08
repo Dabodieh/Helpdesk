@@ -3,6 +3,7 @@
 All portal endpoints require authentication and are scoped to the caller's requester links. Inaccessible objects return 404.
 
 ## Portal
+- `GET /api/portal/capabilities`: authenticated-only UI capability `{attachmentsEnabled: boolean}`, taken from the existing attachment pipeline setting. No Department or requester data. Upload controls are hidden while disabled or unavailable; existing server-side upload/download checks remain authoritative.
 - `GET /api/portal/forms`, `GET /api/portal/forms/{formId}`: published request forms with requester-visible fields, only for forms whose requester audience includes the caller; any other form id is 404 (as is `POST /api/portal/requests` for it, before any field validation).
 - `GET /api/portal/requests?filter=open|closed|all&cursor=&limit=`: caller's requests, ordered by `lastPublicActivityAt` desc.
 - `POST /api/portal/requests`: `{formId, subject, description, fields: {key: value}}`; creates a ticket (source `portal`). The caller's Department-local requester is the one linked to their account (created and linked on first submission; address and display name follow the account). 409 if the address belongs to another user's requester, or to an unlinked requester that already has tickets (left for administrator resolution).

@@ -11,8 +11,8 @@ export default function SignIn({ returnUrl = '/' }: { returnUrl?: string }) {
   // returnUrl must be a local path
   const safe = returnUrl.startsWith('/') && !returnUrl.startsWith('//') ? returnUrl : '/'
   return (
-    <main className="page narrow">
-      <h1>Helpdesk</h1>
+    <main className="page narrow sign-in">
+      <h1 className="wordmark">helpdesk<span>.</span></h1>
       {authError && (
         <p role="alert" className="notice error">
           {authError}

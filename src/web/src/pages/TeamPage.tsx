@@ -12,7 +12,7 @@ import {
 } from '../api/organisation'
 import { canInDepartment } from '../api/permissions'
 import { useMe } from '../auth'
-import { ActiveBadge, ErrorNotice, Loading } from '../components/common'
+import { ActiveBadge, ErrorNotice, Loading, PageHeader } from '../components/common'
 import EditForm from '../components/EditForm'
 
 function TeamMembers({ departmentId, teamId, active, canManage }: { departmentId: string; teamId: string; active: boolean; canManage: boolean }) {
@@ -124,12 +124,8 @@ export default function TeamPage() {
 
   return (
     <>
-      <p>
-        <Link to="/admin">Departments</Link> / <Link to={`/admin/departments/${departmentId}`}>{dept.data.name}</Link> / Team
-      </p>
-      <h1>
-        {t.name} <ActiveBadge active={t.isActive} />
-      </h1>
+      <PageHeader title={<>{t.name} <ActiveBadge active={t.isActive} /></>} subtitle="Team details and department members."
+        crumbs={<><Link to="/admin">Departments</Link> / <Link to={`/admin/departments/${departmentId}?section=teams`}>{dept.data.name}</Link> / Team</>} />
       <section aria-labelledby="details-h">
         <h2 id="details-h">Details</h2>
         <EditForm

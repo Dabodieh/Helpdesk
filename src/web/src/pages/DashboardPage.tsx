@@ -140,7 +140,7 @@ function Content({ d }: { d: Dashboard }) {
                 <li key={m.mailboxId} className="row">
                   <div className="row-main">
                     <div className="row-title">
-                      <strong>{m.address}</strong>
+                      <strong>{m.displayName}</strong>
                       <StatusBadge tone={HEALTH_TONE[m.status] ?? 'off'}>{HEALTH_LABEL[m.status] ?? m.status}</StatusBadge>
                     </div>
                     {m.reasons.length > 0 && <p className="muted small row-sub">{m.reasons.map((r) => HEALTH_REASON[r] ?? r).join(' · ')}</p>}

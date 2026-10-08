@@ -1,3 +1,4 @@
+import { useAttachmentsEnabled } from '../../hooks/useAttachmentsEnabled'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
@@ -60,6 +61,7 @@ function ChooseForm() {
 
 /** Step 2: the form. Knowledge suggestions appear while typing the subject; they assist and never block. */
 function RequestForm({ formId }: { formId: string }) {
+  const attachmentsEnabled = useAttachmentsEnabled()
   const form = useQuery({ queryKey: ['portal', 'form', formId], queryFn: () => getPortalForm(formId) })
   const [subject, setSubject] = useState('')
   const [description, setDescription] = useState('')
@@ -86,7 +88,7 @@ function RequestForm({ formId }: { formId: string }) {
       const fields = Object.fromEntries(Object.entries(values).filter(([, v]) => v !== undefined && v !== '' && !(Array.isArray(v) && v.length === 0)))
       const created = await createPortalRequest({ formId, subject: subject.trim(), description: description.trim(), fields, submissionId })
       let filesFailed = false
-      if (files.length > 0) {
+      if (attachmentsEnabled && files.length > 0) {
         try {
           await replyToRequest(created.reference, 'Files attached to this request.', files)
         } catch {
@@ -160,21 +162,23 @@ function RequestForm({ formId }: { formId: string }) {
         {f.fields.map((field) => (
           <CustomField key={field.key} field={field} value={values[field.key]} error={server[`fields.${field.key}`]} onChange={(v) => setValues((cur) => ({ ...cur, [field.key]: v }))} />
         ))}
-        <Field label="Attach files (optional)" hint="Screenshots, documents or logs. Files are checked before anyone can open them.">
-          {(p) => (
-            <input
-              {...p}
-              type="file"
-              multiple
-              onChange={(e) => {
-                const chosen = [...(e.target.files ?? [])]
-                setTooMany(chosen.length > 5)
-                setFiles(chosen.slice(0, 5))
-              }}
-            />
-          )}
-        </Field>
-        {tooMany && (
+        {attachmentsEnabled && (
+          <Field label="Attach files (optional)" hint="Screenshots, documents or logs. Files are checked before anyone can open them.">
+            {(p) => (
+              <input
+                {...p}
+                type="file"
+                multiple
+                onChange={(e) => {
+                  const chosen = [...(e.target.files ?? [])]
+                  setTooMany(chosen.length > 5)
+                  setFiles(chosen.slice(0, 5))
+                }}
+              />
+            )}
+          </Field>
+        )}
+        {attachmentsEnabled && tooMany && (
           <p className="notice warn" role="status">
             Only the first 5 files are attached. You can add the others from the request page afterwards.
           </p>

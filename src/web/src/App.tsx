@@ -23,9 +23,11 @@ import WorkspacePage from './pages/WorkspacePage'
 
 function AdminLayout() {
   // Inside a department the page header carries its own breadcrumb; the switch between Departments and System status is for the top-level pages.
-  const inDepartment = useLocation().pathname.startsWith('/admin/departments/')
+  const path = useLocation().pathname
+  const inDepartment = path.startsWith('/admin/departments/')
+  const inTeam = inDepartment && path.includes('/teams/')
   return (
-    <div className={inDepartment ? 'page admin department-admin' : 'admin-layout'}>
+    <div className={inDepartment ? `page admin ${inTeam ? 'team-admin' : 'department-admin'}` : 'admin-layout'}>
       {!inDepartment && <aside className="admin-sidebar">
         <h2>Administration</h2>
         <span className="rail-heading">Organisation</span>

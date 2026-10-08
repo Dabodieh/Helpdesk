@@ -5,7 +5,7 @@ import { getAutoReply } from '../api/emailIdentity'
 import { listMailboxes } from '../api/mail'
 import { listMembers, listTeams } from '../api/organisation'
 import { canInDepartment } from '../api/permissions'
-import type { Department } from '../api/schemas'
+import { ROLE_LABEL, type Department } from '../api/schemas'
 import { listBusinessHours, listSlaPolicies } from '../api/sla'
 import { listForms } from '../api/ticketing'
 import { useMe } from '../auth'
@@ -126,7 +126,7 @@ export default function DepartmentOverview({ department: d, onOpen }: { departme
         </div>
         <aside className="overview-context" aria-label="Department context">
           <h3>At a glance</h3>
-          <dl><div><dt>Ticket prefix</dt><dd>{d.key}</dd></div><div><dt>Status</dt><dd><StatusBadge tone={d.isActive ? 'ok' : 'off'}>{d.isActive ? 'Active' : 'Inactive'}</StatusBadge></dd></div><div><dt>Your access</dt><dd>{d.myRole ?? 'Administrative metadata'}</dd></div></dl>
+          <dl><div><dt>Ticket prefix</dt><dd>{d.key}</dd></div><div><dt>Status</dt><dd><StatusBadge tone={d.isActive ? 'ok' : 'off'}>{d.isActive ? 'Active' : 'Inactive'}</StatusBadge></dd></div><div><dt>Your access</dt><dd>{d.myRole ? ROLE_LABEL[d.myRole] ?? d.myRole : 'Administrative metadata'}</dd></div></dl>
           <p className="muted small">Department membership controls access to tickets and service data. Teams route and assign work within this department.</p>
         </aside>
       </div>

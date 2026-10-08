@@ -37,6 +37,8 @@ test('the dashboard shows current figures for one department and every figure li
   expect(screen.getByRole('link', { name: '4' })).toHaveAttribute('href', '/queue/all?dept=d1&team=tm1')
   expect(screen.getByRole('link', { name: 'IT-7' })).toHaveAttribute('href', '/tickets/IT-7')
   expect(screen.getByText('Mailboxes')).toBeInTheDocument()
+  expect(screen.getByText('Desk')).toBeInTheDocument()
+  expect(screen.queryByText('desk@helpdesk.test')).not.toBeInTheDocument()
   expect(screen.getByText('Some sends have an uncertain outcome')).toBeInTheDocument()
 })
 

@@ -3,6 +3,9 @@ import { api, csrfHeaders, ApiError } from './http'
 
 /** Requester portal API (docs/api/PHASE6_API.md). Purpose-built shapes: nothing here mirrors the agent ticket model. */
 
+const capabilitiesSchema = z.object({ attachmentsEnabled: z.boolean() })
+export const getPortalCapabilities = () => api('GET', '/api/portal/capabilities', { schema: capabilitiesSchema })
+
 export const REQUEST_FILTERS = ['active', 'closed', 'all'] as const
 export type RequestFilter = (typeof REQUEST_FILTERS)[number]
 

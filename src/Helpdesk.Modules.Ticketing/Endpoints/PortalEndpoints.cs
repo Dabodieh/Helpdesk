@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Helpdesk.Modules.Attachments.Contracts;
 using Helpdesk.Modules.Ticketing.Fields;
 using Helpdesk.Modules.Ticketing.Portal;
 using Helpdesk.SharedKernel.Authorization;
@@ -26,9 +27,15 @@ internal static class PortalEndpoints
 
     private sealed record FieldsJson(Dictionary<string, JsonElement>? Fields);
 
+    private sealed record PortalCapabilities(bool AttachmentsEnabled);
+
     public static void Map(IEndpointRouteBuilder app)
     {
         var portal = app.MapGroup("/api/portal").WithTags("Portal");
+
+        // UI capability only. Upload/download authorization and validation remain in the existing pipeline.
+        portal.MapGet("capabilities", (IAttachmentStore attachments) => TypedResults.Ok(new PortalCapabilities(attachments.Enabled)))
+            .RequireAuthenticatedOnly();
 
         portal.MapGet("forms", async (PortalFormsService forms, CancellationToken ct) => TypedResults.Ok(await forms.ListAsync(ct))).RequireAuthenticatedOnly();
         portal.MapGet("forms/{formId:guid}", async (Guid formId, PortalFormsService forms, CancellationToken ct) => TypedResults.Ok(await forms.GetAsync(formId, ct))).RequireAuthenticatedOnly();
