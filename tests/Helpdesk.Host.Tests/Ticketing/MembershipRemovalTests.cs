@@ -1,9 +1,13 @@
 #pragma warning disable CA1861 // one-off request payloads
+using System.Data.Common;
 using System.Net;
 using System.Text.Json;
 using Helpdesk.Host.Tests.Infrastructure;
 using Helpdesk.Modules.Ticketing.Contracts;
+using Helpdesk.SharedKernel.Security;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 
 namespace Helpdesk.Host.Tests.Ticketing;
 
@@ -131,5 +135,89 @@ public sealed class MembershipRemovalTests(HelpdeskFixture fixture) : IClassFixt
         await DrainAsync();
         Assert.Equal(0L, await RemovalAuditCountAsync(d.Id));
         Assert.Equal(d.Admin.Id, (await d.Lead.GetTicketAsync(t.Id)).Expect(HttpStatusCode.OK).Json.GetProperty("assignee").GetProperty("id").GetGuid());
+    }
+
+    /// <summary>Registered after Ticketing's own listener, so it runs after the ticket work and fails the removal transaction.</summary>
+    private sealed class FailingListener : IMembershipRemovalListener
+    {
+        public Task MembershipRemovingAsync(Guid departmentId, Guid userId, DbTransaction transaction, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("simulated failure inside the removal transaction");
+
+        public Task MembershipRemovedAsync(Guid departmentId, Guid userId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private async Task<long> UnassignedIntentCountAsync(Guid ticketId) =>
+        await fixture.ScalarAsync<long>("SELECT count(*) FROM ticketing.notification_outbox WHERE ticket_id = @t AND kind = 'unassigned'", TicketKit.P("t", ticketId));
+
+    [Fact]
+    public async Task A_failure_inside_the_removal_transaction_undoes_everything_and_the_retry_records_exactly_once()
+    {
+        var d = await fixture.NewDeptAsync();
+        var leaving = await fixture.NewMemberAsync(d.Department, "Agent");
+        var ticket = await AssignedTicketAsync(d, leaving.Id);
+        await d.Lead.Client.PostAsync("/api/notifications/read-all");
+
+        await using var failing = new HelpdeskFactory(fixture.ConnectionString).WithWebHostBuilder(b => b.ConfigureServices(s => s.AddScoped<IMembershipRemovalListener, FailingListener>()));
+        var admin = await fixture.SignInAsync(d.Admin.Subject, factory: failing);
+        (await admin.Client.DeleteAsync($"{d.Department.Url}/members/{leaving.Id}")).Expect(HttpStatusCode.InternalServerError);
+        await DrainAsync();
+
+        // Nothing was committed: the member is still a member, the ticket is still assigned, no audit entry, no notification intent, nothing told to the leads.
+        Assert.Equal(1L, await fixture.ScalarAsync<long>("SELECT count(*) FROM organisation.department_memberships WHERE department_id = @d AND user_id = @u", TicketKit.P("d", d.Id), TicketKit.P("u", leaving.Id)));
+        Assert.Equal(leaving.Id, (await d.Lead.GetTicketAsync(ticket.Id)).Expect(HttpStatusCode.OK).Json.GetProperty("assignee").GetProperty("id").GetGuid());
+        Assert.Equal(0L, await RemovalAuditCountAsync(d.Id));
+        Assert.Equal(0L, await UnassignedIntentCountAsync(ticket.Id));
+        Assert.Empty(await UnreadAsync(d.Lead));
+
+        // The retry (a healthy host) performs the whole thing once.
+        (await d.Admin.Client.DeleteAsync($"{d.Department.Url}/members/{leaving.Id}")).Expect(HttpStatusCode.NoContent);
+        await DrainAsync();
+        Assert.Equal(1L, await RemovalAuditCountAsync(d.Id));
+        Assert.Equal(1L, await UnassignedIntentCountAsync(ticket.Id));
+        Assert.Single(await ActivityAsync(d.Lead, ticket.Id), IsRemovalEntry);
+        Assert.Single(await UnreadAsync(d.Lead));
+
+        // Draining again (background recovery) creates nothing new.
+        await DrainAsync();
+        await DrainAsync();
+        Assert.Single(await UnreadAsync(d.Lead));
+        Assert.Equal(1L, await RemovalAuditCountAsync(d.Id));
+    }
+
+    [Fact]
+    public async Task An_assignment_in_flight_when_the_removal_starts_is_waited_for_and_recorded_not_silently_cleared()
+    {
+        var d = await fixture.NewDeptAsync();
+        var leaving = await fixture.NewMemberAsync(d.Department, "Agent");
+        var early = await AssignedTicketAsync(d, leaving.Id);
+        var late = await d.Lead.CreateTicketAsync(d.Department);
+        await d.Lead.Client.PostAsync("/api/notifications/read-all");
+
+        // Another request assigns the member (not yet committed): it holds a key-share lock on the membership through the foreign key.
+        await using var connection = new NpgsqlConnection(fixture.ConnectionString);
+        await connection.OpenAsync();
+        await using var inFlight = await connection.BeginTransactionAsync();
+        await using (var assign = new NpgsqlCommand("UPDATE ticketing.tickets SET assignee_user_id = @u WHERE id = @t", connection, inFlight))
+        {
+            assign.Parameters.AddWithValue("u", leaving.Id);
+            assign.Parameters.AddWithValue("t", late.Id);
+            Assert.Equal(1, await assign.ExecuteNonQueryAsync());
+        }
+
+        var removal = d.Admin.Client.DeleteAsync($"{d.Department.Url}/members/{leaving.Id}");
+        await Task.Delay(1500);
+        Assert.False(removal.IsCompleted, "the removal must wait for the in-flight assignment");
+        await inFlight.CommitAsync();
+        (await removal).Expect(HttpStatusCode.NoContent);
+        await DrainAsync();
+
+        foreach (var ticket in new[] { early, late })
+        {
+            Assert.Single(await ActivityAsync(d.Lead, ticket.Id), IsRemovalEntry);
+            Assert.Equal(JsonValueKind.Null, (await d.Lead.GetTicketAsync(ticket.Id)).Expect(HttpStatusCode.OK).Json.GetProperty("assignee").ValueKind);
+        }
+
+        Assert.Equal(2L, await RemovalAuditCountAsync(d.Id));
+        Assert.Equal(2, (await UnreadAsync(d.Lead)).Length);
     }
 }

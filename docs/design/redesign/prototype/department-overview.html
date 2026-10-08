@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Department Overview — Helpdesk redesign prototype</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+<script src="shell.js"></script>
+<style>
+  .area-cell { display: flex; align-items: center; gap: 12px; }
+  .area-cell .ico { width: 32px; height: 32px; border-radius: 7px; background: var(--surface-2); border: 1px solid var(--line); color: var(--text-2); display: grid; place-items: center; flex: none; }
+  .tbl.rd td { height: 56px; }
+  .tbl.rd .setting { color: var(--text-2); }
+  .tbl.rd .setting .mono { white-space: nowrap; }
+  .tbl.rd .setting span { display: block; font-size: 12.5px; color: var(--text-3); max-width: 46ch; }
+  .tbl.rd tr.attn td { background: color-mix(in srgb, var(--warn-bg) 38%, var(--surface)); }
+  .tbl.rd tr.attn:hover td { background: color-mix(in srgb, var(--warn-bg) 55%, var(--surface)); }
+  .summary { display: flex; gap: 18px; align-items: center; font-size: 13px; color: var(--text-2); }
+  .summary i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+</style>
+</head>
+<body data-nav="admin" data-crumbs='[["Administration","admin.html"],["Departments","admin.html"],["IT Support","department-overview.html"]]'>
+<main id="page" class="page">
+  <div class="page-head">
+    <div class="titles">
+      <h1>IT Support <span class="pill ok">Active</span></h1>
+      <p class="sub">Devices, access, networks and everyday IT requests.</p>
+      <div class="meta-row">
+        <span>Department code <span class="chip mono">IT</span></span>
+        <span>Ticket references <b class="mono">IT-1042</b></span>
+        <span>Your role <b>TeamLead</b></span>
+      </div>
+    </div>
+    <div class="page-actions"><button class="btn" type="button" data-stub="1"><span data-i="edit" data-cls="sm"></span>Edit department</button></div>
+  </div>
+
+  <div class="settings">
+    <nav class="section-nav" id="sectionNav" data-current="overview" aria-label="Department administration"></nav>
+
+    <div class="settings-main">
+      <div class="callout warn">
+        <span data-i="alert"></span>
+        <div class="body"><b>Requesters can’t raise tickets through the portal yet.</b> IT Support has 2 active request forms, but neither is available to anyone. New forms start restricted to selected people.</div>
+        <a class="btn sm" href="#" data-stub="1">Review request forms</a>
+      </div>
+
+      <section class="panel" style="margin-top:20px" aria-labelledby="setup-h">
+        <div class="panel-head">
+          <div class="t"><h2 id="setup-h">Department setup</h2><p>What is configured for this department and what still needs a decision. Nothing here is mandatory: “Not configured” is information, not an error.</p></div>
+        </div>
+        <div class="toolbar">
+          <div class="summary" role="status">
+            <span><i style="background:var(--ok)"></i>5 configured</span>
+            <span><i style="background:#e19a1b"></i>1 needs attention</span>
+            <span><i style="background:var(--line-strong)"></i>2 not configured</span>
+          </div>
+        </div>
+        <table class="tbl rd" aria-label="Setup status">
+          <thead><tr><th style="width:36%">Area</th><th style="width:150px">Status</th><th>Current setting</th><th></th></tr></thead>
+          <tbody>
+            <tr class="group"><td colspan="4">People</td></tr>
+            <tr>
+              <td><div class="area-cell"><span class="ico"><span data-i="user"></span></span><div class="cell-main"><b>Members</b><span>Staff with access to this department</span></div></div></td>
+              <td><span class="pill ok">Configured</span></td>
+              <td class="setting">4 members</td>
+              <td class="act"><a class="btn link sm" href="#" data-stub="1">Manage</a></td>
+            </tr>
+            <tr>
+              <td><div class="area-cell"><span class="ico"><span data-i="users"></span></span><div class="cell-main"><b>Teams</b><span>Routing and assignment groups</span></div></div></td>
+              <td><span class="pill ok">Configured</span></td>
+              <td class="setting">3 active teams<span>Teams route work; they are not access boundaries.</span></td>
+              <td class="act"><a class="btn link sm" href="#" data-stub="1">Manage</a></td>
+            </tr>
+            <tr class="group"><td colspan="4">Communication</td></tr>
+            <tr>
+              <td><div class="area-cell"><span class="ico"><span data-i="mail"></span></span><div class="cell-main"><b>Mailboxes</b><span>Shared mailboxes that receive and send email</span></div></div></td>
+              <td><span class="pill ok">Configured</span></td>
+              <td class="setting">Default: <span class="mono" style="display:inline;font-size:13px;color:var(--text-2)">it-desk@helpdesk.test</span><span>1 active mailbox</span></td>
+              <td class="act"><a class="btn link sm" href="department-mailboxes.html">Manage</a></td>
+            </tr>
+            <tr>
+              <td><div class="area-cell"><span class="ico"><span data-i="reply"></span></span><div class="cell-main"><b>Acknowledgements</b><span>Automatic confirmation to requesters</span></div></div></td>
+              <td><span class="pill">Not configured</span></td>
+              <td class="setting">Off<span>Requesters get no automatic confirmation.</span></td>
+              <td class="act"><a class="btn link sm" href="department-mailboxes.html#ack">Manage</a></td>
+            </tr>
+            <tr class="group"><td colspan="4">Ticket setup</td></tr>
+            <tr class="attn">
+              <td><div class="area-cell"><span class="ico"><span data-i="layers"></span></span><div class="cell-main"><b>Request forms</b><span>What requesters can submit in the portal</span></div></div></td>
+              <td><span class="pill warn">Needs attention</span></td>
+              <td class="setting">2 active forms, none available to anyone<span>Open a form and choose who may use it.</span></td>
+              <td class="act"><a class="btn sm" href="#" data-stub="1">Review forms</a></td>
+            </tr>
+            <tr class="group"><td colspan="4">Service management</td></tr>
+            <tr>
+              <td><div class="area-cell"><span class="ico"><span data-i="cal"></span></span><div class="cell-main"><b>Business hours</b><span>Working calendars for SLA clocks</span></div></div></td>
+              <td><span class="pill ok">Configured</span></td>
+              <td class="setting">1 calendar</td>
+              <td class="act"><a class="btn link sm" href="#" data-stub="1">Manage</a></td>
+            </tr>
+            <tr>
+              <td><div class="area-cell"><span class="ico"><span data-i="clock"></span></span><div class="cell-main"><b>SLA policies</b><span>Response and resolution targets</span></div></div></td>
+              <td><span class="pill ok">Configured</span></td>
+              <td class="setting">2 active policies</td>
+              <td class="act"><a class="btn link sm" href="#" data-stub="1">Manage</a></td>
+            </tr>
+            <tr>
+              <td><div class="area-cell"><span class="ico"><span data-i="zap"></span></span><div class="cell-main"><b>Automations</b><span>Ordered rules that act on tickets</span></div></div></td>
+              <td><span class="pill">Not configured</span></td>
+              <td class="setting">No active rules</td>
+              <td class="act"><a class="btn link sm" href="#" data-stub="1">Manage</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </div>
+  </div>
+</main>
+</body>
+</html>

@@ -6,6 +6,7 @@ using Helpdesk.Modules.Organisation.Persistence;
 using Helpdesk.SharedKernel.Errors;
 using Helpdesk.SharedKernel.Security;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 
 namespace Helpdesk.Modules.Organisation.Services;
@@ -106,6 +107,9 @@ internal sealed class MembershipService(
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         await LockDepartmentAsync(departmentId, ct);
 
+        // Lock the membership row first: any assignment to this member in flight holds a key-share lock on it through the foreign key, so we wait for it to commit (and
+        // the listeners below see it), and nobody can start a new one until this transaction ends (it would then fail the foreign key instead of being cleared silently).
+        await db.Database.ExecuteSqlAsync($"SELECT 1 FROM organisation.department_memberships WHERE department_id = {departmentId} AND user_id = {userId} FOR UPDATE", ct);
         var membership = await db.DepartmentMemberships.SingleOrDefaultAsync(m => m.DepartmentId == departmentId && m.UserId == userId, ct)
             ?? throw new NotFoundException();
         if (membership.Role == DepartmentRoles.DepartmentAdmin)
@@ -113,10 +117,11 @@ internal sealed class MembershipService(
             await EnsureNotLastAdminAsync(departmentId, userId, ct);
         }
 
-        // Let the modules that hold work assigned to this member capture it while the assignment still exists (the foreign key clears it on delete).
+        // Modules that hold work assigned to this member deal with it in THIS transaction (durable together with the removal, undone with it).
+        var transaction = tx.GetDbTransaction();
         foreach (var listener in removalListeners)
         {
-            await listener.BeforeMembershipRemovedAsync(departmentId, userId, ct);
+            await listener.MembershipRemovingAsync(departmentId, userId, transaction, ct);
         }
 
         // Remove (and audit) team memberships explicitly; the composite FK cascade is only the backstop.
@@ -143,7 +148,7 @@ internal sealed class MembershipService(
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // The membership is already gone; recording what it did to the member's work is best-effort and must not fail the request.
+                // The membership is already gone and everything durable is committed; only conveniences such as the realtime refresh run here.
                 FollowUpFailed(log, listener.GetType().Name, ex.GetType().Name, null);
             }
         }

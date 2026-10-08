@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ticket Workspace — Helpdesk redesign prototype</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+<script src="shell.js"></script>
+<style>
+  #page { display: grid; grid-template-columns: 330px minmax(0, 1fr) 288px; height: 100%; min-height: 0; }
+  .pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+
+  /* ---- Queue ---- */
+  .queue { background: var(--surface); border-right: 1px solid var(--line); }
+  .q-head { padding: 14px 16px 10px; border-bottom: 1px solid var(--line); display: grid; gap: 10px; }
+  .q-title { display: flex; align-items: baseline; gap: 8px; }
+  .q-title h1 { font-size: var(--t-section); font-weight: 650; }
+  .q-title span { color: var(--text-3); font-size: 13px; }
+  .q-title .btn { margin-left: auto; }
+  .seg { display: flex; gap: 4px; flex-wrap: wrap; }
+  .seg button { height: 26px; padding: 0 10px; border-radius: 13px; border: 1px solid var(--line-strong); background: none; font-size: 13px; color: var(--text-2); cursor: pointer; }
+  .seg button[aria-pressed='true'] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-strong); font-weight: 600; }
+  .q-tools { display: flex; gap: 8px; }
+  .q-list { overflow: auto; flex: 1; }
+  .t-row { display: block; padding: 11px 16px 11px 16px; border-bottom: 1px solid var(--line); color: inherit; position: relative; }
+  .t-row:hover { background: var(--hover); text-decoration: none; }
+  .t-row[aria-current='true'] { background: var(--accent-soft); }
+  .t-row[aria-current='true']::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent); }
+  .t-top { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-3); }
+  .t-top .ref { font-family: var(--mono); font-size: 12px; color: var(--text-2); }
+  .t-top .when { margin-left: auto; }
+  .sdot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .s-open { background: var(--st-open); } .s-pending { background: var(--st-pending); } .s-resolved { background: var(--st-resolved); }
+  .t-sub { margin: 3px 0 4px; font-weight: 580; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .t-meta { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-3); flex-wrap: wrap; }
+  .prio-urgent { color: var(--danger); font-weight: 600; } .prio-high { color: var(--warn); font-weight: 600; }
+  .sla { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 580; padding: 0 6px; border-radius: 4px; height: 19px; background: var(--off-bg); color: var(--off); }
+  .sla.risk { background: var(--warn-bg); color: var(--warn); } .sla.breach { background: var(--danger-bg); color: var(--danger); }
+  .turn { margin-left: auto; font-size: 12px; color: var(--text-3); }
+
+  /* ---- Conversation ---- */
+  .conv { background: var(--canvas); }
+  .c-head { background: var(--surface); border-bottom: 1px solid var(--line); padding: 12px 24px 12px; }
+  .c-line { display: flex; align-items: center; gap: 8px; }
+  .c-line .spacer { flex: 1; }
+  .c-title { font-size: 20px; font-weight: 650; letter-spacing: -0.01em; line-height: 1.3; margin: 8px 0 6px; }
+  .c-meta { display: flex; align-items: center; gap: 14px; font-size: 13px; color: var(--text-3); flex-wrap: wrap; }
+  .c-meta b { color: var(--text-2); font-weight: 560; }
+  .timeline { flex: 1; overflow: auto; padding: 20px 24px 12px; }
+  .tl { max-width: 880px; margin: 0 auto; display: grid; gap: 14px; }
+  .msg { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 12px; }
+  .msg .bubble { border: 1px solid var(--line); border-radius: 10px; background: var(--requester-bg); overflow: hidden; }
+  .msg .bh { display: flex; align-items: center; gap: 8px; padding: 9px 14px 0; font-size: 13px; color: var(--text-3); flex-wrap: wrap; }
+  .msg .bh b { color: var(--text); font-weight: 600; font-size: 14px; }
+  .msg .bh .when { margin-left: auto; }
+  .msg .bb { padding: 6px 14px 13px; }
+  .msg .bb p + p { margin-top: 8px; }
+  .msg.agent .bubble { background: var(--agent-bg); border-color: var(--accent-line); }
+  .msg.agent .avatar { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  .sig { margin-top: 12px; padding-top: 8px; border-top: 1px solid color-mix(in srgb, var(--accent-line) 70%, transparent); color: var(--text-2); font-size: 13px; line-height: 1.4; }
+  .delivery { font-size: 12px; color: var(--text-3); display: inline-flex; align-items: center; gap: 5px; }
+  .msg.note .bubble { background: var(--note-bg); border: 1px solid var(--note-line); border-left: 5px solid var(--note-stripe); color: var(--note-text); }
+  .msg.note .bh { color: var(--note-text); opacity: 0.9; }
+  .msg.note .bh b { color: var(--note-text); }
+  .msg.note .avatar { background: var(--note-stripe); color: #2a1d00; border-color: var(--note-stripe); }
+  .note-tag { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 4px; background: var(--note-stripe); color: #2a1d00; font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+  .note-scope { padding: 0 14px 12px; font-size: 12.5px; color: var(--note-text); opacity: 0.8; display: flex; gap: 6px; align-items: center; }
+  .event { display: flex; align-items: center; gap: 10px; color: var(--text-3); font-size: 13px; padding-left: 44px; }
+  .event::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--line-strong); margin-left: 12px; margin-right: 2px; flex: none; }
+  .event .when { margin-left: auto; }
+  .event b { color: var(--text-2); font-weight: 560; }
+  .day { text-align: center; font-size: 12px; color: var(--text-3); position: relative; }
+  .day span { background: var(--canvas); padding: 0 10px; position: relative; }
+  .day::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--line); }
+
+  /* ---- Composer ---- */
+  .composer { background: var(--surface); border-top: 1px solid var(--line); padding: 12px 24px 14px; flex: none; }
+  .cmp { max-width: 880px; margin: 0 auto; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface); overflow: hidden; }
+  .cmp.is-note { background: var(--note-bg); border-color: var(--note-stripe); box-shadow: inset 5px 0 0 var(--note-stripe); }
+  .cmp-tabs { display: flex; align-items: stretch; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+  .cmp.is-note .cmp-tabs { background: color-mix(in srgb, var(--note-stripe) 18%, var(--note-bg)); border-color: var(--note-line); }
+  .cmp-tabs button { display: inline-flex; align-items: center; gap: 7px; padding: 0 16px; height: 38px; border: 0; background: none; color: var(--text-2); font-weight: 560; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .cmp.is-note .cmp-tabs button { color: var(--note-text); }
+  .cmp-tabs button[aria-selected='true'] { color: var(--text); border-bottom-color: var(--accent); background: var(--surface); }
+  .cmp.is-note .cmp-tabs button[aria-selected='true'] { background: var(--note-bg); border-bottom-color: var(--note-stripe); color: var(--note-text); }
+  .cmp-tabs .to { margin-left: auto; align-self: center; padding-right: 14px; font-size: 12.5px; color: var(--text-3); display: flex; align-items: center; gap: 6px; }
+  .cmp.is-note .cmp-tabs .to { color: var(--note-text); font-weight: 650; }
+  .cmp textarea { width: 100%; border: 0; outline: 0; resize: none; padding: 11px 14px; background: transparent; line-height: 1.5; height: 72px; display: block; }
+  .cmp.is-note textarea { color: var(--note-text); }
+  .cmp-foot { display: flex; align-items: center; gap: 6px; padding: 8px 10px 8px 8px; border-top: 1px solid var(--line); }
+  .cmp.is-note .cmp-foot { border-color: var(--note-line); }
+  .cmp-foot .grow { flex: 1; }
+  .cmp-foot .after { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-3); margin-right: 8px; }
+  .cmp-foot .select { height: 30px; width: 132px; }
+  .btn.note { background: var(--note-stripe); border-color: var(--note-stripe); color: #2a1d00; font-weight: 650; }
+  .btn.note:hover { filter: brightness(0.95); }
+
+  /* ---- Properties ---- */
+  .props { background: var(--surface); border-left: 1px solid var(--line); overflow: auto; }
+  .p-sec { padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  .p-sec h2 { font-size: 11.5px; letter-spacing: 0.07em; text-transform: uppercase; font-weight: 650; color: var(--text-3); margin-bottom: 10px; display: flex; align-items: center; }
+  .p-sec h2 a { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 520; font-size: 12.5px; }
+  .p-row { display: grid; grid-template-columns: 74px minmax(0, 1fr); align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; }
+  .p-row:last-child { margin-bottom: 0; }
+  .p-row > span:first-child { color: var(--text-3); }
+  .p-row .select { height: 30px; }
+  .p-row.val { align-items: start; }
+  .p-person { display: flex; gap: 10px; align-items: center; }
+  .p-person b { display: block; font-weight: 600; line-height: 1.25; }
+  .p-person span { font-size: 12.5px; color: var(--text-3); }
+  .sla-line { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; margin-bottom: 7px; }
+  .sla-line:last-child { margin-bottom: 0; }
+  .ok-t { color: var(--ok); font-weight: 580; } .warn-t { color: var(--warn); font-weight: 600; }
+  .stack { display: grid; gap: 8px; }
+  .lock-val { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12.5px; color: var(--text-2); background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; word-break: break-all; }
+  .fine { font-size: 12px; color: var(--text-3); margin-top: 6px; line-height: 1.4; }
+</style>
+</head>
+<body data-nav="my" data-rail="compact" data-flush="1" data-crumbs='[["IT Support","workspace.html"],["My Queue","workspace.html"],["IT-14","workspace.html"]]'>
+<div id="page">
+
+  <!-- Queue -->
+  <section class="pane queue" aria-label="Ticket queue">
+    <div class="q-head">
+      <div class="q-title"><h1 id="qName">My Queue</h1><span id="qCount">4 tickets</span><button class="btn ghost sm" type="button" data-stub="1"><span data-i="layers" data-cls="sm"></span>Views</button></div>
+      <div class="q-tools">
+        <div class="search-in" style="flex:1"><span data-i="search"></span><input class="input" style="width:100%" placeholder="Reference or subject" aria-label="Search this queue"></div>
+      </div>
+      <div class="seg" role="group" aria-label="Status filter">
+        <button type="button" aria-pressed="true">Open</button><button type="button" aria-pressed="true">Pending</button><button type="button" aria-pressed="false">Resolved</button><button type="button" aria-pressed="false">Closed</button>
+      </div>
+    </div>
+    <div class="q-list" id="qList">
+      <a class="t-row" href="#" aria-current="true" data-q="my team all">
+        <div class="t-top"><span class="sdot s-open" title="Open"></span><span class="ref">IT-14</span><span class="prio-high">High</span><span class="when">4 min</span></div>
+        <div class="t-sub">VPN drops every 30 minutes on floor 3</div>
+        <div class="t-meta"><span>Priya Nair</span><span class="sla risk">1h 20m left</span><span class="turn">Awaiting agent</span></div>
+      </a>
+      <a class="t-row" href="#" data-q="my team all">
+        <div class="t-top"><span class="sdot s-open"></span><span class="ref">IT-13</span><span>Normal</span><span class="when">22 min</span></div>
+        <div class="t-sub">New starter laptop for Monday</div>
+        <div class="t-meta"><span>Tom Okafor</span><span class="sla">Due tomorrow</span><span class="turn">Awaiting agent</span></div>
+      </a>
+      <a class="t-row" href="#" data-q="my team all">
+        <div class="t-top"><span class="sdot s-pending"></span><span class="ref">IT-12</span><span>Normal</span><span class="when">1 h</span></div>
+        <div class="t-sub">Printer jam on floor 3</div>
+        <div class="t-meta"><span>Mei Lin</span><span class="sla">Clock paused</span><span class="turn">Awaiting requester</span></div>
+      </a>
+      <a class="t-row" href="#" data-q="my team all">
+        <div class="t-top"><span class="sdot s-open"></span><span class="ref">IT-10</span><span class="prio-urgent">Urgent</span><span class="when">2 h</span></div>
+        <div class="t-sub">Mailbox full: external email is bouncing</div>
+        <div class="t-meta"><span>Dan Whitfield</span><span class="sla breach">Breached 40m</span><span class="turn">Awaiting agent</span></div>
+      </a>
+      <a class="t-row" href="#" data-q="team unassigned all">
+        <div class="t-top"><span class="sdot s-open"></span><span class="ref">IT-11</span><span>Normal</span><span class="when">3 h</span></div>
+        <div class="t-sub">Shared mailbox access for Finance</div>
+        <div class="t-meta"><span>Aisha Rahman</span><span class="sla">Due in 6h</span><span class="turn">Unassigned</span></div>
+      </a>
+    </div>
+  </section>
+
+  <!-- Conversation -->
+  <section class="pane conv" aria-label="Ticket IT-14">
+    <header class="c-head">
+      <div class="c-line">
+        <span class="chip mono">IT-14</span>
+        <span class="chip" title="Replies are sent from the mailbox stored on this ticket"><span data-i="mail" data-cls="sm"></span>it-desk@helpdesk.test</span>
+        <span class="spacer"></span>
+        <button class="btn ghost sm" type="button" data-stub="1"><span data-i="star" data-cls="sm"></span>Follow</button>
+        <button class="btn ghost sm" type="button" data-stub="1"><span data-i="merge" data-cls="sm"></span>Merge</button>
+        <button class="btn ghost sm" type="button" data-stub="1"><span data-i="msg" data-cls="sm"></span>Macros</button>
+        <button class="btn primary sm" type="button" data-stub="1"><span data-i="check" data-cls="sm"></span>Resolve</button>
+      </div>
+      <h1 class="c-title">VPN drops every 30 minutes on floor 3</h1>
+      <div class="c-meta"><span class="pill info">Open</span><span><b>Priya Nair</b> · priya.nair@example.test</span><span>Created today 09:12</span><span>Network fault</span></div>
+    </header>
+
+    <div class="timeline" id="timeline">
+      <div class="tl">
+        <div class="day"><span>Today</span></div>
+
+        <article class="msg">
+          <span class="avatar lg" style="background:var(--surface-3);color:var(--text-2);border-color:var(--line-strong)">PN</span>
+          <div class="bubble">
+            <div class="bh"><b>Priya Nair</b><span>Requester · by email</span><span class="when">09:12</span></div>
+            <div class="bb"><p>Since this morning the VPN disconnects roughly every half hour whenever I’m at my desk on floor 3. It reconnects but I lose my remote sessions each time. Working from the canteen on floor 1 is fine.</p></div>
+          </div>
+        </article>
+
+        <div class="event"><span>Automatic acknowledgement sent from it-desk@helpdesk.test · not counted as a first response</span><span class="when">09:12</span></div>
+        <div class="event"><span><b>Carol Reyes</b> assigned this ticket to herself and set priority <b>Normal → High</b></span><span class="when">09:20</span></div>
+
+        <article class="msg agent">
+          <span class="avatar lg">CR</span>
+          <div class="bubble">
+            <div class="bh"><b>Carol Reyes</b><span>Public reply</span><span class="delivery"><span data-i="check" data-cls="sm"></span>Accepted by mail service</span><span class="when">09:24</span></div>
+            <div class="bb"><p>Hi Priya, thanks for the detail. Floor 3 only, and fine on floor 1, points at the access point rather than your laptop. I’m checking the wireless controller now and will update you within the hour.</p><div class="sig"><b>Carol Reyes</b><br>IT Support</div></div>
+          </div>
+        </article>
+
+        <article class="msg note">
+          <span class="avatar lg">CR</span>
+          <div class="bubble">
+            <div class="bh"><span class="note-tag"><span data-i="lock" data-cls="sm"></span>Internal note</span><b>Carol Reyes</b><span class="when">09:41</span></div>
+            <div class="bb"><p>AP-3F-02 is rebooting every ~30 min in the controller log. Firmware is two releases behind the other floor 3 units. Planning a firmware update at lunch; the requester doesn’t need the detail yet.</p></div>
+            <div class="note-scope"><span data-i="eye" data-cls="sm"></span>Visible to IT Support agents only. Never shown to the requester.</div>
+          </div>
+        </article>
+
+        <article class="msg">
+          <span class="avatar lg" style="background:var(--surface-3);color:var(--text-2);border-color:var(--line-strong)">PN</span>
+          <div class="bubble">
+            <div class="bh"><b>Priya Nair</b><span>Requester · by email</span><span class="when">11:40</span></div>
+            <div class="bb"><p>Thanks, it dropped again just now at 11:38. Let me know if you want me to move seats while you work on it.</p></div>
+          </div>
+        </article>
+      </div>
+    </div>
+
+    <div class="composer">
+      <div class="cmp" id="cmp">
+        <div class="cmp-tabs" role="tablist" aria-label="Reply type">
+          <button type="button" role="tab" id="tabPub" aria-selected="true"><span data-i="reply" data-cls="sm"></span>Public reply</button>
+          <button type="button" role="tab" id="tabNote" aria-selected="false"><span data-i="lock" data-cls="sm"></span>Internal note</button>
+          <span class="to" id="cmpTo"><span data-i="mail" data-cls="sm"></span>To Priya Nair, from it-desk@helpdesk.test</span>
+        </div>
+        <textarea id="cmpText" aria-label="Message" placeholder="Write a reply to the requester…"></textarea>
+        <div class="cmp-foot">
+          <button class="btn ghost sm" type="button" data-stub="1"><span data-i="clip" data-cls="sm"></span>Attach</button>
+          <button class="btn ghost sm" type="button" data-stub="1"><span data-i="msg" data-cls="sm"></span>Insert response</button>
+          <span class="grow"></span>
+          <span class="after" id="after"><label for="afterSel">Status after sending</label><select class="select" id="afterSel"><option>Keep Open</option><option>Pending</option><option>Resolved</option></select></span>
+          <button class="btn primary" type="button" id="cmpSend"><span data-i="send" data-cls="sm"></span><span id="cmpSendT">Send reply</span></button>
+        </div>
+      </div>
+      <p class="meta" id="cmpHint" style="max-width:880px;margin:6px auto 0">Your signature is added when the reply is sent. <kbd>Ctrl</kbd> + <kbd>Enter</kbd> sends.</p>
+    </div>
+  </section>
+
+  <!-- Properties -->
+  <aside class="pane props" aria-label="Ticket properties">
+    <div class="p-sec">
+      <h2>Properties</h2>
+      <div class="p-row"><span>Status</span><select class="select" aria-label="Status"><option selected>Open</option><option>Pending</option><option>Resolved</option><option>Closed</option></select></div>
+      <div class="p-row"><span>Priority</span><select class="select" aria-label="Priority"><option>Low</option><option>Normal</option><option selected>High</option><option>Urgent</option></select></div>
+      <div class="p-row"><span>Assignee</span><select class="select" aria-label="Assignee"><option selected>Carol Reyes</option><option>Unassigned</option><option>Jonas Becker</option></select></div>
+      <div class="p-row"><span>Team</span><select class="select" aria-label="Team"><option selected>Network</option><option>Service desk</option><option>No team</option></select></div>
+    </div>
+    <div class="p-sec">
+      <h2>Requester <a href="#" data-stub="1">History</a></h2>
+      <div class="p-person"><span class="avatar" style="background:var(--surface-3);color:var(--text-2);border-color:var(--line-strong)">PN</span><div><b>Priya Nair</b><span>priya.nair@example.test</span></div></div>
+      <p class="fine">2 open · 8 total in IT Support</p>
+    </div>
+    <div class="p-sec">
+      <h2>Mailbox</h2>
+      <div class="lock-val"><span data-i="lock" data-cls="sm"></span>it-desk@helpdesk.test</div>
+      <p class="fine">Replies leave from this mailbox. It is fixed when the ticket is created.</p>
+    </div>
+    <div class="p-sec">
+      <h2>Service level</h2>
+      <div class="sla-line"><span class="muted">First response</span><span class="ok-t">Met · 09:24</span></div>
+      <div class="sla-line"><span class="muted">Resolution</span><span class="warn-t">Due 17:00 · 1h 20m left</span></div>
+    </div>
+    <div class="p-sec">
+      <h2>Details</h2>
+      <div class="p-row"><span>Type</span><span>Network fault</span></div>
+      <div class="p-row"><span>Location</span><span>Floor 3</span></div>
+      <div class="p-row"><span>Created</span><span>Today 09:12</span></div>
+      <div class="p-row"><span>Updated</span><span>4 min ago</span></div>
+    </div>
+    <div class="p-sec">
+      <h2>Followers <a href="#" data-stub="1">Add</a></h2>
+      <div class="p-person"><span class="avatar sm">JB</span><div><b style="font-weight:560">Jonas Becker</b></div></div>
+    </div>
+    <div class="p-sec" style="border-bottom:0">
+      <h2>Related tickets</h2>
+      <a href="#" data-stub="1" style="display:grid;gap:4px"><span><span class="mono muted">IT-8</span> Wi-Fi drops in meeting room 3A</span><span><span class="pill">Resolved</span></span></a>
+    </div>
+  </aside>
+</div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var cmp = $('cmp'), tp = $('tabPub'), tn = $('tabNote');
+  function mode(note) {
+    cmp.classList.toggle('is-note', note);
+    tp.setAttribute('aria-selected', String(!note)); tn.setAttribute('aria-selected', String(note));
+    $('cmpTo').innerHTML = note ? hdIcon('lock', 'sm') + 'Internal note · never visible to the requester' : hdIcon('mail', 'sm') + 'To Priya Nair, from it-desk@helpdesk.test';
+    $('cmpText').placeholder = note ? 'Write a note for your colleagues…' : 'Write a reply to the requester…';
+    $('cmpSend').className = 'btn ' + (note ? 'note' : 'primary');
+    $('cmpSendT').textContent = note ? 'Add note' : 'Send reply';
+    $('after').hidden = note;
+    $('cmpHint').innerHTML = note ? 'Only IT Support agents can see internal notes. They are never included in notifications to the requester.' : 'Your signature is added when the reply is sent. <kbd>Ctrl</kbd> + <kbd>Enter</kbd> sends.';
+  }
+  tp.addEventListener('click', function () { mode(false); });
+  tn.addEventListener('click', function () { mode(true); $('cmpText').focus(); });
+  $('cmpSend').addEventListener('click', function () { hdToast('Prototype only: nothing is sent'); });
+
+  // Queue subset from ?queue= so the rail links behave plausibly.
+  var Q = { my: 'My Queue', team: 'Team Queue', unassigned: 'Unassigned', all: 'All Tickets' };
+  var qs = new URLSearchParams(location.search).get('queue') || 'my';
+  if (!Q[qs]) qs = 'my';
+  $('qName').textContent = Q[qs];
+  var n = 0;
+  document.querySelectorAll('#qList .t-row').forEach(function (r) { var ok = r.dataset.q.split(' ').indexOf(qs) >= 0; r.hidden = !ok; if (ok) n++; });
+  $('qCount').textContent = n + (n === 1 ? ' ticket' : ' tickets');
+  document.querySelectorAll('#qList .t-row').forEach(function (r) { r.addEventListener('click', function (e) { e.preventDefault(); document.querySelectorAll('#qList .t-row').forEach(function (x) { x.removeAttribute('aria-current'); }); r.setAttribute('aria-current', 'true'); hdToast('Prototype shows IT-14 only'); }); });
+  document.querySelectorAll('.seg button').forEach(function (b) { b.addEventListener('click', function () { b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true')); }); });
+  window.addEventListener('load', function () { var t = $('timeline'); t.scrollTop = t.scrollHeight; });
+  var m = new URLSearchParams(location.search).get('mode'); if (m === 'note') { mode(true); }
+})();
+</script>
+</body>
+</html>
