@@ -118,6 +118,8 @@ internal sealed partial class TicketService(
         TicketChange[] createdChange = [new TicketChange(ChangeKind.Created)];
         await using (var tx = await db.Database.BeginTransactionAsync(ct))
         {
+            // The early check above gave the quick answer; this one holds the assignee's membership until the ticket is saved (see AssigneeLock).
+            await ValidateAssigneeAsync(departmentId, request.AssigneeUserId, ct);
             var requesterCreated = false;
             if (request.RequesterId is { } requesterId)
             {
@@ -1050,7 +1052,16 @@ internal sealed partial class TicketService(
 
     internal async Task ValidateAssigneeAsync(Guid departmentId, Guid? assigneeUserId, CancellationToken ct)
     {
-        if (assigneeUserId is { } id && !await organisation.IsEligibleAssigneeAsync(departmentId, id, ct))
+        if (assigneeUserId is not { } id)
+        {
+            return;
+        }
+
+        // Inside the saving transaction (assign, bulk, macro, create) the member is locked until it ends, so a concurrent demotion cannot slip between check and save.
+        var eligible = db.Database.CurrentTransaction is not null
+            ? await AssigneeLock.HoldAndCheckAsync(db, organisation, departmentId, id, ct)
+            : await organisation.IsEligibleAssigneeAsync(departmentId, id, ct);
+        if (!eligible)
         {
             throw new ConflictException("The user cannot be assigned tickets in this department.", ProblemCodes.InvalidState);
         }

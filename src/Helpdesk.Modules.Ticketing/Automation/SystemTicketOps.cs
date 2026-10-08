@@ -34,6 +34,9 @@ internal sealed class RuleReferenceChecker(IOrganisationDirectory organisation, 
         return team is null ? "The team does not belong to this department." : requireActive && !team.IsActive ? "The team is inactive." : null;
     }
 
+    /// <summary>Locks the assignee's membership until the surrounding transaction ends and re-checks eligibility under that lock (see <see cref="AssigneeLock"/>).</summary>
+    public Task<bool> HoldAssigneeAsync(Guid departmentId, Guid userId, CancellationToken ct) => AssigneeLock.HoldAndCheckAsync(db, organisation, departmentId, userId, ct);
+
     public async Task<string?> CheckAssigneeAsync(Guid departmentId, string value, CancellationToken ct)
     {
         if (value == NoneValue.Value)
@@ -227,6 +230,12 @@ internal sealed class SystemTicketOps(
                 if (target == ticket.AssigneeUserId)
                 {
                     return OpOutcome.NoChange();
+                }
+
+                // Re-check under a lock held to the end of this transaction: the check at the start of the action ran before it, and a demotion could have landed in between.
+                if (target is { } wanted && !await references.HoldAssigneeAsync(departmentId, wanted, ct))
+                {
+                    return OpOutcome.Failed("The person is not an active member of this department who can work tickets.");
                 }
 
                 var previous = ticket.AssigneeUserId;
