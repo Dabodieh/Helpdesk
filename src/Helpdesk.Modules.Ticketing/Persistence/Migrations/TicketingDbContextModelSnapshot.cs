@@ -1635,13 +1635,39 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         .HasColumnType("character varying(320)")
                         .HasColumnName("email");
 
+                    b.Property<bool>("IsProtected")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_protected");
+
+                    b.Property<DateTimeOffset?>("RemovedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("removed_at");
+
+                    b.Property<Guid?>("RemovedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("removed_by_user_id");
+
+                    b.Property<Guid?>("RequesterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("requester_id");
+
                     b.HasKey("TicketId", "EmailNormalised");
+
+                    b.HasIndex("RequesterId")
+                        .HasDatabaseName("ix_ticket_participants_requester")
+                        .HasFilter("requester_id IS NOT NULL AND removed_at IS NULL");
+
+                    b.HasIndex("RequesterId", "DepartmentId");
 
                     b.HasIndex("TicketId", "DepartmentId");
 
                     b.ToTable("ticket_participants", "ticketing", t =>
                         {
                             t.HasCheckConstraint("ck_ticket_participants_email", "length(btrim(email)) > 0");
+
+                            t.HasCheckConstraint("ck_ticket_participants_protected_requester", "NOT is_protected OR requester_id IS NOT NULL");
                         });
                 });
 
@@ -2182,6 +2208,13 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
 
             modelBuilder.Entity("Helpdesk.Modules.Ticketing.Domain.TicketParticipant", b =>
                 {
+                    b.HasOne("Helpdesk.Modules.Ticketing.Domain.Requester", null)
+                        .WithMany()
+                        .HasForeignKey("RequesterId", "DepartmentId")
+                        .HasPrincipalKey("Id", "DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_ticket_participants_requester_department");
+
                     b.HasOne("Helpdesk.Modules.Ticketing.Domain.Ticket", null)
                         .WithMany()
                         .HasForeignKey("TicketId", "DepartmentId")

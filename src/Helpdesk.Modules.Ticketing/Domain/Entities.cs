@@ -262,6 +262,17 @@ internal sealed class TicketParticipant
     public string? DisplayName { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>The requester of a ticket that was merged into this one (D9): never removable and not counted against the participant cap.</summary>
+    public bool IsProtected { get; set; }
+
+    /// <summary>For a protected participant: the merged ticket's requester row, so the requester portal can show them the request (ownership is by requester, never by address).</summary>
+    public Guid? RequesterId { get; set; }
+
+    /// <summary>Set when an agent removed the participant from future Cc. The row stays so the removal is final for this ticket.</summary>
+    public DateTimeOffset? RemovedAt { get; set; }
+
+    public Guid? RemovedByUserId { get; set; }
 }
 
 /// <summary>

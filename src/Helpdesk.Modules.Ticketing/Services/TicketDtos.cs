@@ -33,7 +33,10 @@ internal sealed record TicketListItemDto(
 
 internal sealed record MailboxRefDto(Guid Id, string Address, string Name);
 
-internal sealed record ParticipantDto(string Email, string? DisplayName);
+/// <param name="IsProtected">The requester of a ticket merged into this one: always copied, cannot be removed.</param>
+internal sealed record ParticipantDto(string Email, string? DisplayName, bool IsProtected = false);
+
+internal sealed record RemoveParticipantRequest(string? Email);
 
 internal sealed record TicketDetailDto(
     Guid Id,

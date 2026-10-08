@@ -289,6 +289,13 @@ internal sealed class InboundProcessor(
                     message.SubjectHintReference = candidate.Reference;
                 }
             }
+            else if (found.TicketId is { } suggestedId && await sink.FindByIdAsync(mailbox.DepartmentId, suggestedId, ct) is { } suggested)
+            {
+                // The email carries reply evidence for a ticket of this department, but its sender is neither that ticket's requester nor a participant: it was not attached
+                // (it did not reopen the ticket, reach its requester or add anyone to it). The agent is only told which ticket it looked like a reply to.
+                note = $"This email carries reply headers or a correlation token for {suggested.Reference}, but its sender is not that ticket's requester or a participant, so it was not attached. Check whether it belongs to that ticket.";
+                message.SubjectHintReference = suggested.Reference;
+            }
 
             result = await sink.CreateTicketAsync(
                 new InboundTicketRequest(

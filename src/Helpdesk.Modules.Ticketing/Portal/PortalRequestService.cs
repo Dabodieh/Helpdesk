@@ -51,7 +51,7 @@ internal sealed record PortalEditableFieldDto(string Key, string Label, string? 
 internal sealed record PortalRequestDto(
     string Reference, string Subject, string Status, string StatusLabel, string Department, string? Form, DateTimeOffset CreatedAt, DateTimeOffset LastActivityAt,
     IReadOnlyList<PortalFieldValueDto> Fields, IReadOnlyList<PortalMessageDto> Messages, IReadOnlyList<PortalEditableFieldDto> EditableFields,
-    string? MergedInto = null);
+    string? MergedInto = null, bool CanReply = true);
 
 internal sealed record PortalReplyResultDto(PortalMessageDto Message, string Status, string StatusLabel);
 
@@ -123,7 +123,7 @@ internal sealed class PortalRequestService(
             return new PageDto<PortalRequestItemDto>([], null);
         }
 
-        var tickets = db.Tickets.AsNoTracking().IgnoreDepartmentScope().Where(t => ids.Contains(t.RequesterId) && t.MergedIntoTicketId == null);
+        var tickets = ViewableTickets(ids).AsNoTracking().Where(t => t.MergedIntoTicketId == null);
         tickets = f switch
         {
             "active" => tickets.Where(t => t.Status == TicketStatus.Open || t.Status == TicketStatus.Pending),
@@ -154,7 +154,15 @@ internal sealed class PortalRequestService(
 
     // ----- detail -----
 
-    private async Task<Ticket> OwnTicketAsync(string reference, bool track, CancellationToken ct, bool allowMerged = false)
+    /// <summary>
+    /// Tickets the signed-in user may SEE: their own requests, plus a request they were kept in by a merge (D9: the requester of a merged ticket is a protected participant of
+    /// the canonical ticket). Ownership stays by requester link, never by address. Seeing is not owning: replying and editing fields stay with the ticket's own requester.
+    /// </summary>
+    private IQueryable<Ticket> ViewableTickets(IReadOnlyCollection<Guid> requesterIds) =>
+        db.Tickets.IgnoreDepartmentScope().Where(t => requesterIds.Contains(t.RequesterId)
+            || db.Participants.Any(p => p.TicketId == t.Id && p.IsProtected && p.RemovedAt == null && p.RequesterId != null && requesterIds.Contains(p.RequesterId.Value)));
+
+    private async Task<Ticket> OwnTicketAsync(string reference, bool track, CancellationToken ct, bool allowMerged = false, bool includeProtected = false)
     {
         var ids = await identity.RequesterIdsAsync(ct);
         var normalised = reference.Trim().ToUpperInvariant();
@@ -163,7 +171,7 @@ internal sealed class PortalRequestService(
             throw new NotFoundException();
         }
 
-        var query = db.Tickets.IgnoreDepartmentScope().Where(t => t.Reference == normalised && ids.Contains(t.RequesterId));
+        var query = (includeProtected ? ViewableTickets(ids) : db.Tickets.IgnoreDepartmentScope().Where(t => ids.Contains(t.RequesterId))).Where(t => t.Reference == normalised);
         var ticket = await (track ? query : query.AsNoTracking()).SingleOrDefaultAsync(ct) ?? throw new NotFoundException();
         if (ticket.MergedIntoTicketId is { } canonicalId && !allowMerged)
         {
@@ -176,16 +184,17 @@ internal sealed class PortalRequestService(
     }
 
     private async Task<string?> CanonicalReferenceAsync(Ticket merged, IReadOnlyCollection<Guid> requesterIds, CancellationToken ct) =>
-        await db.Tickets.AsNoTracking().IgnoreDepartmentScope()
-            .Where(t => t.Id == merged.MergedIntoTicketId && t.DepartmentId == merged.DepartmentId && requesterIds.Contains(t.RequesterId))
+        await ViewableTickets(requesterIds).AsNoTracking()
+            .Where(t => t.Id == merged.MergedIntoTicketId && t.DepartmentId == merged.DepartmentId)
             .Select(t => t.Reference).SingleOrDefaultAsync(ct);
 
     public async Task<PortalRequestDto> GetAsync(string reference, CancellationToken ct)
     {
-        var ticket = await OwnTicketAsync(reference, track: false, ct, allowMerged: true);
+        var mine = await identity.RequesterIdsAsync(ct);
+        var ticket = await OwnTicketAsync(reference, track: false, ct, allowMerged: true, includeProtected: true);
         if (ticket.IsMerged)
         {
-            var canonical = await CanonicalReferenceAsync(ticket, await identity.RequesterIdsAsync(ct), ct) ?? throw new NotFoundException();
+            var canonical = await CanonicalReferenceAsync(ticket, mine, ct) ?? throw new NotFoundException();
             return new PortalRequestDto(ticket.Reference, ticket.Subject, "merged", "Merged", "", null, ticket.CreatedAt, ticket.LastPublicActivityAt, [], [], [], canonical);
         }
 
@@ -201,7 +210,8 @@ internal sealed class PortalRequestService(
         var definitions = await db.TicketFields.AsNoTracking().Where(f => f.DepartmentId == ticket.DepartmentId && f.RequesterVisible).ToDictionaryAsync(f => f.Id, ct);
         held = [.. held.Where(v => v.FieldId is null || definitions.ContainsKey(v.FieldId.Value))];
         var fields = held.Select(v => new PortalFieldValueDto(v.Label, v.Display)).ToList();
-        var editable = (await EditableBindingsAsync(ticket, ct)).Select(b => new PortalEditableFieldDto(
+        var isOwn = mine.Contains(ticket.RequesterId);
+        var editable = (isOwn ? await EditableBindingsAsync(ticket, ct) : []).Select(b => new PortalEditableFieldDto(
             b.Field.Key, b.Field.Label, b.Field.HelpText, b.Field.FieldType, b.Required,
             [.. FieldValueValidator.Options(b.Field).Where(o => o.IsActive).Select(o => new PortalOptionDto(o.Value, o.Label))],
             held.SingleOrDefault(v => v.Key == b.Field.Key) is { } hv ? JsonDocument.Parse(hv.ValueJson).RootElement.Clone() : null)).ToList();
@@ -217,16 +227,17 @@ internal sealed class PortalRequestService(
         return new PortalRequestDto(
             ticket.Reference, ticket.Subject, PortalStatus.Code(ticket.Status), PortalStatus.Label(ticket.Status), department?.Name ?? "", formName,
             ticket.CreatedAt, ticket.LastPublicActivityAt, fields,
-            [.. messages.Select(m => ToMessage(m, ticket, files))], editable);
+            [.. messages.Select(m => ToMessage(m, mine, files))], editable, CanReply: isOwn);
     }
 
-    private static PortalMessageDto ToMessage(Message m, Ticket ticket, IReadOnlyDictionary<Guid, IReadOnlyList<AttachmentSummary>> files)
+    private static PortalMessageDto ToMessage(Message m, IReadOnlyCollection<Guid> mine, IReadOnlyDictionary<Guid, IReadOnlyList<AttachmentSummary>> files)
     {
         var fromRequester = m.AuthorType == AuthorType.Requester;
+        var isMine = fromRequester && m.AuthorRequesterId is { } author && mine.Contains(author);
         return new PortalMessageDto(
             m.Id,
-            !fromRequester ? "Support" : m.AuthorRequesterId == ticket.RequesterId ? "You" : "Another participant",
-            fromRequester && m.AuthorRequesterId == ticket.RequesterId,
+            !fromRequester ? "Support" : isMine ? "You" : "Another participant",
+            isMine,
             m.Body,
             m.CreatedAt,
             files.TryGetValue(m.Id, out var list) ? [.. list.Where(a => !a.IsInline).Select(a => new PortalAttachmentDto(a.Id, a.FileName, a.Size, a.Downloadable))] : []);
@@ -272,7 +283,7 @@ internal sealed class PortalRequestService(
         var message = await db.Messages.AsNoTracking().IgnoreDepartmentScope().SingleAsync(m => m.Id == result.MessageId && m.DepartmentId == ticket.DepartmentId, ct);
         var stored = await attachments.ListForMessagesAsync(ticket.DepartmentId, [message.Id], ct);
         var status = await db.Tickets.AsNoTracking().IgnoreDepartmentScope().Where(t => t.Id == ticket.Id && t.DepartmentId == ticket.DepartmentId).Select(t => t.Status).SingleAsync(ct);
-        return new PortalReplyResultDto(ToMessage(message, ticket, stored), PortalStatus.Code(status), PortalStatus.Label(status));
+        return new PortalReplyResultDto(ToMessage(message, [ticket.RequesterId], stored), PortalStatus.Code(status), PortalStatus.Label(status));
     }
 
     private static async Task<byte[]> ReadAsync(IFormFile file, CancellationToken ct)
@@ -287,7 +298,7 @@ internal sealed class PortalRequestService(
 
     public async Task<AttachmentOpenResult> OpenAttachmentAsync(string reference, Guid attachmentId, CancellationToken ct)
     {
-        var ticket = await OwnTicketAsync(reference, track: false, ct);
+        var ticket = await OwnTicketAsync(reference, track: false, ct, includeProtected: true);
         var publicMessageIds = await db.Messages.AsNoTracking().IgnoreDepartmentScope()
             .Where(m => m.TicketId == ticket.Id && m.DepartmentId == ticket.DepartmentId && m.Kind == MessageKind.Public).Select(m => m.Id).ToArrayAsync(ct);
 

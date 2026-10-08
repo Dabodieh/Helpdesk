@@ -34,6 +34,7 @@ public static class TicketingModule
         services.AddScoped<TicketService>();
         services.AddScoped<TicketQueryService>();
         services.AddScoped<TicketMergeService>();
+        services.AddScoped<TicketParties>();
         services.AddScoped<TicketLinkService>();
         services.AddScoped<TicketFollowerService>();
         services.AddScoped<SignatureService>();

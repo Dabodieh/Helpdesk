@@ -123,7 +123,8 @@ export default function PortalRequest() {
         </ol>
       </section>
 
-      <form className="portal-form reply-form" onSubmit={submit} aria-label="Reply">
+      {!r.canReply && <p className="notice info">You are copied on this request. You will receive the replies by email; the person who raised it can reply here.</p>}
+      {r.canReply && <form className="portal-form reply-form" onSubmit={submit} aria-label="Reply">
         <Field label="Add a reply" error={server.body}>
           {(p) => <textarea {...p} rows={4} value={text} onChange={(e) => setText(e.target.value)} />}
         </Field>
@@ -134,7 +135,7 @@ export default function PortalRequest() {
         <button type="submit" className="primary" disabled={send.isPending || !text.trim()}>
           {send.isPending ? 'Sending…' : 'Send reply'}
         </button>
-      </form>
+      </form>}
     </>
   )
 }

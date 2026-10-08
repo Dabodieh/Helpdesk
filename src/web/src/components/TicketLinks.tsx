@@ -198,6 +198,11 @@ function MergeDialog({ ticket: t, routeRef, onClose }: { ticket: TicketDetail; r
   const keep = direction === 'keep-this' ? { reference: t.reference, subject: t.subject } : picked[0]
   const merged = direction === 'keep-this' ? picked.map((c) => ({ reference: c.reference, subject: c.subject })) : [{ reference: t.reference, subject: t.subject }]
 
+  // Requesters of the tickets that go away who are not the requester of the ticket that stays (compared by address, case-insensitively).
+  const keepRequester = (direction === 'keep-this' ? t.requester.email : picked[0]?.requesterEmail ?? '').toLowerCase()
+  const mergedRequesters = direction === 'keep-this' ? picked.map((c) => ({ name: c.requesterName, email: c.requesterEmail })) : [{ name: t.requester.displayName, email: t.requester.email }]
+  const otherRequesters = [...new Map(mergedRequesters.filter((r) => r.email.toLowerCase() !== keepRequester).map((r) => [r.email.toLowerCase(), `${r.name} <${r.email}>`])).values()]
+
   function submit(e: FormEvent) {
     e.preventDefault()
     if (picked.length > 0) merge.mutate()
@@ -251,6 +256,13 @@ function MergeDialog({ ticket: t, routeRef, onClose }: { ticket: TicketDetail; r
                 </li>
               ))}
             </ul>
+            {otherRequesters.length > 0 && (
+              <p role="note" className="notice info">
+                <strong>Another requester will join the conversation.</strong>{' '}
+                {otherRequesters.join(', ')} will be added to {keep.reference} as a protected participant: they will be copied on every future public reply and can see the request in
+                the portal, and they cannot be removed from it.
+              </p>
+            )}
             <p>This action will:</p>
             <ul>
               <li>preserve conversations and attachments</li>

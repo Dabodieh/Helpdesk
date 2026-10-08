@@ -47,6 +47,7 @@ internal sealed class TicketService(
     TicketTypesService types,
     FieldCatalog catalog,
     SignatureService signatures,
+    TicketParties parties,
     TimeProvider clock)
 {
     public const int DefaultMessageLimit = 100;
@@ -460,8 +461,9 @@ internal sealed class TicketService(
         Guid? outboundId = null;
         if (replyMailbox is not null)
         {
-            var cc = await db.Participants.AsNoTracking().Where(p => p.TicketId == ticket.Id)
-                .Select(p => new MailParticipant(p.Email, p.DisplayName)).ToListAsync(ct);
+            // Active participants only (a removed person is not copied on future replies), and never the requester a second time.
+            var cc = await db.Participants.AsNoTracking().Where(p => p.TicketId == ticket.Id && p.RemovedAt == null && p.EmailNormalised != ticket.Requester.EmailNormalised)
+                .OrderBy(p => p.CreatedAt).ThenBy(p => p.EmailNormalised).Select(p => new MailParticipant(p.Email, p.DisplayName)).ToListAsync(ct);
             outboundId = await outbox.QueueReplyAsync(
                 new OutboundReplyRequest(
                     ticket.DepartmentId, replyMailbox.MailboxId, ticket.Id, message.Id, ticket.Reference, ticket.Subject,
@@ -540,6 +542,45 @@ internal sealed class TicketService(
         return new MessageDto(
             message.Id, message.TicketId, message.Kind.ToString(), message.AuthorType.ToString(), new MessageAuthorDto(message.AuthorUserId, current.DisplayName),
             message.Body, message.BodyHtml, message.Source, message.DeliveryState.ToString(), message.DeliveryError, files.TryGetValue(message.Id, out var list) ? list : [], message.CreatedAt);
+    }
+
+    /// <summary>
+    /// Removes an ordinary participant from future Cc. Baseline tickets.read (endpoint), tickets.reply here. Affects future replies only: history and audit are untouched, and the
+    /// removal is itself audited. The primary requester and a requester kept by a merge cannot be removed.
+    /// </summary>
+    public async Task<IReadOnlyList<ParticipantDto>> RemoveParticipantAsync(string route, RemoveParticipantRequest request, CancellationToken ct)
+    {
+        var errors = new Dictionary<string, string[]>();
+        TicketValidation.Email(errors, "email", request.Email);
+        TicketValidation.ThrowIfAny(errors);
+
+        var key = await resolver.FindAsync(route, ct) ?? throw new NotFoundException();
+        await authorizer.RequireAsync(PermissionCodes.TicketsReply, key.DepartmentId, ct);
+        var ticket = await db.Tickets.AsNoTracking().Where(t => t.Id == key.Id).Select(t => new { t.MergedIntoTicketId, t.Reference, RequesterEmail = t.Requester.EmailNormalised }).SingleOrDefaultAsync(ct)
+            ?? throw new NotFoundException();
+        if (ticket.MergedIntoTicketId is not null)
+        {
+            throw MergedConflict();
+        }
+
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var outcome = await parties.RemoveAsync(key.DepartmentId, key.Id, ticket.RequesterEmail, request.Email!, current.UserId, clock.GetUtcNowMicroseconds(), ct);
+        switch (outcome)
+        {
+            case TicketParties.RemoveOutcome.NotFound:
+                throw new NotFoundException();
+            case TicketParties.RemoveOutcome.Requester:
+                throw new ConflictException("The requester cannot be removed from the conversation.", "participant_protected");
+            case TicketParties.RemoveOutcome.Protected:
+                throw new ConflictException("This person is the requester of a merged ticket and stays in the conversation.", "participant_protected");
+        }
+
+        await audit.WriteAsync(
+            TicketAuditActions.ParticipantRemoved, TicketingAudit.TicketObject, key.Id, key.DepartmentId, null, new { email = request.Email!.Trim() }, ct);
+        await tx.CommitAsync(ct);
+        await events.PublishAsync(key.DepartmentId, key.Id, ticket.Reference, TicketEventKinds.Updated, current.UserId, ct);
+        return await db.Participants.AsNoTracking().Where(p => p.TicketId == key.Id && p.RemovedAt == null && p.EmailNormalised != ticket.RequesterEmail)
+            .OrderBy(p => p.CreatedAt).ThenBy(p => p.EmailNormalised).Select(p => new ParticipantDto(p.Email, p.DisplayName, p.IsProtected)).ToListAsync(ct);
     }
 
     /// <summary>Opens an attachment of this ticket for download (department checked twice: ticket scope, then the attachment's own department filter).</summary>

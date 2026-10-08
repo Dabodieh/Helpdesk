@@ -47,6 +47,7 @@ internal sealed class TicketMergeService(
     ICurrentUser current,
     SlaEngine sla,
     TicketFollowerService followers,
+    TicketParties parties,
     ITicketEvents events,
     TimeProvider clock)
 {
@@ -164,6 +165,15 @@ internal sealed class TicketMergeService(
 
         canonical.UpdatedAt = now; // visible activity for agents only: requesters see nothing of a merge (LastPublicActivityAt is untouched)
         await SaveAsync(ct);
+
+        // D9: the requester of every merged ticket stays in the conversation as a protected participant (copied on replies, shown the canonical request, never removable),
+        // so a merge across different requesters cannot orphan anyone.
+        foreach (var source in pending)
+        {
+            var sourceRequester = await db.Requesters.AsNoTracking().SingleAsync(r => r.Id == source.RequesterId, ct);
+            await parties.ProtectRequesterAsync(canonical.DepartmentId, canonical.Id, canonical.RequesterId, sourceRequester, now, ct);
+            await parties.CarryProtectedAsync(canonical.DepartmentId, source.Id, canonical.Id, canonical.RequesterId, now, ct);
+        }
 
         var transferred = await followers.TransferAsync(pending.Select(s => s.Id).ToArray(), canonical, ct);
         foreach (var source in pending)

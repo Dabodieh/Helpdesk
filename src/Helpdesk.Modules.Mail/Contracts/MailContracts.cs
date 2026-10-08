@@ -132,10 +132,16 @@ public interface IInboundTicketSink
 {
     Task<InboundTicketResult> CreateTicketAsync(InboundTicketRequest request, CancellationToken cancellationToken = default);
 
-    /// <summary>Null when the ticket does not exist in that department (the caller then falls back to a new ticket).</summary>
+    /// <summary>
+    /// Null when the message must not join that ticket, and the caller then falls back to a new ticket: the ticket does not exist in that department, or the sender is
+    /// neither its requester nor an active participant. Correlation evidence (headers, token, conversation id) only says which ticket a message is about; it never lets a
+    /// stranger join it.
+    /// </summary>
     Task<InboundTicketResult?> AddMessageAsync(InboundMessageRequest request, CancellationToken cancellationToken = default);
 
     Task<TicketLookup?> FindByReferenceAsync(Guid departmentId, string reference, CancellationToken cancellationToken = default);
+
+    Task<TicketLookup?> FindByIdAsync(Guid departmentId, Guid ticketId, CancellationToken cancellationToken = default);
 
     /// <summary>Tells realtime clients that something about the ticket changed outside its own transaction (e.g. attachments were stored). <c>kind</c>: <c>attachment</c>.</summary>
     Task NotifyTicketChangedAsync(Guid departmentId, Guid ticketId, string kind, CancellationToken cancellationToken = default);

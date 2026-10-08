@@ -326,7 +326,11 @@ internal sealed partial class TicketingDbContext(DbContextOptions<TicketingDbCon
 
         modelBuilder.Entity<TicketParticipant>(e =>
         {
-            e.ToTable("ticket_participants", t => t.HasCheckConstraint("ck_ticket_participants_email", "length(btrim(email)) > 0"));
+            e.ToTable("ticket_participants", t =>
+            {
+                t.HasCheckConstraint("ck_ticket_participants_email", "length(btrim(email)) > 0");
+                t.HasCheckConstraint("ck_ticket_participants_protected_requester", "NOT is_protected OR requester_id IS NOT NULL");
+            });
             e.HasKey(x => new { x.TicketId, x.EmailNormalised });
             e.Property(x => x.TicketId).HasColumnName("ticket_id");
             e.Property(x => x.DepartmentId).HasColumnName("department_id");
@@ -334,8 +338,15 @@ internal sealed partial class TicketingDbContext(DbContextOptions<TicketingDbCon
             e.Property(x => x.Email).HasColumnName("email").HasMaxLength(320);
             e.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(200);
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.IsProtected).HasColumnName("is_protected").HasDefaultValue(false);
+            e.Property(x => x.RequesterId).HasColumnName("requester_id");
+            e.Property(x => x.RemovedAt).HasColumnName("removed_at");
+            e.Property(x => x.RemovedByUserId).HasColumnName("removed_by_user_id");
             e.HasOne<Ticket>().WithMany().HasForeignKey(x => new { x.TicketId, x.DepartmentId })
                 .HasPrincipalKey(t => new { t.Id, t.DepartmentId }).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_ticket_participants_ticket_department");
+            e.HasOne<Requester>().WithMany().HasForeignKey(x => new { x.RequesterId, x.DepartmentId })
+                .HasPrincipalKey(r => new { r.Id, r.DepartmentId }).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_ticket_participants_requester_department");
+            e.HasIndex(x => x.RequesterId).HasFilter("requester_id IS NOT NULL AND removed_at IS NULL").HasDatabaseName("ix_ticket_participants_requester");
             e.HasQueryFilter(x => ScopedDepartmentIds.Contains(x.DepartmentId));
         });
     }

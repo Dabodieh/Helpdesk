@@ -88,8 +88,9 @@ internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirec
             mailbox = found.TryGetValue(mailboxId, out var m) ? new MailboxRefDto(m.MailboxId, m.Address, m.Name) : null;
         }
 
-        var participants = await db.Participants.AsNoTracking().Where(p => p.TicketId == ticket.Id).OrderBy(p => p.CreatedAt).ThenBy(p => p.EmailNormalised)
-            .Select(p => new ParticipantDto(p.Email, p.DisplayName)).ToListAsync(ct);
+        var participants = await db.Participants.AsNoTracking().Where(p => p.TicketId == ticket.Id && p.RemovedAt == null && p.EmailNormalised != requester.EmailNormalised)
+            .OrderBy(p => p.CreatedAt).ThenBy(p => p.EmailNormalised)
+            .Select(p => new ParticipantDto(p.Email, p.DisplayName, p.IsProtected)).ToListAsync(ct);
 
         var sla = await db.TicketSlas.AsNoTracking().SingleOrDefaultAsync(s => s.TicketId == ticket.Id, ct);
         var fields = await db.TicketFieldValues.AsNoTracking().Where(v => v.TicketId == ticket.Id && v.AgentVisible).OrderBy(v => v.SortOrder)

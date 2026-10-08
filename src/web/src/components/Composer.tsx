@@ -9,6 +9,7 @@ import { useApplyTicket } from '../hooks/useApplyTicket'
 import { getDraft, setDraft } from '../lib/drafts'
 import ArticleLinkPicker from './ArticleLinkPicker'
 import CannedPicker from './CannedPicker'
+import CcRecipients from './CcRecipients'
 import { Icon } from './icons'
 import ProblemBanner from './ProblemBanner'
 
@@ -205,6 +206,7 @@ ${draft}` : draft
           </span>
         </p>
       )}
+      {!internal && ticket.participants.length > 0 && <CcRecipients ticket={ticket} canRemove={canReply && !closed} />}
       {!internal && signature.data && (
         <p className="small muted composer-signature">
           {signature.data.html ? `Your ${signature.data.departmentName} signature is added when you send.` : `No ${signature.data.departmentName} signature set: this reply goes out without one (My profile).`}

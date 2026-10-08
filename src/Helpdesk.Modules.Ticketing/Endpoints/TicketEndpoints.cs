@@ -200,6 +200,13 @@ internal static class TicketEndpoints
             .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsRead, Route)
             .WithTags("Tickets");
 
+        // Baseline tickets.read; the service requires tickets.reply. The address is in the body, not the URL, so it never reaches access logs.
+        app.MapPost("/api/tickets/{ticket}/participants/remove",
+                async (string ticket, RemoveParticipantRequest body, TicketService tickets, CancellationToken ct) =>
+                    TypedResults.Ok(await tickets.RemoveParticipantAsync(ticket, body, ct)))
+            .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsRead, Route)
+            .WithTags("Tickets");
+
         // Baseline tickets.read; the service requires tickets.reply.
         app.MapPost("/api/tickets/{ticket}/messages/{messageId:guid}/retry-delivery",
                 async (string ticket, Guid messageId, TicketService tickets, CancellationToken ct) =>

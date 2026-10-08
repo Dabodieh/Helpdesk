@@ -43,25 +43,6 @@ internal static class PeopleUpsert
         var requester = await db.Requesters.AsNoTracking().IgnoreDepartmentScope().SingleAsync(r => r.DepartmentId == departmentId && r.EmailNormalised == normalised, ct);
         return (requester, inserted == 1);
     }
-
-    public static async Task ParticipantAsync(
-        TicketingDbContext db, Guid departmentId, Guid ticketId, MailParticipant person, DateTimeOffset now, CancellationToken ct)
-    {
-        var email = person.Address.Trim();
-        if (email.Length is 0 or > TicketValidation.MaxEmail)
-        {
-            return;
-        }
-
-        var name = person.Name is { Length: > 0 } n ? (n.Length > TicketValidation.MaxDisplayName ? n[..TicketValidation.MaxDisplayName] : n) : null;
-        await db.Database.ExecuteSqlAsync(
-            $"""
-            INSERT INTO ticketing.ticket_participants (ticket_id, department_id, email_normalised, email, display_name, created_at)
-            VALUES ({ticketId}, {departmentId}, {Requester.Normalise(email)}, {email}, {name}, {now})
-            ON CONFLICT (ticket_id, email_normalised) DO NOTHING
-            """,
-            ct);
-    }
 }
 
 /// <summary>
@@ -70,9 +51,44 @@ internal static class PeopleUpsert
 /// creating a second ticket or message. Uses the named scope bypass and always filters by department itself.
 /// </summary>
 internal sealed class InboundTicketSink(
-    TicketingDbContext db, TicketingAudit audit, IOrganisationDirectory organisation, ITicketEvents events, TicketLifecycle lifecycle, AutoReplyService autoReplies, IMailOutbox outbox, TimeProvider clock)
+    TicketingDbContext db, TicketingAudit audit, IOrganisationDirectory organisation, ITicketEvents events, TicketLifecycle lifecycle, AutoReplyService autoReplies, IMailOutbox outbox,
+    TicketParties parties, TimeProvider clock)
     : IInboundTicketSink
 {
+    /// <summary>
+    /// Addresses copied on a message from a party but not added because the ordinary participant limit was reached: one internal, system-authored note (never requester visible)
+    /// so the agents know, instead of failing or silently dropping them. The addresses are listed (internal only), capped so a huge Cc list cannot make a huge note.
+    /// </summary>
+    private async Task NoteNotAddedAsync(Guid departmentId, Guid ticketId, string sourceRef, IReadOnlyList<string> notAdded, DateTimeOffset now, CancellationToken ct)
+    {
+        if (notAdded.Count == 0)
+        {
+            return;
+        }
+
+        const int listed = 20;
+        var shown = string.Join(", ", notAdded.Take(listed));
+        var more = notAdded.Count > listed ? $" and {notAdded.Count - listed} more" : "";
+        var note = new Message
+        {
+            Id = Guid.CreateVersion7(),
+            TicketId = ticketId,
+            DepartmentId = departmentId,
+            Kind = MessageKind.Internal,
+            AuthorType = AuthorType.System,
+            Body = $"{notAdded.Count} address(es) copied on the latest email were not added as participants because the limit of {TicketParties.OrdinaryParticipantCap} participants was reached: {shown}{more}.",
+            Source = MessageSources.Email,
+            SourceRef = sourceRef + ":cc-limit",
+            DeliveryState = DeliveryState.None,
+            CreatedAt = now.AddTicks(20),
+        };
+        db.Messages.Add(note);
+        await db.SaveChangesAsync(ct);
+        await audit.WriteSystemAsync(
+            TicketAuditActions.MessageAdded, TicketingAudit.TicketObject, ticketId, departmentId, null,
+            new { messageId = note.Id, kind = note.Kind.ToString(), authorType = note.AuthorType.ToString() }, ct);
+    }
+
     public async Task<InboundTicketResult> CreateTicketAsync(InboundTicketRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -172,10 +188,9 @@ internal sealed class InboundTicketSink(
             return winner;
         }
 
-        foreach (var person in request.Cc)
-        {
-            await PeopleUpsert.ParticipantAsync(db, request.DepartmentId, ticket.Id, person, now, cancellationToken);
-        }
+        await NoteNotAddedAsync(
+            request.DepartmentId, ticket.Id, request.SourceRef,
+            await parties.AddCopiedAsync(request.DepartmentId, ticket.Id, requester.EmailNormalised, request.Cc, now, cancellationToken), now, cancellationToken);
 
         if (requesterCreated)
         {
@@ -260,6 +275,15 @@ internal sealed class InboundTicketSink(
             throw new ConflictException("The ticket was merged while the message was processed.", TicketMergeCodes.Merged);
         }
 
+        // D8: correlation evidence (headers, token, conversation id) says which ticket the message is about, never that the sender may join it. Only the requester or an
+        // active participant attaches; anyone else gets null here, so the caller opens a NEW ticket. Nothing is written for the stranger on this ticket: no message, no reopen,
+        // no participants, no requester row.
+        if (!await parties.IsPartyAsync(request.DepartmentId, ticket.Id, request.From.Address, cancellationToken))
+        {
+            await tx.RollbackAsync(cancellationToken);
+            return null;
+        }
+
         var (author, _) = await PeopleUpsert.RequesterAsync(db, request.DepartmentId, request.From.Address, request.From.Name, now, cancellationToken);
         var message = new Message
         {
@@ -299,16 +323,12 @@ internal sealed class InboundTicketSink(
             return winner;
         }
 
-        // Someone other than the requester answering is a participant of the conversation from now on.
-        if (author.Id != ticket.RequesterId)
-        {
-            await PeopleUpsert.ParticipantAsync(db, request.DepartmentId, ticket.Id, request.From, now, cancellationToken);
-        }
-
-        foreach (var person in request.Cc)
-        {
-            await PeopleUpsert.ParticipantAsync(db, request.DepartmentId, ticket.Id, person, now, cancellationToken);
-        }
+        // The sender is already a party. People they copied become ordinary participants, up to the limit; the primary requester is never a participant.
+        var requesterEmail = await db.Requesters.AsNoTracking().IgnoreDepartmentScope()
+            .Where(r => r.Id == ticket.RequesterId && r.DepartmentId == request.DepartmentId).Select(r => r.EmailNormalised).SingleAsync(cancellationToken);
+        await NoteNotAddedAsync(
+            request.DepartmentId, ticket.Id, request.SourceRef,
+            await parties.AddCopiedAsync(request.DepartmentId, ticket.Id, requesterEmail, request.Cc, now, cancellationToken), now, cancellationToken);
 
         await audit.WriteSystemAsync(
             TicketAuditActions.MessageAdded, TicketingAudit.TicketObject, ticket.Id, request.DepartmentId, null,
@@ -348,6 +368,12 @@ internal sealed class InboundTicketSink(
             .Select(t => new TicketLookup(t.Id, t.Reference, t.Status.ToString()))
             .SingleOrDefaultAsync(cancellationToken);
     }
+
+    public async Task<TicketLookup?> FindByIdAsync(Guid departmentId, Guid ticketId, CancellationToken cancellationToken = default) =>
+        await db.Tickets.AsNoTracking().IgnoreDepartmentScope()
+            .Where(t => t.DepartmentId == departmentId && t.Id == ticketId)
+            .Select(t => new TicketLookup(t.Id, t.Reference, t.Status.ToString()))
+            .SingleOrDefaultAsync(cancellationToken);
 
     public async Task NotifyTicketChangedAsync(Guid departmentId, Guid ticketId, string kind, CancellationToken cancellationToken = default)
     {

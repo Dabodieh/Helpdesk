@@ -345,10 +345,12 @@ public sealed class TicketMergeTests(HelpdeskFixture fixture) : IClassFixture<He
         Assert.DoesNotContain("Bob only text", canonical.Body, StringComparison.Ordinal);
         Assert.DoesNotContain("Bob private problem", canonical.Body, StringComparison.Ordinal);
 
-        // Bob gains nothing from the merge: his merged request fails closed and the canonical one is not his.
-        Assert.Empty((await bob.PortalListAsync()).GetProperty("items").EnumerateArray());
-        (await bob.User.Client.GetAsync($"/api/portal/requests/{bobs.Reference()}")).Expect(HttpStatusCode.NotFound);
-        (await bob.User.Client.GetAsync($"/api/portal/requests/{first.Reference()}")).Expect(HttpStatusCode.NotFound);
+        // Decision D9: Bob is not orphaned by the merge. He is kept in the conversation as a protected participant, so the canonical request is listed for him and his merged request
+        // points to it; he can read it but replying stays with its own requester.
+        Assert.Equal([first.Reference()], (await bob.PortalListAsync()).GetProperty("items").EnumerateArray().Select(i => i.Str("reference")).ToArray());
+        Assert.Equal(first.Reference(), (await bob.User.Client.GetAsync($"/api/portal/requests/{bobs.Reference()}")).Expect(HttpStatusCode.OK).Json.Str("mergedInto"));
+        var bobsView = (await bob.User.Client.GetAsync($"/api/portal/requests/{first.Reference()}")).Expect(HttpStatusCode.OK).Json;
+        Assert.False(bobsView.GetProperty("canReply").GetBoolean());
     }
 
     // ----- links -----

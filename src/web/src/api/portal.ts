@@ -43,6 +43,8 @@ export const portalRequestSchema = z.object({
   messages: z.array(portalMessageSchema),
   /** Set when this request was merged into another request of the same requester. */
   mergedInto: z.string().nullish(),
+  /** False when the request is shown to a requester who was kept in it by a merge: they can read it but replies stay with its own requester. */
+  canReply: z.boolean().default(true),
 })
 export type PortalRequest = z.infer<typeof portalRequestSchema>
 

@@ -44,7 +44,8 @@ export const ticketListItemSchema = z.object({
 export type TicketListItem = z.infer<typeof ticketListItemSchema>
 
 export const mailboxRefSchema = z.object({ id: z.string(), address: z.string(), name: z.string() })
-export const participantSchema = z.object({ email: z.string(), displayName: z.string().nullable().optional() })
+/** isProtected: the requester of a ticket merged into this one. Always copied on replies; cannot be removed. */
+export const participantSchema = z.object({ email: z.string(), displayName: z.string().nullable().optional(), isProtected: z.boolean().default(false) })
 
 const mergeActorSchema = z.object({ id: z.string(), displayName: z.string().nullish() })
 

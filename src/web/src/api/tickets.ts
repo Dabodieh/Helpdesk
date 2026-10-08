@@ -5,6 +5,7 @@ import {
   bulkResultSchema,
   messageSchema,
   pageSchema,
+  participantSchema,
   postMessageResultSchema,
   queueCountsSchema,
   requesterLookupSchema,
@@ -89,6 +90,10 @@ export const postMessage = (ticket: string, body: { kind: 'Public' | 'Internal';
 /** Eligible colleagues for an @mention in an internal note of this ticket (this department only; the server decides eligibility). */
 export const searchMentionable = (ticket: string, q: string) =>
   api('GET', `${tk(ticket)}/mentionable?q=${encodeURIComponent(q)}`, { schema: z.array(z.object({ userId: z.string(), displayName: z.string() })) })
+
+/** Takes an ordinary participant off future Cc (final for the ticket; history is untouched). The address travels in the body, never the URL. */
+export const removeParticipant = (ticket: string, email: string) =>
+  api('POST', `${tk(ticket)}/participants/remove`, { body: { email }, schema: z.array(participantSchema) })
 
 export const retryDelivery = (ticket: string, messageId: string) =>
   api('POST', `${tk(ticket)}/messages/${encodeURIComponent(messageId)}/retry-delivery`, { schema: messageSchema })
