@@ -23,7 +23,7 @@ public sealed class TicketQueueTests(HelpdeskFixture fixture) : IClassFixture<He
 
         var item = Assert.Single((await List(d.Viewer)).Expect(HttpStatusCode.OK).Json.GetProperty("items").EnumerateArray());
         Assert.Equal(
-            ["assignee", "createdAt", "departmentId", "departmentKey", "id", "match", "mergedInto", "priority", "reference", "requester", "sla", "status", "subject", "team", "updatedAt"],
+            ["assignee", "createdAt", "departmentId", "departmentKey", "id", "lastPublicBy", "match", "mergedInto", "priority", "reference", "requester", "sla", "status", "subject", "team", "updatedAt", "version"],
             item.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
         Assert.Equal(t.Id, item.GetProperty("id").GetGuid());
         Assert.Equal(d.Key, item.Str("departmentKey"));
@@ -197,7 +197,7 @@ public sealed class TicketQueueTests(HelpdeskFixture fixture) : IClassFixture<He
     }
 
     [Fact]
-    public async Task Queue_counts_count_open_tickets_in_accessible_departments_only()
+    public async Task Queue_counts_count_backlog_tickets_in_accessible_departments_only()
     {
         var d = await fixture.NewDeptAsync();
         var other = await fixture.NewDeptAsync();
@@ -209,15 +209,15 @@ public sealed class TicketQueueTests(HelpdeskFixture fixture) : IClassFixture<He
         await d.Lead.CreateTicketAsync(d.Department, TicketHelpers.NewTicketBody(extra: new { TeamId = team.Id }));                      // team + unassigned
         await d.Lead.CreateTicketAsync(d.Department);                                                                                   // unassigned
         var pending = await d.Lead.CreateTicketAsync(d.Department, TicketHelpers.NewTicketBody(extra: new { AssigneeUserId = d.Agent.Id }));
-        (await d.Lead.PatchTicketAsync(pending, new { Status = "Pending" })).Expect(HttpStatusCode.OK); // not Open: not counted
+        (await d.Lead.PatchTicketAsync(pending, new { Status = "Pending" })).Expect(HttpStatusCode.OK); // Pending is still backlog (REPORTING_DEFINITIONS: Open + Pending): counted
         await other.Agent.CreateTicketAsync(other.Department);
         await other.Agent.CreateTicketAsync(other.Department);
 
         var counts = (await d.Agent.Client.GetAsync("/api/tickets/queue-counts")).Expect(HttpStatusCode.OK).Json;
-        Assert.Equal(1, counts.GetProperty("my").GetInt32());
+        Assert.Equal(2, counts.GetProperty("my").GetInt32()); // the Pending one is still the agent's work
         Assert.Equal(1, counts.GetProperty("team").GetInt32());
         Assert.Equal(2, counts.GetProperty("unassigned").GetInt32());
-        Assert.Equal(3, counts.GetProperty("all").GetInt32());
+        Assert.Equal(4, counts.GetProperty("all").GetInt32());
 
         var empty = (await (await fixture.NewUserAsync()).Client.GetAsync("/api/tickets/queue-counts")).Expect(HttpStatusCode.OK).Json;
         Assert.Equal([0, 0, 0, 0], CountKeys.Select(k => empty.GetProperty(k).GetInt32()));
