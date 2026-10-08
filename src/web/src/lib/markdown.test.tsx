@@ -20,3 +20,10 @@ test('never emits raw HTML or scriptable URLs', () => {
   for (const a of container.querySelectorAll('a')) expect(a.getAttribute('href') ?? '').not.toMatch(/^(javascript|data):/i)
   expect(container.textContent).toContain('<script>alert(1)</script>')
 })
+
+test('a link that browsers would read as another site is not an in-app link (SEC-013)', () => {
+  const bs = String.fromCharCode(92)
+  const { container } = show(`[x](/${bs}evil.example) and [ok](/portal/knowledge/a)`)
+  const hrefs = [...container.querySelectorAll('a')].map((a) => a.getAttribute('href'))
+  expect(hrefs).toEqual(['/portal/knowledge/a'])
+})

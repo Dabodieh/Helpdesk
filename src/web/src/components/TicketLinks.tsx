@@ -267,7 +267,7 @@ function MergeDialog({ ticket: t, routeRef, onClose }: { ticket: TicketDetail; r
             <p>This action will:</p>
             <ul>
               <li>preserve conversations and attachments</li>
-              <li>make {merged.map((m) => m.reference).join(' and ')} read-only</li>
+              <li>make {merged.map((m) => m.reference).join(' and ')} read-only (this cannot be undone)</li>
               <li>route future strongly correlated replies to {keep.reference}</li>
             </ul>
           </section>

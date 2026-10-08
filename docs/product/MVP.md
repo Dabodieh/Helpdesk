@@ -21,6 +21,8 @@ The MVP is the **central technical proof**: the full email loop, correctly isola
 - Audit history on tickets and admin configuration.
 - Minimal admin UI: departments, members, mailboxes.
 
+> Historical: this is the Phase 1-3 MVP scope. Everything listed under "excludes" except tags (a locked exclusion), reporting and time tracking has since been built; see `docs/plans/DEVELOPMENT_PLAN.md` and `docs/reports/` for the current state.
+
 ## MVP excludes (scheduled later)
 Saved views, bulk actions, canned responses, tags, SLA, automation, search beyond basic filter, portal, KB, reporting, realtime push, custom fields/forms, merging/linking.
 

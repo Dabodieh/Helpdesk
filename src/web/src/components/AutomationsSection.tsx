@@ -8,7 +8,7 @@ import { useDirectory } from '../hooks/useDirectory'
 import { formatDateTime } from '../lib/format'
 import { ActiveBadge, ErrorNotice, Field, Loading } from './common'
 import Dialog from './Dialog'
-import { RULE_FIELDS, summariseRule } from '../lib/rules'
+import { ACTION_LABEL, OUTCOME_LABEL, RULE_FIELDS, SKIP_LABEL, summariseRule } from '../lib/rules'
 import { ActionsEditor, ConditionsEditor } from './RuleEditors'
 
 function RuleEditor({ department, existing, onClose }: { department: Department; existing?: Rule; onClose: () => void }) {
@@ -142,7 +142,7 @@ function TestOutcome({ result }: { result: TestResult }) {
             <ul className="trace" aria-label="Actions">
               {r.actions.map((a) => (
                 <li key={a.index}>
-                  {a.type}
+                  {ACTION_LABEL[a.type] ?? a.type}
                   {a.value ? ` ${a.value}` : ''}: <strong>{RESULT_TEXT[a.result] ?? a.result}</strong> {a.detail && <span className="muted small">({a.detail})</span>}
                 </li>
               ))}
@@ -195,7 +195,7 @@ function History({ department }: { department: Department }) {
                   {e.trigger} <span className="muted">· from {e.provenance}</span>
                 </td>
                 <td>
-                  {e.state === 'Skipped' ? `Skipped (${e.skipReason})` : e.state === 'Failed' ? 'Failed' : e.matched ? 'Matched' : 'Did not match'}
+                  {e.state === 'Skipped' ? `Skipped (${SKIP_LABEL[e.skipReason ?? ''] ?? e.skipReason})` : e.state === 'Failed' ? 'Failed' : e.matched ? 'Matched' : 'Did not match'}
                 </td>
                 <td className="small">
                   <details>
@@ -208,8 +208,8 @@ function History({ department }: { department: Department }) {
                       ))}
                       {e.actions.map((a) => (
                         <li key={a.index}>
-                          {a.type}
-                          {a.value ? ` ${a.value}` : ''}: {a.outcome} {a.detail && `(${a.detail})`}
+                          {ACTION_LABEL[a.type] ?? a.type}
+                          {a.value ? ` ${a.value}` : ''}: {OUTCOME_LABEL[a.outcome] ?? a.outcome} {a.detail && `(${a.detail})`}
                         </li>
                       ))}
                       {e.error && <li className="field-error">{e.error}</li>}

@@ -12,8 +12,13 @@ internal sealed class ReplyLinkArticles(KnowledgeDbContext db) : IReplyLinkArtic
 {
     public const int MaxResults = 10;
 
-    public async Task<IReadOnlyList<ReplyLinkArticle>> SearchAsync(Guid departmentId, string? query, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ReplyLinkArticle>> SearchAsync(Guid departmentId, Guid linkedUserId, string? query, CancellationToken cancellationToken = default)
     {
+        if (linkedUserId == Guid.Empty)
+        {
+            return []; // no proof of a linked requester, nothing is offered
+        }
+
         var text = query?.Trim();
         if (text is { Length: > 100 })
         {

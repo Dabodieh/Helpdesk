@@ -27,6 +27,6 @@ internal sealed class ReplyLinkService(TicketResolver resolver, IAuthorizer auth
             return [];
         }
 
-        return await articles.SearchAsync(key.DepartmentId, q, ct);
+        return await articles.SearchAsync(key.DepartmentId, userId, q, ct);
     }
 }

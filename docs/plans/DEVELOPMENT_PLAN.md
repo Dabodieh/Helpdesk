@@ -8,7 +8,7 @@ Vertical slices; each phase leaves a runnable product. Phase order follows the b
 | 1 Identity & organisation | Entra login, users, departments, teams, memberships, RBAC, audit writer, admin UI; Graph spike | Isolation test matrix for org endpoints; arch tests enforce module boundaries; spike result recorded as ADR |
 | 2 Core ticketing (CLOSED) | Requesters, tickets, list/detail, status/priority/assign, public reply/note (no email yet), audit history | Isolation tests on all ticket endpoints; ticket workspace usable. Report: `docs/reports/PHASE-2-CORE-TICKETING.md` |
 | 3 Email slice (BUILT, tenant validation open) | Mailboxes, Graph, subscriptions, inbound, dedup, threading, outbound, attachments, sender identity | **MVP acceptance scenario** automated + manual |
-| 4 Agent productivity | Views, filters, FTS search, canned responses, tags, watchers, bulk actions, SignalR | |
+| 4 Agent productivity | Views, filters, FTS search, canned responses, watchers (followers), bulk actions, SignalR (tags are a locked exclusion and were not built) | |
 | 5 SLA & automation | Business hours, SLA policies/timers, escalation, rules engine, retries | |
 | 6 Self-service | Portal, KB, branding | |
 | 7 Reporting | Dashboards and reports | |
@@ -41,4 +41,4 @@ Requester portal (Home, Submit a request, My requests, Knowledge), explicit requ
 7. `docs/DEVELOPMENT.md` onboarding.
 
 ## Testing policy
-Targeted tests per change; full suite only at milestones, release candidates, or broad-risk changes (Principal decides). Milestone close = acceptance criteria check + targeted tests + focused RBAC/security review of changed areas + known limitations recorded in `docs/reports/`.
+Targeted tests per change; a full suite only when the user explicitly asks for it for the task (`CLAUDE.md`). Milestone close = acceptance criteria check + targeted tests + focused RBAC/security review of changed areas + known limitations recorded in `docs/reports/`.

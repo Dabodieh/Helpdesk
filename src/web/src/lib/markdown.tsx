@@ -10,6 +10,7 @@ const SAFE_LINK = /^(https?:\/\/|mailto:|\/(?!\/))/i
 
 function safeHref(url: string): string | null {
   const trimmed = url.trim()
+  if (trimmed.includes(String.fromCharCode(92))) return null // a backslash: browsers read "/" + backslash + "host" like "//host", an external link dressed as an in-app one (SEC-013)
   return SAFE_LINK.test(trimmed) ? trimmed : null
 }
 

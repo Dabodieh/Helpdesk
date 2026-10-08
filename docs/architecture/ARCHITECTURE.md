@@ -28,7 +28,7 @@ Modules are introduced when their functionality is required, not pre-created.
 - Dependency direction enforced with architecture tests (NetArchTest) from Phase 1.
 - Every module registers itself via `AddXModule()` / `MapXEndpoints()`.
 
-## Planned modules (introduction phase)
+## Modules (introduction phase; all built except Reporting)
 | Module | Phase | Responsibility |
 |---|---|---|
 | Identity | 1 | OIDC login, internal users, external-identity mapping, current-user context |
@@ -37,16 +37,16 @@ Modules are introduced when their functionality is required, not pre-created.
 | Ticketing (requesters, tickets, conversation) | 2 | Tickets, department-scoped requesters, public messages and internal notes, per-department references, queues; `ITicketIngress` for Phase 3 (ADR-012, `TICKETING.md`) |
 | Mail | 3 | Mailboxes, `IMailProvider` (Graph + simulator), webhooks/delta, inbound pipeline, outbox, attention list (ADR-013) |
 | Attachments | 3 | `IObjectStore` (S3-compatible), validation, scan seam, metadata (ADR-013) |
-| Notifications, Search, SLA, BusinessHours, Automation | 4–5 | as named |
-| KnowledgeBase, Portal | 6 | |
-| Reporting | 7 | |
-Splitting Requesters/Conversations out of Tickets is deferred until coupling proves it necessary.
+| Notifications, Search, SLA, BusinessHours, Automation | 4–5 | as named (inside the Ticketing module; ADR-012, ADR-014) |
+| Knowledge (articles, categories, audiences, feedback, reply links), Portal | 6 | built (ADR-015) |
+| Reporting | 7 | not started: reporting definitions are in `REPORTING_DEFINITIONS.md` (ADR-027) |
+Splitting Requesters/Conversations out of Tickets is deferred until coupling proves it necessary. `TicketService` is large (messages, bulk and delivery retry are partial files of it); split it along those seams only when a change forces it, not as a refactor of its own (ARC-009).
 
 ## Request flow and authorization
 HTTP → authentication (cookie session, Entra OIDC) → endpoint → `IAuthorizer.Require(permission, departmentId)` (server-side, every operation) → application service → EF. Detail in `docs/architecture/PERMISSIONS.md`. Department-scoped queries additionally go through a department-scope query filter keyed on the caller's accessible departments so a forgotten check still cannot read other departments' rows.
 
 ## Frontend
-SPA served separately in dev (Vite proxy to API) and as static assets behind the reverse proxy in production. Cookie auth with BFF-style same-site session (no tokens in browser storage) + CSRF protection. API types generated from OpenAPI; Zod validates at the boundary. The frontend never enforces permissions, it only hides what the API would refuse.
+SPA served separately in dev (Vite proxy to API) and as static assets behind the reverse proxy in production. Cookie auth with BFF-style same-site session (no tokens in browser storage) + CSRF protection. The client's response shapes are hand-written Zod schemas that validate at the boundary (generating types from OpenAPI is planned, see `docs/plans/BACKLOG.md`; until then a server DTO change is caught only by the tests that render it). The frontend never enforces permissions, it only hides what the API would refuse.
 
 ## Cross-cutting
 - **Errors:** RFC 9457 problem details; no silent swallowing; background failures surface in Hangfire and logs.

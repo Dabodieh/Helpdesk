@@ -12,10 +12,10 @@ npm --prefix src/web ci && npm --prefix src/web run dev   # http://localhost:517
 ```
 In Development the host applies pending migrations on start (`Database:MigrateOnStartup`) and enables dev sign-in (see below). The `.env.example` Postgres password matches the Development connection string; override with `Database__ConnectionString` if you change it.
 
-Health: `GET /health/live` (process), `GET /health/ready` (includes PostgreSQL). OpenAPI (Development): `/openapi/v1.json`.
+Health: `GET /health/live` (process), `GET /health/ready` (PostgreSQL, the object store and migration state; a job backlog is a metric, not a readiness failure; see `docs/guides/OPERATIONS_RUNBOOK.md`). OpenAPI (Development): `/openapi/v1.json`.
 
 ## Configuration
-ASP.NET options pattern; environment variables override JSON (`Database__ConnectionString`). Secrets: user-secrets or environment only. Microsoft Graph settings are added in Phase 3.
+ASP.NET options pattern; environment variables override JSON (`Database__ConnectionString`). Secrets: user-secrets or environment only. Mail (Graph), storage, attachment, rate-limit and proxy settings are documented in the sections below and in `docs/guides/PRODUCTION_DEPLOYMENT.md`.
 
 | Key | Meaning |
 |---|---|
@@ -69,7 +69,7 @@ Integration tests need PostgreSQL (`docker compose up -d`). Set `HELPDESK_TEST_D
 
 Writing integration tests: use `HelpdeskFixture` (`tests/Helpdesk.Host.Tests/Infrastructure`) as an xUnit class fixture. It starts the app in the `Testing` environment with dev sign-in enabled and the bootstrap platform admin `platform-admin`, and offers `SignInAsync(subject)` (real dev-login cookie + CSRF token), `PlatformAdminAsync()`, `NewUserAsync()`, `CreateDepartmentAsync()`, `NewMemberAsync(department, role)`, `CreateTeamAsync()`, raw SQL helpers and `WithScopeAsync` for service-level tests. Tests in one class share a database, so use unique names (`Unique.Id()`, `Unique.Key()`).
 
-Run the full suite only at milestones (see `docs/plans/DEVELOPMENT_PLAN.md`).
+Do not run a full suite unless it is explicitly requested for the task: run only the tests directly affected by the change (project rules in `CLAUDE.md`). .NET 10 can run in the `mcr.microsoft.com/dotnet/sdk:10.0` container when no local SDK exists.
 
 ### Browser end-to-end tests (Playwright)
 `src/web/e2e` holds Playwright specs for the agent workspace. They are **not** part of `npm test` (vitest only collects `src/**/*.test.*`) and they need the real stack:
@@ -98,7 +98,7 @@ Serilog writes structured logs to the console. Set `OTEL_EXPORTER_OTLP_ENDPOINT`
 - Expected noise: `migrate` logs EF "Failed executing DbCommand" at ERR for the history-table probe on a fresh database, and Npgsql may print `libgssapi_krb5.so.2` on slim images; both are harmless.
 
 ## Demo data
-`node scripts/dev-seed.mjs [apiBase]` seeds a LOCAL Development API (dev sign-in must be enabled) with an IT department, two teams, agents `alice`, `bob`, `carol` (TeamLead) plus `dev-admin`, and 12 realistic tickets with conversations. Idempotent: it leaves existing tickets alone.
+`node scripts/dev-demo-seed.mjs` creates a demonstration department (key DEMO) and `docker exec -i helpdesk-postgres-1 psql -U helpdesk -d helpdesk < scripts/dev-demo-reset.sql` removes exactly that department again (local development database only). `node scripts/dev-seed.mjs [apiBase]` seeds a LOCAL Development API (dev sign-in must be enabled) with an IT department, two teams, agents `alice`, `bob`, `carol` (TeamLead) plus `dev-admin`, and 12 realistic tickets with conversations. Idempotent: it leaves existing tickets alone.
 
 ## Email (Phase 3)
 Development uses the in-process mailbox simulator (`Mail:Provider=Fake`, `Storage:Provider=InMemory`): sign in as `dev-admin`, create a mailbox in Administration (or run `node scripts/dev-seed.mjs`), then inject mail with `POST /api/dev/mail/inbound` and answer sent mail with `POST /api/dev/mail/customer-reply`. Hangfire runs in the host; dashboard (platform admin, read-only) at `/hangfire`.

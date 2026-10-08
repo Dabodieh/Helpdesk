@@ -15,14 +15,14 @@ Inspired by the workflow strengths of Freshdesk, Freshservice and HaloITSM; not 
 ## Personas
 | Persona | Needs |
 |---|---|
-| Requester | Email in/out, later a portal; sees only their own tickets |
+| Requester | Email in/out and the requester portal (built); sees only their own tickets |
 | Agent | Fast queues, ticket workspace, replies, notes, canned responses; may work in several departments with different roles |
 | Team lead | Queue oversight, assignment, reassignment within their department/team |
 | Department admin | Configures own department only |
 | Platform admin | Administers the whole installation (departments, identity, global settings) |
 
 ## In scope (long term)
-Ticketing core, email (Microsoft 365 first), departments/teams/RBAC, audit, search, views, canned responses, tags, watchers, bulk actions, SLA/business hours, automation, requester portal, knowledge base, reporting.
+Ticketing core, email (Microsoft 365 first), departments/teams/RBAC, audit, search, views, canned responses, followers, bulk actions (tags are a locked exclusion), SLA/business hours, automation, requester portal, knowledge base, reporting.
 
 ## Out of scope for now (architecture must not prevent)
 Service catalogue, approvals, assets/CMDB, incident/problem/change/release management, onboarding/offboarding, procurement, software inventory, Intune/Entra device integration, Teams integration, AI assistance. See `docs/plans/BACKLOG.md`.

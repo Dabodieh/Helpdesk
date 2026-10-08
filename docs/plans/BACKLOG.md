@@ -92,3 +92,11 @@
 - (Refinement 11) Per-requester acknowledgement rate limit (deferred: the inbound sender rate limit already caps tickets from one sender, so a looping sender cannot trigger unbounded acknowledgements); `Auto-Submitted` on acknowledgements once Graph support is validated in a real tenant (believed unsupported for non-x headers); outbound message health could also count NDR-failed messages separately from provider-failed ones; a lifecycle-notification counter on mailbox health; real-tenant Sent Items and identifier evidence (D-16).
 
 - **Legacy cross-requester merges (from WS-2, decision D9).** Tickets merged across different requesters before ADR-017 left the source requester outside the conversation (no portal access, no replies). They are deliberately not back-filled: granting access to an existing conversation could expose content they were never authorised to see. Needs a way to list them and a deliberate, authorised remediation per merge.
+
+- **(Post-Refinement-10 remediation, deferred)**
+  - MSG-007 forged bounce: require a bounce to come from the tenant's own transport once real headers exist (needs the D-16 E-37/E-38 samples). MSG-012 visible correlation token wording.
+  - BE-011: one HTTP status for "reference not valid for this department" (400 field error vs 409 `invalid_state`); a published API behaviour, change deliberately with its clients and tests.
+  - DATA-008: decide whether to capture mailbox outage history, article views and "why no SLA" (cannot be rebuilt later).
+  - UX-019 remainder: a live region for new conversation messages; the notification panel's hard-coded position. DOC-009 wording of server 400 messages; DOC-011 spelling convention.
+  - SRE-009 mail job locks (a stalled run now shows as job-lag metrics); SRE-011 sizing estimates and pruning (blocked on D-09).
+  - A scanner engine (D-08) and a named restore-drill owner (D3) are external prerequisites, not backlog.

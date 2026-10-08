@@ -3,6 +3,9 @@ import { z } from 'zod'
 export const ROLES = ['DepartmentAdmin', 'TeamLead', 'Agent', 'Viewer'] as const
 export type Role = (typeof ROLES)[number]
 
+/** Roles as people read them (DOC-007); the code stays the value. */
+export const ROLE_LABEL: Record<string, string> = { DepartmentAdmin: 'Department admin', TeamLead: 'Team lead', Agent: 'Agent', Viewer: 'Viewer' }
+
 export const csrfSchema = z.object({ headerName: z.string(), token: z.string() })
 
 export const meSchema = z.object({

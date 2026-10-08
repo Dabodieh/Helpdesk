@@ -21,7 +21,7 @@ internal sealed class TicketIngressService(TicketingDbContext db, TicketingAudit
         TicketValidation.Body(errors, "body", body);
         if (!MessageSources.IsValid(source))
         {
-            errors["source"] = [$"source must be one of {MessageSources.Web}, {MessageSources.Manual}."];
+            errors["source"] = [$"source must be one of {MessageSources.Web}, {MessageSources.Manual}, {MessageSources.Portal}."];
         }
 
         var sourceRef = ClientMessageIds.SourceRef(errors, clientMessageId);

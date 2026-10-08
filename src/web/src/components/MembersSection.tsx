@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { listMembers, lookupUsers, removeMember, setMemberRole } from '../api/organisation'
 import { canInDepartment } from '../api/permissions'
-import { ROLES, type Department, type Member, type Role } from '../api/schemas'
+import { ROLE_LABEL, ROLES, type Department, type Member, type Role } from '../api/schemas'
 import { useMe } from '../auth'
 import { ErrorNotice, Field, Loading } from './common'
 import Dialog from './Dialog'
@@ -37,13 +37,15 @@ function MemberRow({ departmentId, member, canManage }: { departmentId: string; 
               disabled={change.isPending || remove.isPending}
               onChange={(e) => change.mutate(e.target.value as Role)}
             >
-              {!ROLES.includes(member.role as Role) && <option value={member.role}>{member.role}</option>}
+              {!ROLES.includes(member.role as Role) && <option value={member.role}>{ROLE_LABEL[member.role] ?? member.role}</option>}
               {ROLES.map((r) => (
-                <option key={r}>{r}</option>
+                <option key={r} value={r}>
+                  {ROLE_LABEL[r]}
+                </option>
               ))}
             </select>
           ) : (
-            member.role
+            (ROLE_LABEL[member.role] ?? member.role)
           )}
         </td>
         <td>
@@ -52,7 +54,7 @@ function MemberRow({ departmentId, member, canManage }: { departmentId: string; 
               type="button"
               disabled={remove.isPending}
               onClick={() => {
-                if (window.confirm(`Remove ${member.displayName} from this department?`)) remove.mutate()
+                if (window.confirm(`Remove ${member.displayName} from this department? They lose access to its tickets and settings straight away. Their past work and the audit trail stay; you can add them again later.`)) remove.mutate()
               }}
             >
               Remove<span className="sr-only"> {member.displayName}</span>
