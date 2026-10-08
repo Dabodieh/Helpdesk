@@ -96,6 +96,12 @@ internal sealed class TicketSla
 
     public DateTimeOffset? FirstResponseBreachedAt { get; set; }
 
+    /// <summary>When 80% of the first-response target has been consumed in business time (drives the in-app alert only; independent of the approaching lead).</summary>
+    public DateTimeOffset? FirstResponseAlertAt { get; set; }
+
+    /// <summary>When the in-app 80% alert was recorded (also set on breach so it can never fire after one).</summary>
+    public DateTimeOffset? FirstResponseAlertedAt { get; set; }
+
     public int? ResolutionTargetMinutes { get; set; }
 
     /// <summary>Null while paused, met, or when the policy has no resolution target.</summary>
@@ -111,6 +117,12 @@ internal sealed class TicketSla
     public DateTimeOffset? ResolutionWarnedAt { get; set; }
 
     public DateTimeOffset? ResolutionBreachedAt { get; set; }
+
+    /// <summary>See <see cref="FirstResponseAlertAt"/>.</summary>
+    public DateTimeOffset? ResolutionAlertAt { get; set; }
+
+    /// <summary>See <see cref="FirstResponseAlertedAt"/>.</summary>
+    public DateTimeOffset? ResolutionAlertedAt { get; set; }
 
     /// <summary>Starts at 1; incremented when a resolved or closed ticket is reopened (a new resolution cycle with the full target).</summary>
     public int ResolutionCycle { get; set; } = 1;

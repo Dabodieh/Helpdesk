@@ -81,6 +81,8 @@ internal sealed partial class TicketingDbContext
             e.Property(x => x.FirstResponseMetAt).HasColumnName("fr_met_at");
             e.Property(x => x.FirstResponseWarnedAt).HasColumnName("fr_warned_at");
             e.Property(x => x.FirstResponseBreachedAt).HasColumnName("fr_breached_at");
+            e.Property(x => x.FirstResponseAlertAt).HasColumnName("fr_alert_at");
+            e.Property(x => x.FirstResponseAlertedAt).HasColumnName("fr_alerted_at");
             e.Property(x => x.ResolutionTargetMinutes).HasColumnName("res_target_minutes");
             e.Property(x => x.ResolutionDueAt).HasColumnName("res_due_at");
             e.Property(x => x.ResolutionPausedAt).HasColumnName("res_paused_at");
@@ -88,6 +90,8 @@ internal sealed partial class TicketingDbContext
             e.Property(x => x.ResolutionMetAt).HasColumnName("res_met_at");
             e.Property(x => x.ResolutionWarnedAt).HasColumnName("res_warned_at");
             e.Property(x => x.ResolutionBreachedAt).HasColumnName("res_breached_at");
+            e.Property(x => x.ResolutionAlertAt).HasColumnName("res_alert_at");
+            e.Property(x => x.ResolutionAlertedAt).HasColumnName("res_alerted_at");
             e.Property(x => x.ResolutionCycle).HasColumnName("res_cycle");
             e.Property(x => x.NextDueAt).HasColumnName("next_due_at");
             e.Property(x => x.NextWarnAt).HasColumnName("next_warn_at");

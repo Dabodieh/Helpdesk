@@ -122,12 +122,12 @@ internal sealed class NotificationOutboxInterceptor(IServiceProvider services) :
                     Add(message.DepartmentId, message.TicketId, TicketEventKinds.Message, messageId: message.Id);
                     break;
                 case TicketSla sla when entry.State == EntityState.Modified:
-                    // The SLA monitor records a warning or breach on the tracked row; a breach (which also sets the warning) wins. Resets to null stage nothing.
+                    // The SLA monitor records an 80% alert or a breach on the tracked row; a breach (which also sets the warning) wins. Resets to null stage nothing.
                     if (BecameSet(entry, nameof(TicketSla.FirstResponseBreachedAt)) || BecameSet(entry, nameof(TicketSla.ResolutionBreachedAt)))
                     {
                         Add(sla.DepartmentId, sla.TicketId, NotificationTypes.SlaBreached);
                     }
-                    else if (BecameSet(entry, nameof(TicketSla.FirstResponseWarnedAt)) || BecameSet(entry, nameof(TicketSla.ResolutionWarnedAt)))
+                    else if (BecameSet(entry, nameof(TicketSla.FirstResponseAlertedAt)) || BecameSet(entry, nameof(TicketSla.ResolutionAlertedAt)))
                     {
                         Add(sla.DepartmentId, sla.TicketId, NotificationTypes.SlaApproaching);
                     }

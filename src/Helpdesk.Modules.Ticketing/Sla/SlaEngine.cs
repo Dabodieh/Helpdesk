@@ -264,6 +264,7 @@ internal sealed class SlaEngine(TicketingDbContext db)
                 if (sla.FirstResponseMetAt is null)
                 {
                     sla.FirstResponseWarnedAt = null;
+                    sla.FirstResponseAlertedAt = null;
                     sla.FirstResponseBreachedAt = null;
                 }
             }
@@ -273,6 +274,7 @@ internal sealed class SlaEngine(TicketingDbContext db)
             sla.FirstResponseTargetMinutes = null;
             sla.FirstResponseDueAt = null;
             sla.FirstResponseWarnedAt = null;
+            sla.FirstResponseAlertedAt = null;
             sla.FirstResponseBreachedAt = null;
         }
 
@@ -305,6 +307,7 @@ internal sealed class SlaEngine(TicketingDbContext db)
                 if (!(exceeded && sla.ResolutionBreachedAt is not null))
                 {
                     sla.ResolutionWarnedAt = null;
+                    sla.ResolutionAlertedAt = null;
                     sla.ResolutionBreachedAt = null;
                 }
             }
@@ -315,6 +318,7 @@ internal sealed class SlaEngine(TicketingDbContext db)
                 sla.ResolutionPausedAt = null;
                 sla.ResolutionRemainingSeconds = null;
                 sla.ResolutionWarnedAt = null;
+                sla.ResolutionAlertedAt = null;
                 sla.ResolutionBreachedAt = null;
             }
         }
@@ -371,6 +375,7 @@ internal sealed class SlaEngine(TicketingDbContext db)
 
         sla.FirstResponseDueAt = null;
         sla.FirstResponseWarnedAt = null;
+        sla.FirstResponseAlertedAt = null;
         AddEvent(sla, now, SlaEventKinds.FirstResponseNotApplicable, SlaClocks.FirstResponse, new { });
         return true;
     }
@@ -434,6 +439,7 @@ internal sealed class SlaEngine(TicketingDbContext db)
             sla.ResolutionMetAt = null;
             sla.ResolutionBreachedAt = null;
             sla.ResolutionWarnedAt = null;
+            sla.ResolutionAlertedAt = null;
             sla.ResolutionDueAt = null;
             sla.ResolutionPausedAt = null;
             sla.ResolutionRemainingSeconds = null;
@@ -516,8 +522,38 @@ internal sealed class SlaEngine(TicketingDbContext db)
         sla.ResolutionWarnedAt = resWarned;
         sla.ResolutionBreachedAt = resBreached;
 
+        // The in-app 80% alert is separate from the approaching lead above (which keeps driving automation and the queue badges). A breach also closes it.
+        sla.FirstResponseAlertedAt = AlertRecorded(sla.FirstResponseDueAt, sla.FirstResponseMetAt, false, sla.FirstResponseAlertAt, sla.FirstResponseAlertedAt, sla.FirstResponseBreachedAt, now);
+        sla.ResolutionAlertedAt = AlertRecorded(sla.ResolutionDueAt, sla.ResolutionMetAt, sla.ResolutionPausedAt is not null, sla.ResolutionAlertAt, sla.ResolutionAlertedAt, sla.ResolutionBreachedAt, now);
+
         Recompute(sla);
         return notes;
+    }
+
+    private static DateTimeOffset? AlertRecorded(DateTimeOffset? due, DateTimeOffset? met, bool paused, DateTimeOffset? alertAt, DateTimeOffset? alerted, DateTimeOffset? breached, DateTimeOffset now)
+    {
+        if (alerted is not null || due is null || met is not null || paused)
+        {
+            return alerted;
+        }
+
+        return breached ?? (alertAt is { } at && now >= at ? now : null);
+    }
+
+    /// <summary>
+    /// The instant 80% of a target has been consumed: the deadline minus 20% of the target, in the calendar's business time (so hours, exceptions and pauses are respected,
+    /// because the deadline itself already is). Null when the clock is not running, the target is unknown, or the alert was already recorded.
+    /// </summary>
+    private static DateTimeOffset? AlertInstant(TicketSla sla, BusinessCalendar calendar, DateTimeOffset? due, DateTimeOffset? met, bool paused, int? targetMinutes, DateTimeOffset? alerted, DateTimeOffset? breached)
+    {
+        if (due is not { } d || met is not null || paused || targetMinutes is not { } target || alerted is not null || breached is not null)
+        {
+            return null;
+        }
+
+        var tail = TimeSpan.FromMinutes(target * 0.2);
+        var total = d > sla.AppliedAt ? calendar.BusinessTimeBetween(sla.AppliedAt, d) : TimeSpan.Zero;
+        return total <= tail ? sla.AppliedAt : calendar.AddBusinessTime(sla.AppliedAt, total - tail);
     }
 
     /// <summary>Derives the three indexed summary columns from the clocks.</summary>
@@ -547,6 +583,17 @@ internal sealed class SlaEngine(TicketingDbContext db)
 
         Take(sla.FirstResponseDueAt, sla.FirstResponseMetAt, false, sla.FirstResponseWarnedAt, sla.FirstResponseBreachedAt);
         Take(sla.ResolutionDueAt, sla.ResolutionMetAt, sla.ResolutionPausedAt is not null, sla.ResolutionWarnedAt, sla.ResolutionBreachedAt);
+        var calendar = Calendar(StoredJson.Read<SlaSnapshot>(sla.Snapshot));
+        sla.FirstResponseAlertAt = AlertInstant(sla, calendar, sla.FirstResponseDueAt, sla.FirstResponseMetAt, false, sla.FirstResponseTargetMinutes, sla.FirstResponseAlertedAt, sla.FirstResponseBreachedAt);
+        sla.ResolutionAlertAt = AlertInstant(sla, calendar, sla.ResolutionDueAt, sla.ResolutionMetAt, sla.ResolutionPausedAt is not null, sla.ResolutionTargetMinutes, sla.ResolutionAlertedAt, sla.ResolutionBreachedAt);
+        foreach (var alert in new[] { sla.FirstResponseAlertAt, sla.ResolutionAlertAt })
+        {
+            if (alert is { } at)
+            {
+                nextEvent = Min(nextEvent, at);
+            }
+        }
+
         sla.NextDueAt = nextDue;
         sla.NextWarnAt = nextWarn;
         sla.NextEventAt = nextEvent;
