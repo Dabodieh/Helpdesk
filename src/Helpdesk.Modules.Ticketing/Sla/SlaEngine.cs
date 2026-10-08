@@ -544,7 +544,7 @@ internal sealed class SlaEngine(TicketingDbContext db)
     /// The instant 80% of a target has been consumed: the deadline minus 20% of the target, in the calendar's business time (so hours, exceptions and pauses are respected,
     /// because the deadline itself already is). Null when the clock is not running, the target is unknown, or the alert was already recorded.
     /// </summary>
-    private static DateTimeOffset? AlertInstant(TicketSla sla, BusinessCalendar calendar, DateTimeOffset? due, DateTimeOffset? met, bool paused, int? targetMinutes, DateTimeOffset? alerted, DateTimeOffset? breached)
+    internal static DateTimeOffset? AlertInstant(TicketSla sla, BusinessCalendar calendar, DateTimeOffset? due, DateTimeOffset? met, bool paused, int? targetMinutes, DateTimeOffset? alerted, DateTimeOffset? breached)
     {
         if (due is not { } d || met is not null || paused || targetMinutes is not { } target || alerted is not null || breached is not null)
         {

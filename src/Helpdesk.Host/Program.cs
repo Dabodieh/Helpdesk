@@ -26,7 +26,10 @@ try
 {
     // `dotnet run --project src/Helpdesk.Host -- migrate` applies all module migrations and exits (no web server).
     var migrateOnly = args.Length > 0 && string.Equals(args[0], "migrate", StringComparison.OrdinalIgnoreCase);
-    var builder = WebApplication.CreateBuilder(migrateOnly ? args[1..] : args);
+    // `-- sla-alert-backfill [--apply]` fills in the 80% SLA alert instants of older tickets and exits. Dry run unless --apply; never runs on startup.
+    var backfillSlaAlerts = args.Length > 0 && string.Equals(args[0], "sla-alert-backfill", StringComparison.OrdinalIgnoreCase);
+    var applyBackfill = backfillSlaAlerts && args.Contains("--apply", StringComparer.OrdinalIgnoreCase);
+    var builder = WebApplication.CreateBuilder(migrateOnly || backfillSlaAlerts ? args[1..] : args);
 
     builder.Host.UseSerilog((ctx, services, cfg) => cfg
         .ReadFrom.Configuration(ctx.Configuration)
@@ -101,6 +104,16 @@ try
     {
         await app.Services.GetRequiredService<ModuleMigrationRunner>().RunAsync();
         Log.Information("All module migrations applied");
+        return;
+    }
+
+    if (backfillSlaAlerts)
+    {
+        await using var scope = app.Services.CreateAsyncScope();
+        var result = await scope.ServiceProvider.GetRequiredService<Helpdesk.Modules.Ticketing.Contracts.ISlaAlertBackfill>().RunAsync(applyBackfill, CancellationToken.None);
+        Log.Information(
+            "SLA alert backfill {Mode}: {Tickets} tickets, {Scheduled} alerts scheduled, {Past} clocks already past 80% (marked, no notification)",
+            result.Applied ? "applied" : "dry run (add --apply to write)", result.Tickets, result.ClocksScheduled, result.ClocksAlreadyPast);
         return;
     }
 
