@@ -1,7 +1,7 @@
 # Architecture
 
 ## Style
-Modular monolith, one deployable ASP.NET Core host (ADR-001). One PostgreSQL database (ADR-002). Background work runs in the same host initially via Hangfire (ADR-006), hosted as a separately-scalable role of the same image (`ROLE=web|worker|all`).
+Modular monolith, one deployable ASP.NET Core host (ADR-001). One PostgreSQL database (ADR-002). Background work runs in the same host initially via Hangfire (ADR-006), hosted in the same process. A SINGLE application instance is the supported topology (ADR-021); there is no web/worker role split and no realtime backplane until a real scaling requirement exists.
 
 ## Stack
 React 19 + TypeScript + Vite + React Router + TanStack Query + Zod | C# / .NET 10 / ASP.NET Core / EF Core | PostgreSQL 18 | SignalR | Hangfire (PostgreSQL storage) | Entra ID OIDC | Microsoft Graph | S3-compatible object storage (SeaweedFS locally; production provider is deployment-configurable) | Serilog + OpenTelemetry | xUnit + Playwright.

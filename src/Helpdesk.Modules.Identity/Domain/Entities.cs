@@ -21,6 +21,16 @@ internal sealed class User
     public List<ExternalIdentity> ExternalIdentities { get; } = [];
 }
 
+/// <summary>One persisted ASP.NET Data Protection key (see DataProtectionKeyStore).</summary>
+internal sealed class DataProtectionKeyRow
+{
+    public string FriendlyName { get; set; } = "";
+
+    public string Xml { get; set; } = "";
+
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
 internal sealed class ExternalIdentity
 {
     public Guid Id { get; set; }

@@ -37,6 +37,7 @@ public static class IdentityModule
         services.AddScoped<IUserDirectory, UserDirectory>();
         services.AddScoped<PlatformUserService>();
 
+        DataProtectionKeyStore.Add(services);
         AuthenticationSetup.Configure(services, configuration, environment);
         return services;
     }

@@ -13,9 +13,20 @@ internal sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> opti
 
     public DbSet<ExternalIdentity> ExternalIdentities => Set<ExternalIdentity>();
 
+    public DbSet<DataProtectionKeyRow> DataProtectionKeys => Set<DataProtectionKeyRow>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema(Schema);
+
+        modelBuilder.Entity<DataProtectionKeyRow>(e =>
+        {
+            e.ToTable("data_protection_keys");
+            e.HasKey(x => x.FriendlyName);
+            e.Property(x => x.FriendlyName).HasColumnName("friendly_name").HasMaxLength(200);
+            e.Property(x => x.Xml).HasColumnName("xml");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+        });
 
         modelBuilder.Entity<User>(e =>
         {

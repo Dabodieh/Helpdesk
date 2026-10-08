@@ -14,5 +14,14 @@ Reference topology (ADR-020): `docker/production/` runs one Helpdesk container (
 ## Headers
 Only the application sets security headers (CSP, framing, nosniff, referrer policy). Do not add them in Nginx.
 
+## Migrations
+One database, one database role. `... run --rm migrate` applies the module migrations in the registered order: audit (10), identity (20), organisation (30), then the modules that reference them (ticketing, attachments, mail, knowledge; the `Every_cross_schema_foreign_key_points_at_a_module_that_migrates_earlier` test enforces that every cross-schema foreign key points at an earlier module). Run it before starting a new version. **Rollback is restore, not down-migrations:** take a backup immediately before migrating; to roll back, stop the application and restore that backup into a new database (see `BACKUP_AND_RESTORE.md`).
+
+## Sessions
+The Data Protection key ring is stored in PostgreSQL (`identity.data_protection_keys`, application name `Helpdesk`), so sessions survive a restart or a replaced container, and the keys are in the database backup. Anyone who can read the database or its backup can read the keys: protect both (encrypted off-host backups, database access control).
+
+## Topology
+One application instance. Do not run two: background jobs, realtime presence and the mail loop assume a single process (ADR-021).
+
 ## Not covered here
-Data Protection key persistence, backup and restore, monitoring and the malware scanner are separate gates (see the remediation status document).
+Monitoring and the malware scanner are separate gates (see the remediation status document).
