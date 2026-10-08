@@ -8,7 +8,7 @@ import { Loading } from '../components/common'
 import { useQueuePrefs } from '../hooks/useQueuePrefs'
 import { viewLocation } from '../lib/filters'
 
-/** Agents land on their chosen default queue or saved view, and fall back to My Queue when it is unavailable. */
+/** Agents land on the dashboard, unless they chose another default queue or a saved view in their preferences (that explicit choice wins; a missing view falls back to the dashboard). */
 function AgentLanding() {
   const { prefs, isPending } = useQueuePrefs()
   const viewId = prefs?.defaultViewId
@@ -16,11 +16,12 @@ function AgentLanding() {
   if (isPending || (viewId && views.isPending)) return <Loading label="Opening your queue" />
   const view = viewId ? views.data?.find((v) => v.id === viewId) : undefined
   if (view) return <Navigate to={viewLocation(view)} replace />
-  const queue = (QUEUES as readonly string[]).includes(prefs?.defaultQueue ?? '') ? prefs!.defaultQueue : 'my'
-  return <Navigate to={`/queue/${queue}`} replace />
+  const chosen = prefs?.defaultQueue
+  if (chosen && chosen !== 'my' && (QUEUES as readonly string[]).includes(chosen)) return <Navigate to={`/queue/${chosen}`} replace />
+  return <Navigate to="/dashboard" replace />
 }
 
-/** `/`: agents land on their default queue (My Queue unless chosen), administrators on Administration, everybody else (employees) on the requester portal. */
+/** `/`: agents land on the dashboard (or the queue or saved view they chose), administrators on Administration, everybody else (employees) on the requester portal. */
 export default function Landing() {
   const me = useMe()
   if (hasAnyPermission(me, 'tickets.read')) return <AgentLanding />

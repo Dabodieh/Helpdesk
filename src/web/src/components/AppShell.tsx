@@ -58,6 +58,28 @@ function GlobalSearch() {
 }
 
 const NAV_COLLAPSED_KEY = 'helpdesk.nav.collapsed'
+const RAIL_HIDDEN_KEY = 'helpdesk.rail.hidden'
+
+/** A yes/no choice remembered in this browser (a private window simply does not remember it). */
+function usePersistentFlag(key: string): [boolean, () => void] {
+  const [on, setOn] = useState(() => {
+    try {
+      return window.localStorage.getItem(key) === '1'
+    } catch {
+      return false
+    }
+  })
+  const toggle = () =>
+    setOn((v) => {
+      try {
+        window.localStorage.setItem(key, v ? '0' : '1')
+      } catch {
+        /* not remembered */
+      }
+      return !v
+    })
+  return [on, toggle]
+}
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const me = useMe()
@@ -65,22 +87,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
   const location = useLocation()
   const [dialog, setDialog] = useState<'ticket' | 'help' | null>(null)
-  const [collapsed, setCollapsed] = useState(() => {
-    try {
-      return window.localStorage.getItem(NAV_COLLAPSED_KEY) === '1'
-    } catch {
-      return false
-    }
-  })
-  const toggleNav = () =>
-    setCollapsed((c) => {
-      try {
-        window.localStorage.setItem(NAV_COLLAPSED_KEY, c ? '0' : '1')
-      } catch {
-        /* a private window: the choice just is not remembered */
-      }
-      return !c
-    })
+  const [collapsed, toggleNav] = usePersistentFlag(NAV_COLLAPSED_KEY)
+  const [railHidden, toggleRail] = usePersistentFlag(RAIL_HIDDEN_KEY)
   const hasTickets = hasAnyPermission(me, 'tickets.read')
   const canCreate = hasAnyPermission(me, 'tickets.create')
   const counts = useQueueCounts(hasTickets)
@@ -114,14 +122,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <ShellContext.Provider value={api}>
-      <div className={`shell${inWorkspace ? ' shell-workspace' : ''}${inWorkspace && collapsed ? ' nav-collapsed' : ''}`}>
+      <div className={`shell${inWorkspace ? ' shell-workspace' : ''}${inWorkspace && collapsed ? ' nav-collapsed' : ''}${railHidden ? ' rail-hidden' : ''}`}>
         <a className="skip-link" href="#main-content">Skip to content</a>
         <aside className="app-rail" aria-label="Application">
           <Link to="/" className="graphite-brand" aria-label="Helpdesk home"><span /><span /><span /></Link>
           <nav aria-label="Main" className="app-rail-nav">
             {hasTickets && <>
-              <NavLink to="/queue/my" className={() => `rail-link${inWorkspace ? ' active' : ''}`} aria-label="Workspace" title="Workspace"><Icon name="inbox" /></NavLink>
               <NavLink to="/dashboard" className="rail-link" aria-label="Dashboard" title="Dashboard"><Icon name="views" /></NavLink>
+              <NavLink to="/queue/my" className={() => `rail-link${inWorkspace ? ' active' : ''}`} aria-label="Workspace" title="Workspace"><Icon name="inbox" /></NavLink>
             </>}
             <NavLink to="/portal/knowledge" className="rail-link" aria-label="Knowledge" title="Knowledge"><Icon name="file" /></NavLink>
           </nav>
@@ -133,6 +141,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </div>
         </aside>
         <header className="app-topbar">
+          <button type="button" className="topbar-menu" onClick={toggleRail} aria-expanded={!railHidden} aria-label={railHidden ? 'Show navigation' : 'Hide navigation'} title={railHidden ? 'Show navigation' : 'Hide navigation'}><Icon name="density" /></button>
           <Link to="/" className="wordmark">helpdesk<span>.</span></Link>
           <span className="topbar-context">{location.pathname.startsWith('/admin') ? 'Administration' : 'Agent workspace'}</span>
           {hasTickets && <GlobalSearch />}

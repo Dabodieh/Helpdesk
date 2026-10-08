@@ -3817,3 +3817,17 @@ a.team-name:hover { text-decoration: underline; color: var(--accent); }
 .nav-collapsed .workspace-nav nav a { position: relative; }
 @media (max-width: 1000px) { .shell-workspace.nav-collapsed { grid-template-columns: 60px 58px minmax(0, 1fr); } }
 @media (max-width: 700px) { .nav-collapse { display: none; } }
+
+/* The dark navigation strip can be hidden entirely; the button in the top bar brings it back (remembered in the browser) */
+.topbar-menu { display: grid; place-items: center; width: 32px; height: 32px; margin-left: -8px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--muted); }
+.topbar-menu:hover { background: var(--hover); color: var(--text); }
+.shell.rail-hidden { grid-template-columns: 0 minmax(0, 1fr); }
+.shell-workspace.rail-hidden { grid-template-columns: 0 170px minmax(0, 1fr); }
+.shell-workspace.rail-hidden.nav-collapsed { grid-template-columns: 0 58px minmax(0, 1fr); }
+.rail-hidden .app-rail { display: none; }
+@media (max-width: 1000px) {
+  .shell.rail-hidden { grid-template-columns: 0 minmax(0, 1fr); }
+  .shell-workspace.rail-hidden { grid-template-columns: 0 145px minmax(0, 1fr); }
+  .shell-workspace.rail-hidden.nav-collapsed { grid-template-columns: 0 58px minmax(0, 1fr); }
+}
+@media (max-width: 700px) { .shell-workspace.rail-hidden { grid-template-columns: 0 minmax(0, 1fr); } }

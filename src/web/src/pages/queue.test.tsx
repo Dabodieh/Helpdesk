@@ -134,12 +134,18 @@ test('shortcuts are ignored while typing and with modifier keys; "/" focuses sea
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 })
 
-test('landing: an agent goes to My Queue', async () => {
-  const calls = mockFetch(workspaceRoutes())
+test('landing: an agent lands on the dashboard of their department', async () => {
+  mockFetch({ ...workspaceRoutes(), 'GET /api/me/queue-preferences': () => ({ columns: null, defaultQueue: null, defaultViewId: null }) })
   renderApp('/')
-  expect(await screen.findByRole('heading', { name: 'My Queue' })).toBeInTheDocument()
-  expect(query(listCalls(calls)[0]!).get('queue')).toBe('my')
+  expect(await screen.findByRole('heading', { name: /dashboard/i, level: 1 })).toBeInTheDocument()
   expect(screen.queryByRole('link', { name: 'Administration' })).not.toBeInTheDocument()
+})
+
+test('landing: a default queue the agent chose themselves still wins over the dashboard', async () => {
+  const calls = mockFetch({ ...workspaceRoutes(), 'GET /api/me/queue-preferences': () => ({ columns: null, defaultQueue: 'team', defaultViewId: null }) })
+  renderApp('/')
+  expect(await screen.findByRole('heading', { name: 'Team Queue' })).toBeInTheDocument()
+  expect(query(listCalls(calls)[0]!).get('queue')).toBe('team')
 })
 
 test('landing: a platform admin without ticket access goes to Administration with an explanation and no queue entries', async () => {
