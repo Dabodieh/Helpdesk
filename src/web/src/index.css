@@ -3895,3 +3895,31 @@ a.workload-name:hover { text-decoration: underline; color: var(--accent); }
 .hub-categories a:hover { border-color:var(--border-strong); color:var(--text); }
 .hub-categories a.active { border-color:var(--accent); background:var(--accent-soft); color:var(--text); font-weight:600; }
 .hub-categories + .hub-search-row { margin-top:12px; }
+.hub-group-label { margin: 0 0 8px; color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .8px; text-transform: uppercase; }
+.hub-department-context { align-items: flex-end; margin-top: 22px; padding: 0 0 10px; border-bottom: 1px solid var(--border); }
+.hub-department-context > div { display: block; }
+.hub-department-context .hub-group-label { margin-bottom: 4px; }
+.hub-department-name { display: flex; align-items: center; gap: 8px; font-size: 16px; }
+.hub-platform-grid { margin-bottom: 4px; }
+
+/* The dark navigation bar shows names beside the icons; the collapse button at its foot reduces it to icons again (remembered in the browser). */
+.rail-label { display: none; }
+@media (min-width: 1001px) {
+  .shell:not(.rail-narrow):not(.rail-hidden) { grid-template-columns: 184px minmax(0, 1fr); }
+  .shell-workspace:not(.rail-narrow):not(.rail-hidden) { grid-template-columns: 184px 170px minmax(0, 1fr); }
+  .shell-workspace.nav-collapsed:not(.rail-narrow):not(.rail-hidden) { grid-template-columns: 184px 58px minmax(0, 1fr); }
+  .shell:not(.rail-narrow):not(.rail-hidden) .app-rail { align-items: stretch; padding: 15px 10px 12px; }
+  .shell:not(.rail-narrow):not(.rail-hidden) .graphite-brand { justify-content: flex-start; padding-left: 6px; }
+  .shell:not(.rail-narrow):not(.rail-hidden) .app-rail-nav, .shell:not(.rail-narrow):not(.rail-hidden) .app-rail-foot { align-items: stretch; gap: 4px; }
+  .shell:not(.rail-narrow):not(.rail-hidden) .rail-link { width: auto; height: 40px; justify-content: flex-start; gap: 12px; padding: 0 11px; font: inherit; font-size: 13.5px; text-align: left; }
+  .shell:not(.rail-narrow):not(.rail-hidden) .rail-link .icon, .shell:not(.rail-narrow):not(.rail-hidden) .rail-link svg { flex: none; }
+  .shell:not(.rail-narrow):not(.rail-hidden) .rail-label { display: inline; white-space: nowrap; }
+  .shell:not(.rail-narrow):not(.rail-hidden) .rail-link.active:before { left: -10px; }
+  .shell:not(.rail-narrow):not(.rail-hidden) .app-rail .usermenu-trigger { width: auto; justify-content: flex-start; gap: 12px; padding: 4px 11px; height: 44px; }
+  .shell:not(.rail-narrow):not(.rail-hidden) .app-rail .usermenu-name { display: inline; font-size: 13.5px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .shell:not(.rail-narrow):not(.rail-hidden) .app-rail .popover { left: 193px; }
+}
+.rail-collapse { margin-top: 4px; opacity: .8; }
+.rail-chevron { display: grid; place-items: center; width: 22px; font-size: 18px; line-height: 1; }
+@media (max-width: 1000px) { .rail-collapse { display: none; } }
+.app-rail .rail-link { text-decoration: none; }

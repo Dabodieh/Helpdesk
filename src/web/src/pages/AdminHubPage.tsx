@@ -34,12 +34,13 @@ export default function AdminHubPage() {
       <div className="hub-search-row"><SettingsSearch value={search} onChange={value => change('q', value)} /><DepartmentSelect departments={departments} value={department?.id ?? ''} disabled={list.isPending || list.isError} onChange={id => change('department', id)} /></div>
       {list.isPending && <Loading label="Loading authorised departments" />}
       {list.isError && <ErrorNotice error={list.error} onRetry={() => void list.refetch()} />}
+      <h2 className="hub-group-label">Organisation &amp; platform</h2>
       <div className="hub-platform-grid">
         {globalMatches('organisation departments management access create platform') && <Link className="hub-platform-card" to="/admin/departments"><span className="setting-icon"><Icon name="organisation" size={22} /></span><div><span className="settings-scope-label">Organisation</span><h2>Departments</h2><p>{list.isSuccess ? `${departments.length} available to you · Manage structure and membership` : 'Manage your department structure'}</p></div><span aria-hidden="true">↗</span></Link>}
         {globalMatches('platform operations system status health readiness') && <Link className="hub-platform-card" to="/admin/status"><span className="setting-icon"><Icon name="server" size={22} /></span><div><span className="settings-scope-label">Platform</span><h2>System status</h2><p>Check application readiness and availability</p></div><span aria-hidden="true">↗</span></Link>}
       </div>
       {department && category !== 'platform' && <>
-        <div className="hub-department-context"><div><span className="scope-dot" aria-hidden="true" /><strong>{department.name}</strong><ActiveBadge active={department.isActive} /><span className="muted">Department settings</span></div><Link to={`/admin/departments/${department.id}`}>Open control centre →</Link></div>
+        <div className="hub-department-context"><div><h2 className="hub-group-label">Department settings</h2><div className="hub-department-name"><span className="scope-dot" aria-hidden="true" /><strong>{department.name}</strong><ActiveBadge active={department.isActive} /></div></div><Link to={`/admin/departments/${department.id}`}>Open control centre →</Link></div>
         <SettingsCatalog settings={settings} departmentId={department.id} states={states} search={search} category={category} />
       </>}
       {!department && list.isSuccess && <div className="settings-empty"><Icon name="organisation" size={28} /><h2>{departments.length ? 'Choose a department' : 'No departments available'}</h2><p>{departments.length ? 'Select an authorised department to browse its settings.' : 'Department settings appear when you have access to a department.'}</p><Link to="/admin/departments">Manage departments →</Link></div>}

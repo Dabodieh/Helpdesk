@@ -58,6 +58,7 @@ function GlobalSearch() {
 
 const NAV_COLLAPSED_KEY = 'helpdesk.nav.collapsed'
 const RAIL_HIDDEN_KEY = 'helpdesk.rail.hidden'
+const RAIL_NARROW_KEY = 'helpdesk.rail.narrow'
 
 /** A yes/no choice remembered in this browser (a private window simply does not remember it). */
 function usePersistentFlag(key: string): [boolean, () => void] {
@@ -88,6 +89,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [dialog, setDialog] = useState<'ticket' | 'help' | null>(null)
   const [collapsed, toggleNav] = usePersistentFlag(NAV_COLLAPSED_KEY)
   const [railHidden, toggleRail] = usePersistentFlag(RAIL_HIDDEN_KEY)
+  const [railNarrow, toggleNarrow] = usePersistentFlag(RAIL_NARROW_KEY) // names are shown unless the user collapsed the bar to icons
   const hasTickets = hasAnyPermission(me, 'tickets.read')
   const canCreate = hasAnyPermission(me, 'tickets.create')
   const counts = useQueueCounts(hasTickets)
@@ -121,28 +123,29 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <ShellContext.Provider value={api}>
-      <div className={`shell${inWorkspace ? ' shell-workspace' : ''}${inWorkspace && collapsed ? ' nav-collapsed' : ''}${railHidden ? ' rail-hidden' : ''}`}>
+      <div className={`shell${inWorkspace ? ' shell-workspace' : ''}${inWorkspace && collapsed ? ' nav-collapsed' : ''}${railHidden ? ' rail-hidden' : ''}${railNarrow ? ' rail-narrow' : ''}`}>
         <a className="skip-link" href="#main-content">Skip to content</a>
         <aside className="app-rail" aria-label="Application">
           <Link to="/" className="graphite-brand" aria-label="Helpdesk home"><span /><span /><span /></Link>
           <nav aria-label="Main" className="app-rail-nav">
             {hasTickets && <>
-              <NavLink to="/dashboard" className="rail-link" aria-label="Dashboard" title="Dashboard"><Icon name="views" /></NavLink>
-              <NavLink to="/queue/my" className={() => `rail-link${inWorkspace ? ' active' : ''}`} aria-label="Workspace" title="Workspace"><Icon name="inbox" /></NavLink>
+              <NavLink to="/dashboard" className="rail-link" aria-label="Dashboard" title="Dashboard"><Icon name="views" /><span className="rail-label">Dashboard</span></NavLink>
+              <NavLink to="/queue/my" className={() => `rail-link${inWorkspace ? ' active' : ''}`} aria-label="Tickets" title="Tickets"><Icon name="inbox" /><span className="rail-label">Tickets</span></NavLink>
             </>}
-            <NavLink to="/portal/knowledge" className="rail-link" aria-label="Knowledge" title="Knowledge"><Icon name="file" /></NavLink>
+            <NavLink to="/portal/knowledge" className="rail-link" aria-label="Knowledge" title="Knowledge"><Icon name="file" /><span className="rail-label">Knowledge</span></NavLink>
           </nav>
           <div className="app-rail-foot">
-            {canAdminister(me) && <NavLink to="/admin" className="rail-link" aria-label="Administration" title="Administration"><Icon name="admin" /></NavLink>}
+            {canAdminister(me) && <NavLink to="/admin" className="rail-link" aria-label="Administration" title="Administration"><Icon name="admin" /><span className="rail-label">Administration</span></NavLink>}
             <ThemeToggle />
-            <button type="button" className="rail-link" aria-label="Keyboard shortcuts" title="Keyboard shortcuts" onClick={() => setDialog('help')}><Icon name="help" /></button>
+            <button type="button" className="rail-link" aria-label="Keyboard shortcuts" title="Keyboard shortcuts" onClick={() => setDialog('help')}><Icon name="help" /><span className="rail-label">Shortcuts</span></button>
+            <button type="button" className="rail-link rail-collapse" aria-expanded={!railNarrow} aria-label={railNarrow ? 'Expand navigation labels' : 'Collapse navigation to icons'} title={railNarrow ? 'Expand' : 'Collapse'} onClick={toggleNarrow}><span aria-hidden="true" className="rail-chevron">{railNarrow ? '»' : '«'}</span><span className="rail-label">Collapse</span></button>
             <UserMenu onSignOut={() => void signOut()} onHelp={() => setDialog('help')} />
           </div>
         </aside>
         <header className="app-topbar">
           <button type="button" className="topbar-menu" onClick={toggleRail} aria-expanded={!railHidden} aria-label={railHidden ? 'Show navigation' : 'Hide navigation'} title={railHidden ? 'Show navigation' : 'Hide navigation'}><Icon name="density" /></button>
           <Link to="/" className="wordmark">helpdesk<span>.</span></Link>
-          <span className="topbar-context">{location.pathname.startsWith('/admin') ? 'Administration' : 'Agent workspace'}</span>
+          <span className="topbar-context">{location.pathname.startsWith('/admin') ? 'Administration' : location.pathname.startsWith('/dashboard') ? 'Dashboard' : location.pathname.startsWith('/portal') ? 'Knowledge' : 'Tickets'}</span>
           {hasTickets && <GlobalSearch />}
           {live !== 'off' && <span className={`live live-${live}`} role="status"><span className="live-dot" aria-hidden="true" />{LIVE_TEXT[live]}</span>}
           {canCreate && <button type="button" className="primary" onClick={() => setDialog('ticket')}><Icon name="plus" /> New ticket</button>}
@@ -156,7 +159,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <nav aria-label="Queues">
             {hasTickets && (
               <>
-                <h2 className="rail-heading">Workspace</h2>
+                <h2 className="rail-heading">Tickets</h2>
                 <ul>
                   <li>
                     <NavLink to="/dashboard" title="Dashboard">
