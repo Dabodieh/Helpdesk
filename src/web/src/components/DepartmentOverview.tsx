@@ -101,24 +101,35 @@ export default function DepartmentOverview({ department: d, onOpen }: { departme
     <section aria-labelledby="overview-h" className="overview">
       <h2 id="overview-h">Department setup</h2>
       <p className="muted">{d.description || 'No description yet.'}</p>
-      {rows.length === 0 ? (
-        <p className="empty small">Setup details appear here as the lists load.</p>
-      ) : (
-        <ul className="setup-list" aria-label="Setup status">
-          {rows.map((r) => (
-            <li key={r.id}>
-              <span className="setup-main">
-                <strong>{r.label}</strong>
-                {r.detail && <span className="muted small">{r.detail}</span>}
-              </span>
-              <StatusBadge tone={r.tone}>{r.state}</StatusBadge>
-              <SectionLink section={r.section} onOpen={onOpen}>
-                {r.label}
-              </SectionLink>
-            </li>
-          ))}
-        </ul>
-      )}
+      <div className="overview-grid">
+        <div>
+          {[members, teams, mailboxes, hours, sla, rules, forms, ack].some(q => q.isError) && <p className="notice error" role="alert">Some setup details could not be loaded. Open the relevant section to retry.</p>}
+          {rows.length === 0 && <p className="empty small">Setup details appear here as the lists load.</p>}
+          {[
+            { title: 'People & access', ids: ['members', 'teams'] },
+            { title: 'Communication', ids: ['mailboxes', 'acknowledgements'] },
+            { title: 'Service management', ids: ['hours', 'sla', 'automations'] },
+            { title: 'Self service', ids: ['forms'] },
+          ].map(group => {
+            const items = rows.filter(r => group.ids.includes(r.id))
+            return items.length > 0 && <section className="setup-group" key={group.title} aria-label={group.title}>
+              <h3>{group.title}</h3>
+              <ul className="setup-list" aria-label={`${group.title} setup status`}>
+                {items.map(r => <li key={r.id}>
+                  <span className="setup-main"><strong>{r.label}</strong>{r.detail && <span className="muted small">{r.detail}</span>}</span>
+                  <StatusBadge tone={r.tone}>{r.state}</StatusBadge>
+                  <SectionLink section={r.section} onOpen={onOpen}>{r.label}</SectionLink>
+                </li>)}
+              </ul>
+            </section>
+          })}
+        </div>
+        <aside className="overview-context" aria-label="Department context">
+          <h3>At a glance</h3>
+          <dl><div><dt>Ticket prefix</dt><dd>{d.key}</dd></div><div><dt>Status</dt><dd><StatusBadge tone={d.isActive ? 'ok' : 'off'}>{d.isActive ? 'Active' : 'Inactive'}</StatusBadge></dd></div><div><dt>Your access</dt><dd>{d.myRole ?? 'Administrative metadata'}</dd></div></dl>
+          <p className="muted small">Department membership controls access to tickets and service data. Teams route and assign work within this department.</p>
+        </aside>
+      </div>
     </section>
   )
 }

@@ -8,6 +8,7 @@ import { DEPARTMENT_KEY } from '../api/schemas'
 import { useMe } from '../auth'
 import { ActiveBadge, ErrorNotice, Field, Loading, PageHeader } from '../components/common'
 import Dialog from '../components/Dialog'
+import { Icon } from '../components/icons'
 
 function CreateDepartment({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient()
@@ -79,12 +80,16 @@ export default function DepartmentsPage() {
   const list = useQuery({ queryKey: ['departments'], queryFn: listDepartments })
   const canCreate = canPlatform(me, 'platform.departments.manage')
   const [creating, setCreating] = useState(false)
+  const [search, setSearch] = useState('')
+  const [status, setStatus] = useState('all')
+  const visible = (list.data ?? []).filter(d => `${d.name} ${d.key}`.toLowerCase().includes(search.toLowerCase()) && (status === 'all' || d.isActive === (status === 'active')))
 
   return (
     <>
       <PageHeader
+        crumbs="Administration / Departments"
         title="Administration"
-        subtitle="Set up departments and how they run. Configuration is kept inside each department."
+        subtitle="Manage the departments that support your organisation."
         actions={
           canCreate && (
             <button type="button" className="primary" onClick={() => setCreating(true)}>
@@ -114,26 +119,25 @@ export default function DepartmentsPage() {
           </p>
         )}
         {list.data && list.data.length > 0 && (
-          <ul className="rows" aria-label="Departments">
-            {list.data.map((d) => (
-              <li key={d.id} className="row">
-                <div className="row-main">
-                  <div className="row-title">
-                    <Link to={`/admin/departments/${d.id}`} className="dept-link">
-                      {d.name}
-                    </Link>
-                    <code className="key-chip">{d.key}</code>
-                    <ActiveBadge active={d.isActive} />
-                  </div>
-                  {d.description && <p className="muted small row-sub">{d.description}</p>}
-                  {d.myRole && <p className="muted small row-sub">Your role: {d.myRole}</p>}
-                </div>
-                <Link to={`/admin/departments/${d.id}`} className="row-action" aria-label={`Manage ${d.name}`}>
-                  Manage →
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <>
+            <div className="admin-filters">
+              <label className="search-control"><Icon name="search" /><input aria-label="Find a department" placeholder="Find a department…" value={search} onChange={e => setSearch(e.target.value)} /></label>
+              <select aria-label="Department status" value={status} onChange={e => setStatus(e.target.value)}><option value="all">All statuses</option><option value="active">Active</option><option value="inactive">Inactive</option></select>
+              <span className="muted small">{visible.length} of {list.data.length} departments</span>
+            </div>
+            <div className="table-scroll">
+              <table className="department-table" aria-label="Departments">
+                <thead><tr><th>Department</th><th>Prefix</th><th>Status</th><th>Your access</th><th><span className="sr-only">Manage</span></th></tr></thead>
+                <tbody>{visible.map(d => <tr key={d.id}>
+                  <td><div className="department-cell"><span className="department-icon"><Icon name="team" /></span><div><Link to={`/admin/departments/${d.id}`} className="dept-link">{d.name}</Link>{d.description && <p className="muted small">{d.description}</p>}</div></div></td>
+                  <td><code className="key-chip">{d.key}</code></td><td><ActiveBadge active={d.isActive} /></td>
+                  <td className="muted small">{d.myRole ?? 'Metadata only'}</td>
+                  <td><Link to={`/admin/departments/${d.id}`} className="row-action" aria-label={`Manage ${d.name}`}>Manage →</Link></td>
+                </tr>)}</tbody>
+              </table>
+              {visible.length === 0 && <p className="empty">No departments match these filters.</p>}
+            </div>
+          </>
         )}
       </section>
       <section aria-labelledby="areas-h">

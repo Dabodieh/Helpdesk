@@ -48,7 +48,7 @@ export default function DepartmentPage() {
   const open = (section: string) => setSearch((s) => new URLSearchParams({ ...Object.fromEntries(s), [SECTION]: section }), { replace: true })
 
   return (
-    <>
+    <div className="department-page">
       <PageHeader
         crumbs={
           <>
@@ -94,6 +94,7 @@ export default function DepartmentPage() {
       <Tabs
         label="Department administration"
         vertical
+        sidebarHeader={<div className="department-context"><Link to="/admin">← All departments</Link><strong>{d.name}</strong><span className="muted small">{d.key} · Department administration</span></div>}
         param={SECTION}
         tabs={[
           { id: 'overview', label: 'Overview', group: 'Department', content: <DepartmentOverview department={d} onOpen={open} /> },
@@ -170,6 +171,6 @@ export default function DepartmentPage() {
           },
         ]}
       />
-    </>
+    </div>
   )
 }

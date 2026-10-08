@@ -8,3 +8,4 @@ Primary reference: `docs/design/redesign/codex-prototype/` (read-only).
 - Shell verification: App tests 4/4, theme preference tests 2/2. Local real-API browser screenshots checked in dark and light at 1366×768, without horizontal overflow.
 
 No backend, API, database, permission or email changes. Browser plugin bootstrap is broken (missing service module); local installed Playwright/Edge is used for visual evidence instead. Screenshots are local ignored artifacts under `src/web/TestResults/`.
+- Administration and Department Overview: full-height grouped navigation, searchable/status-filtered department table, grouped setup rows and contextual details. Existing permission-gated queries and edit flows retained. Targeted administration tests: 14/14 passed (updated selectors for grouped setup lists and field roles). Real local API views checked in both themes at 1366×768 and 1440×900; no viewport overflow.

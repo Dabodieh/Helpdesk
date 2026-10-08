@@ -101,7 +101,7 @@ export type TabDef = { id: string; label: string; badge?: ReactNode; content: Re
  * `vertical` lays the tabs out as a grouped side list (tabs with a `group` get a heading) so many sections scale; `param` keeps the selection in the URL
  * (?param=id) so a section can be bookmarked and survives a reload.
  */
-export function Tabs({ tabs, label, vertical = false, param }: { tabs: TabDef[]; label: string; vertical?: boolean; param?: string }) {
+export function Tabs({ tabs, label, vertical = false, param, sidebarHeader }: { tabs: TabDef[]; label: string; vertical?: boolean; param?: string; sidebarHeader?: ReactNode }) {
   const visible = tabs.filter((t) => !t.hidden)
   const [local, setLocal] = useState(visible[0]?.id)
   const [search, setSearch] = useSearchParams()
@@ -117,6 +117,8 @@ export function Tabs({ tabs, label, vertical = false, param }: { tabs: TabDef[];
   const keys = vertical ? { next: 'ArrowDown', prev: 'ArrowUp' } : { next: 'ArrowRight', prev: 'ArrowLeft' }
   return (
     <div className={vertical ? 'tabs-block tabs-vertical' : 'tabs-block'}>
+      <div className="tab-navigation">
+      {sidebarHeader}
       <div
         className="tablist"
         role="tablist"
@@ -153,6 +155,7 @@ export function Tabs({ tabs, label, vertical = false, param }: { tabs: TabDef[];
           </button>
           </Fragment>
         ))}
+      </div>
       </div>
       {current && (
         <div id={`${uid}-panel-${current.id}`} role="tabpanel" aria-labelledby={`${uid}-tab-${current.id}`} tabIndex={0} className="tabpanel">

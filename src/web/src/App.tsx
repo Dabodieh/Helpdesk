@@ -25,16 +25,18 @@ function AdminLayout() {
   // Inside a department the page header carries its own breadcrumb; the switch between Departments and System status is for the top-level pages.
   const inDepartment = useLocation().pathname.startsWith('/admin/departments/')
   return (
-    <div className="page admin">
-      {!inDepartment && (
-        <nav className="subnav" aria-label="Administration">
-          <NavLink to="/admin" end>
-            Departments
-          </NavLink>
+    <div className={inDepartment ? 'page admin department-admin' : 'admin-layout'}>
+      {!inDepartment && <aside className="admin-sidebar">
+        <h2>Administration</h2>
+        <span className="rail-heading">Organisation</span>
+        <nav aria-label="Administration">
+          <NavLink to="/admin" end>Departments</NavLink>
+          <span className="rail-heading">Platform</span>
           <NavLink to="/admin/status">System status</NavLink>
         </nav>
-      )}
-      <Outlet />
+        <p className="sidebar-note">Department membership controls access to service data.</p>
+      </aside>}
+      {inDepartment ? <Outlet /> : <div className="page admin"><Outlet /></div>}
     </div>
   )
 }
