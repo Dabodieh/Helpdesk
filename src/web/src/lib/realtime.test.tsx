@@ -29,7 +29,7 @@ function setup() {
   return { invalidate, wrapper }
 }
 
-const keys = (invalidate: ReturnType<typeof vi.spyOn>) => invalidate.mock.calls.map((c) => JSON.stringify((c[0] as { queryKey: unknown[] }).queryKey))
+const keys = (invalidate: { mock: { calls: unknown[][] } }) => invalidate.mock.calls.map((c) => JSON.stringify((c[0] as { queryKey: unknown[] }).queryKey))
 
 test('every way back to a live connection re-reads tickets, notifications and the portal', async () => {
   const fake = fakeConnection()

@@ -117,8 +117,8 @@ export default function QueueFilters({
           <select value={params.get('sla') ?? ''} onChange={(e) => set('sla', e.target.value)}>
             <option value="">Any</option>
             <option value="breached">Breached</option>
-            <option value="approaching">Approaching</option>
-            <option value="duesoon">Due within 4 hours</option>
+            <option value="approaching">Near deadline (policy warning)</option>
+            <option value="duesoon">Due within 4 hours (fixed window)</option>
             <option value="paused">Paused</option>
             <option value="awaitingresponse">Awaiting first response</option>
           </select>

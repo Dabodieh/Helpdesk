@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { api } from './http'
 
-export const SLA_STATES = ['Running', 'Approaching', 'Breached', 'Paused', 'Met', 'MetLate', 'None'] as const
+export const SLA_STATES = ['Running', 'Approaching', 'Breached', 'Paused', 'Met', 'MetLate', 'NotApplicable', 'None'] as const
 
 export const slaSummarySchema = z.object({
   state: z.string(),

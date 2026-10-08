@@ -14,6 +14,9 @@ internal enum ChangeKind
     Priority,
     Team,
     Assignee,
+
+    /// <summary>The ticket type changed. Not an automation trigger; it only re-evaluates the SLA policy (D17).</summary>
+    Type,
 }
 
 /// <summary>What just happened to a ticket. Produced by the code that made the change; consumed by the SLA engine (in the same transaction) and by automation (after commit).</summary>
@@ -54,6 +57,8 @@ internal static class SlaEventKinds
     public const string Approaching = "Approaching";
     public const string Breached = "Breached";
     public const string Stopped = "Stopped";
+    public const string FirstResponseNotApplicable = "FirstResponseNotApplicable";
+    public const string PolicyChanged = "PolicyChanged";
 }
 
 /// <summary>
@@ -65,17 +70,24 @@ internal sealed class SlaEngine(TicketingDbContext db)
     /// <summary>Picks the first active matching policy (explicit order) and starts its clocks. No match = no SLA.</summary>
     public async Task<TicketSla?> ApplyOnCreateAsync(Ticket ticket, string requesterEmailNormalised, DateTimeOffset now, CancellationToken ct)
     {
+        var policy = await MatchPolicyAsync(ticket, requesterEmailNormalised, ct);
+        return policy is null ? null : await ApplyPolicyAsync(ticket, policy, now, now, ct);
+    }
+
+    /// <summary>The first active policy (explicit order) whose conditions match the ticket as it is now.</summary>
+    private async Task<SlaPolicy?> MatchPolicyAsync(Ticket ticket, string requesterEmailNormalised, CancellationToken ct)
+    {
         var policies = await db.SlaPolicies.AsNoTracking()
             .Where(p => p.DepartmentId == ticket.DepartmentId && p.IsActive)
             .OrderBy(p => p.SortOrder).ThenBy(p => p.CreatedAt).ThenBy(p => p.Id)
             .ToListAsync(ct);
         var facts = new TicketFacts(ticket.Status, ticket.Priority, ticket.TeamId, ticket.AssigneeUserId, ticket.MailboxId, ticket.Subject, requesterEmailNormalised, SlaStates.None, SlaStates.None, ticket.TicketTypeId);
-        var policy = policies.FirstOrDefault(p => ConditionEvaluator.AllMatch(ConditionEvaluator.Evaluate(StoredJson.Conditions(p.Conditions), facts)));
-        if (policy is null)
-        {
-            return null;
-        }
+        return policies.FirstOrDefault(p => ConditionEvaluator.AllMatch(ConditionEvaluator.Evaluate(StoredJson.Conditions(p.Conditions), facts)));
+    }
 
+    /// <summary>Starts the policy's clocks. <paramref name="cycleStart"/> is when the clocks count from (now for a new ticket; the ticket's creation when a policy first applies later, D17).</summary>
+    private async Task<TicketSla> ApplyPolicyAsync(Ticket ticket, SlaPolicy policy, DateTimeOffset cycleStart, DateTimeOffset now, CancellationToken ct)
+    {
         BusinessHoursCalendar? calendarRow = policy.CalendarId is { } calendarId
             ? await db.BusinessHours.AsNoTracking().SingleOrDefaultAsync(c => c.Id == calendarId && c.DepartmentId == ticket.DepartmentId, ct)
             : null;
@@ -91,14 +103,14 @@ internal sealed class SlaEngine(TicketingDbContext db)
             DepartmentId = ticket.DepartmentId,
             PolicyId = policy.Id,
             Snapshot = StoredJson.Write(snapshot),
-            AppliedAt = now,
+            AppliedAt = cycleStart,
             ApproachingLeadMinutes = policy.ApproachingLeadMinutes,
             FirstResponseTargetMinutes = policy.FirstResponseMinutes,
             ResolutionTargetMinutes = policy.ResolutionMinutes,
         };
         if (policy.FirstResponseMinutes is { } first)
         {
-            sla.FirstResponseDueAt = calendar.AddBusinessTime(now, TimeSpan.FromMinutes(first));
+            sla.FirstResponseDueAt = calendar.AddBusinessTime(cycleStart, TimeSpan.FromMinutes(first));
         }
 
         if (policy.ResolutionMinutes is { } resolution)
@@ -111,7 +123,7 @@ internal sealed class SlaEngine(TicketingDbContext db)
             }
             else
             {
-                sla.ResolutionDueAt = calendar.AddBusinessTime(now, TimeSpan.FromMinutes(resolution));
+                sla.ResolutionDueAt = calendar.AddBusinessTime(cycleStart, TimeSpan.FromMinutes(resolution));
             }
         }
 
@@ -135,6 +147,12 @@ internal sealed class SlaEngine(TicketingDbContext db)
     /// <summary>Applies the effect of ticket changes to the ticket's clocks (inside the changing transaction). Returns notifications that must be published after commit.</summary>
     public async Task<TicketSla?> OnChangesAsync(Ticket ticket, IReadOnlyList<TicketChange> changes, DateTimeOffset now, CancellationToken ct)
     {
+        // D17: a change of Team, Type or Priority can change which policy applies.
+        if (changes.Any(c => c.Kind is ChangeKind.Team or ChangeKind.Priority or ChangeKind.Type))
+        {
+            await ReevaluateAsync(ticket, now, ct);
+        }
+
         var sla = await db.TicketSlas.IgnoreDepartmentScope().SingleOrDefaultAsync(s => s.TicketId == ticket.Id && s.DepartmentId == ticket.DepartmentId, ct);
         if (sla is null)
         {
@@ -153,6 +171,11 @@ internal sealed class SlaEngine(TicketingDbContext db)
                     break;
                 case ChangeKind.Status when Enum.TryParse<TicketStatus>(change.From, out var from) && Enum.TryParse<TicketStatus>(change.To, out var to):
                     dirty |= ApplyStatus(sla, snapshot, calendar, from, to, now);
+                    if (to is TicketStatus.Resolved or TicketStatus.Closed)
+                    {
+                        dirty |= StopFirstResponse(sla, now);
+                    }
+
                     break;
             }
         }
@@ -187,11 +210,176 @@ internal sealed class SlaEngine(TicketingDbContext db)
         await db.SaveChangesAsync(ct);
     }
 
-    private bool MeetFirstResponse(TicketSla sla, DateTimeOffset now)
+    /// <summary>
+    /// D17: the applicable policy is chosen again when Team, Type or Priority changes. The SLA cycle never restarts because the policy changed: targets are recalculated from the
+    /// ORIGINAL cycle timing (ticket creation, or the reopen that started the current resolution cycle), the business time already spent (running or paused) is kept, and a target
+    /// that is already exceeded is shown as exceeded instead of being given a fresh clock. A ticket with no SLA yet that now matches a policy gets one counted from its creation.
+    /// When no policy matches any more, the policy the ticket has stays (nothing is removed). Finished tickets (Resolved, Closed) are left alone.
+    /// </summary>
+    public async Task ReevaluateAsync(Ticket ticket, DateTimeOffset now, CancellationToken ct)
     {
-        if (sla.FirstResponseTargetMinutes is null || sla.FirstResponseMetAt is not null)
+        if (ticket.Status is TicketStatus.Resolved or TicketStatus.Closed || ticket.IsMerged)
+        {
+            return;
+        }
+
+        var email = ticket.Requester?.EmailNormalised
+            ?? await db.Requesters.IgnoreDepartmentScope().Where(r => r.Id == ticket.RequesterId).Select(r => r.EmailNormalised).SingleOrDefaultAsync(ct) ?? "";
+        var policy = await MatchPolicyAsync(ticket, email, ct);
+        if (policy is null)
+        {
+            return;
+        }
+
+        var sla = await db.TicketSlas.IgnoreDepartmentScope().SingleOrDefaultAsync(s => s.TicketId == ticket.Id && s.DepartmentId == ticket.DepartmentId, ct);
+        if (sla is null)
+        {
+            await ApplyPolicyAsync(ticket, policy, ticket.CreatedAt, now, ct);
+            return;
+        }
+
+        if (sla.PolicyId == policy.Id)
+        {
+            return;
+        }
+
+        var oldSnapshot = StoredJson.Read<SlaSnapshot>(sla.Snapshot);
+        var oldCalendar = Calendar(oldSnapshot);
+        BusinessHoursCalendar? calendarRow = policy.CalendarId is { } calendarId
+            ? await db.BusinessHours.AsNoTracking().SingleOrDefaultAsync(c => c.Id == calendarId && c.DepartmentId == ticket.DepartmentId, ct)
+            : null;
+        var snapshot = new SlaSnapshot(
+            policy.Id, policy.Name, policy.SortOrder, calendarRow?.Name, calendarRow is null ? null : CalendarOf(calendarRow),
+            policy.FirstResponseMinutes, policy.ResolutionMinutes, policy.PauseWhenPending, policy.ApproachingLeadMinutes);
+        var calendar = Calendar(snapshot);
+
+        // First response: always counted from creation. A met or stopped clock keeps that fact; an unmet one gets the new deadline.
+        var firstStopped = sla.FirstResponseTargetMinutes is not null && sla.FirstResponseDueAt is null && sla.FirstResponseMetAt is null;
+        if (policy.FirstResponseMinutes is { } first)
+        {
+            sla.FirstResponseTargetMinutes = first;
+            if (!firstStopped)
+            {
+                sla.FirstResponseDueAt = calendar.AddBusinessTime(ticket.CreatedAt, TimeSpan.FromMinutes(first));
+                if (sla.FirstResponseMetAt is null)
+                {
+                    sla.FirstResponseWarnedAt = null;
+                    sla.FirstResponseBreachedAt = null;
+                }
+            }
+        }
+        else if (sla.FirstResponseMetAt is null)
+        {
+            sla.FirstResponseTargetMinutes = null;
+            sla.FirstResponseDueAt = null;
+            sla.FirstResponseWarnedAt = null;
+            sla.FirstResponseBreachedAt = null;
+        }
+
+        // Resolution: keep the business time already spent in this cycle.
+        if (sla.ResolutionMetAt is null)
+        {
+            if (policy.ResolutionMinutes is { } target)
+            {
+                var spent = await SpentResolutionTimeAsync(sla, ticket, oldSnapshot, oldCalendar, calendar, now, ct);
+                var remaining = TimeSpan.FromMinutes(target) - spent;
+                var exceeded = remaining <= TimeSpan.Zero;
+                if (exceeded)
+                {
+                    remaining = TimeSpan.Zero;
+                }
+
+                sla.ResolutionTargetMinutes = target;
+                if (sla.ResolutionPausedAt is not null || (policy.PauseWhenPending && ticket.Status == TicketStatus.Pending))
+                {
+                    sla.ResolutionPausedAt ??= now;
+                    sla.ResolutionRemainingSeconds = (long)remaining.TotalSeconds;
+                    sla.ResolutionDueAt = null;
+                }
+                else
+                {
+                    sla.ResolutionDueAt = exceeded ? now : calendar.AddBusinessTime(now, remaining);
+                }
+
+                // A breach that was already recorded for an exceeded target stays recorded; otherwise the monitor judges the new deadline afresh.
+                if (!(exceeded && sla.ResolutionBreachedAt is not null))
+                {
+                    sla.ResolutionWarnedAt = null;
+                    sla.ResolutionBreachedAt = null;
+                }
+            }
+            else
+            {
+                sla.ResolutionTargetMinutes = null;
+                sla.ResolutionDueAt = null;
+                sla.ResolutionPausedAt = null;
+                sla.ResolutionRemainingSeconds = null;
+                sla.ResolutionWarnedAt = null;
+                sla.ResolutionBreachedAt = null;
+            }
+        }
+
+        var previousPolicy = oldSnapshot.PolicyName;
+        sla.PolicyId = policy.Id;
+        sla.Snapshot = StoredJson.Write(snapshot);
+        sla.ApproachingLeadMinutes = policy.ApproachingLeadMinutes;
+        Recompute(sla);
+        AddEvent(sla, now, SlaEventKinds.PolicyChanged, null, new
+        {
+            from = previousPolicy,
+            to = policy.Name,
+            firstResponseDueAt = sla.FirstResponseDueAt,
+            resolutionDueAt = sla.ResolutionDueAt,
+        });
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Business time already spent in the current resolution cycle (running or paused), measured under the calendar that was in force.</summary>
+    private async Task<TimeSpan> SpentResolutionTimeAsync(TicketSla sla, Ticket ticket, SlaSnapshot oldSnapshot, BusinessCalendar oldCalendar, BusinessCalendar newCalendar, DateTimeOffset now, CancellationToken ct)
+    {
+        if (sla.ResolutionTargetMinutes is { } oldTarget)
+        {
+            var oldTotal = TimeSpan.FromMinutes(oldTarget);
+            var remaining = sla.ResolutionPausedAt is not null
+                ? TimeSpan.FromSeconds(sla.ResolutionRemainingSeconds ?? 0)
+                : sla.ResolutionDueAt is { } due && due > now ? oldCalendar.BusinessTimeBetween(now, due) : TimeSpan.Zero;
+            var spent = oldTotal - remaining;
+            return spent < TimeSpan.Zero ? TimeSpan.Zero : spent;
+        }
+
+        // The previous policy had no resolution target: count the cycle from its start (creation, or the last reopen).
+        var start = ticket.CreatedAt;
+        if (sla.ResolutionCycle > 1)
+        {
+            start = await db.SlaEvents.AsNoTracking().Where(e => e.TicketId == sla.TicketId && e.Kind == SlaEventKinds.Reopened).OrderByDescending(e => e.At).Select(e => e.At).FirstOrDefaultAsync(ct);
+        }
+
+        _ = oldSnapshot;
+        return start >= now ? TimeSpan.Zero : newCalendar.BusinessTimeBetween(start, now);
+    }
+
+    /// <summary>
+    /// D18: resolving or closing before any public agent reply stops the first-response clock and records it as Not applicable (neither met nor breached). A breach that
+    /// was already recorded before the ticket was resolved stays as it is. Terminal: a later reply after a reopen does not turn it into Met.
+    /// </summary>
+    private bool StopFirstResponse(TicketSla sla, DateTimeOffset now)
+    {
+        if (sla.FirstResponseTargetMinutes is null || sla.FirstResponseMetAt is not null || sla.FirstResponseDueAt is null || sla.FirstResponseBreachedAt is not null)
         {
             return false;
+        }
+
+        sla.FirstResponseDueAt = null;
+        sla.FirstResponseWarnedAt = null;
+        AddEvent(sla, now, SlaEventKinds.FirstResponseNotApplicable, SlaClocks.FirstResponse, new { });
+        return true;
+    }
+
+    private bool MeetFirstResponse(TicketSla sla, DateTimeOffset now)
+    {
+        if (sla.FirstResponseTargetMinutes is null || sla.FirstResponseMetAt is not null || sla.FirstResponseDueAt is null)
+        {
+            return false; // no target, already met, or stopped (Not applicable / merged)
         }
 
         sla.FirstResponseMetAt = now;
@@ -370,7 +558,9 @@ internal sealed class SlaEngine(TicketingDbContext db)
     public static string FirstResponseState(TicketSla? sla, DateTimeOffset now) =>
         sla is null || sla.FirstResponseTargetMinutes is null
             ? SlaStates.None
-            : ClockState(sla.FirstResponseDueAt, sla.FirstResponseMetAt, false, sla.ApproachingLeadMinutes, now);
+            : sla.FirstResponseDueAt is null && sla.FirstResponseMetAt is null
+                ? SlaStates.NotApplicable
+                : ClockState(sla.FirstResponseDueAt, sla.FirstResponseMetAt, false, sla.ApproachingLeadMinutes, now);
 
     public static string ResolutionState(TicketSla? sla, DateTimeOffset now) =>
         sla is null || sla.ResolutionTargetMinutes is null

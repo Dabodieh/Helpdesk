@@ -2,11 +2,12 @@
 
 export const SLA_LABEL: Record<string, string> = {
   Running: 'On track',
-  Approaching: 'Due soon',
+  Approaching: 'Near deadline',
   Breached: 'Breached',
   Paused: 'Paused',
   Met: 'Met',
   MetLate: 'Met late',
+  NotApplicable: 'Not applicable',
   None: '',
 }
 
@@ -17,6 +18,7 @@ export const SLA_MARK: Record<string, string> = {
   Paused: 'Ⅱ',
   Met: '✓',
   MetLate: '✓',
+  NotApplicable: '–',
   None: '',
 }
 

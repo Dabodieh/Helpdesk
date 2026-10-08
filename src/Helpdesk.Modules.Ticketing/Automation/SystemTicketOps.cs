@@ -196,6 +196,7 @@ internal sealed class SystemTicketOps(
                 await audit.WriteSystemAsync(TicketAuditActions.PriorityChanged, TicketingAudit.TicketObject, ticket.Id, departmentId,
                     new { priority = previous.ToString() }, new { priority = target.ToString(), reason = TicketAuditActions.ReasonAutomation, via }, ct);
                 changes.Add(new TicketChange(ChangeKind.Priority, previous.ToString(), target.ToString()));
+                await sla.ReevaluateAsync(ticket, now, ct);
                 eventKind = TicketEventKinds.Priority;
                 break;
             }
@@ -215,6 +216,7 @@ internal sealed class SystemTicketOps(
                 await audit.WriteSystemAsync(TicketAuditActions.TeamChanged, TicketingAudit.TicketObject, ticket.Id, departmentId,
                     new { teamId = previous }, new { teamId = target, reason = TicketAuditActions.ReasonAutomation, via }, ct);
                 changes.Add(new TicketChange(ChangeKind.Team, previous?.ToString(), target?.ToString()));
+                await sla.ReevaluateAsync(ticket, now, ct);
                 eventKind = TicketEventKinds.Assignment;
                 break;
             }

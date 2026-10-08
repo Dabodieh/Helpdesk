@@ -399,16 +399,17 @@ internal sealed class TicketQueryService(
         {
             case Sort.SlaDueAsc:
             {
-                // Lists the tickets that have a running deadline, soonest first (a ticket without one has no place in this order).
+                // Soonest deadline first; a ticket without a running deadline comes LAST instead of disappearing from the list (BE-008).
                 var withDue = db.TicketSlas.Where(s => s.NextDueAt != null);
-                tickets = tickets.Where(t => withDue.Any(s => s.TicketId == t.Id));
+                var never = DateTimeOffset.MaxValue;
                 if (cursor is not null)
                 {
                     var (at, id) = TimeAndId(parts, 1);
-                    tickets = tickets.Where(t => withDue.Any(s => s.TicketId == t.Id && (s.NextDueAt > at || (s.NextDueAt == at && t.Id.CompareTo(id) > 0))));
+                    tickets = tickets.Where(t => (withDue.Where(s => s.TicketId == t.Id).Select(s => s.NextDueAt).FirstOrDefault() ?? never) > at
+                        || ((withDue.Where(s => s.TicketId == t.Id).Select(s => s.NextDueAt).FirstOrDefault() ?? never) == at && t.Id.CompareTo(id) > 0));
                 }
 
-                return tickets.OrderBy(t => withDue.Where(s => s.TicketId == t.Id).Select(s => s.NextDueAt).FirstOrDefault()).ThenBy(t => t.Id);
+                return tickets.OrderBy(t => withDue.Where(s => s.TicketId == t.Id).Select(s => s.NextDueAt).FirstOrDefault() ?? never).ThenBy(t => t.Id);
             }
 
             case Sort.UpdatedDesc:

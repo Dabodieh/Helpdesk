@@ -53,6 +53,10 @@ function EventText({ kind, clock, detail }: { kind: string; clock: string | null
       return <>{who} resumed</>
     case 'Reopened':
       return <>{who} restarted after reopening (cycle {String(detail.cycle)})</>
+    case 'FirstResponseNotApplicable':
+      return <>{who} not applicable: the ticket was resolved or closed without a reply</>
+    case 'PolicyChanged':
+      return <>SLA policy changed: {String(detail.from)} to {String(detail.to)}</>
     case 'Approaching':
       return <>{who} deadline approaching</>
     case 'Breached':
@@ -132,6 +136,8 @@ function clockText(clock: TicketSla['firstResponse'], createdAt: string): string
       const took = clock.metAt ? ` in ${formatMinutes(minutes) || '1m'}` : ''
       return clock.state === 'Met' ? `Met${took}` : `Met late${took}`
     }
+    case 'NotApplicable':
+      return 'Not applicable: resolved without a reply'
     case 'Breached':
       return `BREACHED · ${dueIn(clock.dueAt).replace(' overdue', '') || 'now'} ago`
     case 'Paused':

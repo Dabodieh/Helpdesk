@@ -665,6 +665,7 @@ internal sealed class MacroRunService(
             await audit.WriteAsync(TicketAuditActions.TypeChanged, TicketingAudit.TicketObject, ticket.Id, ticket.DepartmentId,
                 new { typeId = ticket.TicketTypeId, name = ticket.TicketTypeId is { } o && names.TryGetValue(o, out var on) ? on : null },
                 new { typeId, name = typeId is { } n && names.TryGetValue(n, out var nn) ? nn : null, via }, ct);
+            lc.Add(new TicketChange(ChangeKind.Type, ticket.TicketTypeId?.ToString(), typeId?.ToString()));
             ticket.TicketTypeId = typeId;
             kinds.Add(TicketEventKinds.Updated);
             stateChanged = true;

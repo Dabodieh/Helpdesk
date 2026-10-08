@@ -8,7 +8,7 @@ import { ACTION_LABEL, FIELD_LABEL, typeKey } from '../lib/rules'
 
 /** Structured condition and action editors (no raw JSON, no expressions). The server re-validates every value against the department. */
 
-const SLA_STATE_OPTIONS = ['Running', 'Approaching', 'Breached', 'Paused', 'Met', 'MetLate', 'None']
+const SLA_STATE_OPTIONS = ['Running', 'Approaching', 'Breached', 'Paused', 'Met', 'MetLate', 'NotApplicable', 'None']
 
 const isSet = (field: string) => !['subjectContains', 'requesterEmail', 'requesterDomain'].includes(field)
 

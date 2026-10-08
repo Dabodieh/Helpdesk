@@ -45,7 +45,10 @@ internal static class SlaStates
     public const string Met = "Met";
     public const string MetLate = "MetLate";
 
-    public static readonly string[] All = [None, Running, Approaching, Breached, Paused, Met, MetLate];
+    /// <summary>First response stopped without a public reply: the ticket was resolved or closed (D18) or merged.</summary>
+    public const string NotApplicable = "NotApplicable";
+
+    public static readonly string[] All = [None, Running, Approaching, Breached, Paused, Met, MetLate, NotApplicable];
 }
 
 /// <summary>The ticket facts conditions are evaluated against (a plain snapshot, so evaluation is pure and testable).</summary>

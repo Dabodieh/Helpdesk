@@ -33,7 +33,7 @@ internal sealed record UpdatePropertiesRequest(string? Version, Guid? TicketType
 /// be cleared). Changing a ticket's type or making a field required never invalidates existing tickets; missing required values are only reported (<c>MissingRequired</c>).
 /// </summary>
 internal sealed class TicketPropertiesService(
-    TicketingDbContext db, TicketResolver resolver, FieldCatalog catalog, TicketTypesService types, TicketingAudit audit, ITicketEvents events, ICurrentUser current, TimeProvider clock)
+    TicketingDbContext db, TicketResolver resolver, FieldCatalog catalog, TicketTypesService types, TicketingAudit audit, ITicketEvents events, ICurrentUser current, TimeProvider clock, Sla.SlaEngine sla)
 {
     public async Task<TicketPropertiesDto> GetAsync(string route, CancellationToken ct)
     {
@@ -70,6 +70,7 @@ internal sealed class TicketPropertiesService(
         db.Entry(ticket).Property(t => t.Version).OriginalValue = version;
         var now = Services.ClockExtensions.GetUtcNowMicroseconds(clock);
         var changed = false;
+        var typeChanged = false;
 
         var newType = request.ClearTicketType == true ? null : request.TicketTypeId ?? ticket.TicketTypeId;
         if (request.ClearTicketType == true && request.TicketTypeId is not null)
@@ -92,6 +93,7 @@ internal sealed class TicketPropertiesService(
                 new { typeId = newType, name = newType is { } n && names.TryGetValue(n, out var nn) ? nn : null }, ct);
             ticket.TicketTypeId = newType;
             changed = true;
+            typeChanged = true;
         }
 
         if (request.Fields is { Count: > 0 } submitted)
@@ -114,6 +116,10 @@ internal sealed class TicketPropertiesService(
             try
             {
                 await db.SaveChangesAsync(ct);
+                if (typeChanged)
+                {
+                    await sla.ReevaluateAsync(ticket, now, ct); // D17: the type can select another SLA policy
+                }
             }
             catch (DbUpdateConcurrencyException)
             {
