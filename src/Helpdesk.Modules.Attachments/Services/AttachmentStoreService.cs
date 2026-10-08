@@ -15,6 +15,10 @@ internal sealed class AttachmentStoreService(
     IOptions<AttachmentOptions> options,
     TimeProvider clock) : IAttachmentStore
 {
+    public const string AttachmentsDisabled = "attachments_disabled";
+
+    public bool Enabled => options.Value.Enabled;
+
     public async Task<AttachmentSummary> StoreAsync(StoreAttachmentRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -28,7 +32,9 @@ internal sealed class AttachmentStoreService(
         }
 
         var oversize = request.DeclaredSize is { } declared && declared > settings.MaxBytes;
-        var validation = oversize
+        var validation = !settings.Enabled
+            ? new ValidationResult(false, AttachmentValidator.SanitiseFileName(request.FileName), "application/octet-stream", AttachmentsDisabled)
+            : oversize
             ? new ValidationResult(false, AttachmentValidator.SanitiseFileName(request.FileName), "application/octet-stream", AttachmentValidator.TooLarge)
             : AttachmentValidator.Validate(request.FileName, request.Content, settings.MaxBytes);
         var id = Guid.CreateVersion7();
@@ -116,6 +122,11 @@ internal sealed class AttachmentStoreService(
         }
 
         var settings = options.Value;
+        if (!settings.Enabled)
+        {
+            return new AttachmentOpenResult(null, false, AttachmentsDisabled);
+        }
+
         if (!IsDownloadable(attachment, settings))
         {
             return new AttachmentOpenResult(null, false, attachment.State == AttachmentStates.Blocked ? attachment.BlockReason : "scan_required");
@@ -128,7 +139,8 @@ internal sealed class AttachmentStoreService(
     }
 
     private static bool IsDownloadable(Attachment a, AttachmentOptions settings) =>
-        a.State == AttachmentStates.Stored
+        settings.Enabled
+        && a.State == AttachmentStates.Stored
         && a.ScanState != AttachmentScanStates.Infected
         && (!settings.RequireCleanScan || a.ScanState == AttachmentScanStates.Clean);
 

@@ -4,7 +4,9 @@ using Helpdesk.Host.Tests.Infrastructure;
 using Helpdesk.Host.Tests.Ticketing;
 using Helpdesk.Modules.Attachments.Services;
 using Helpdesk.Modules.Mail.Providers;
+using Helpdesk.Modules.Mail.Contracts;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Helpdesk.Host.Tests.Mail;
 
@@ -121,6 +123,39 @@ public sealed class AttachmentTests(HelpdeskFixture fixture) : IClassFixture<Hel
 
         response.ExpectCode(HttpStatusCode.Conflict, "invalid_state");
         Assert.Contains("scan_required", response.Json.GetProperty("detail").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task With_attachments_switched_off_new_mail_attachments_are_blocked_metadata_and_stored_files_are_not_served()
+    {
+        var d = await fixture.NewDeptAsync();
+        var box = await fixture.CreateMailboxAsync(d);
+        var before = $"Before {Unique.Id()}";
+        await fixture.ReceiveAsync(box, MailKit.Mail(MailKit.NewSender(), before) with { Attachments = [new FakeAttachment("a.txt", "x"u8.ToArray())] });
+        var beforeTicket = Assert.Single(await d.Agent.TicketsAsync(d, before)).GetProperty("id").GetGuid();
+        var storedId = await fixture.ScalarAsync<Guid>("SELECT id FROM attachments.attachments WHERE ticket_id = @t", TicketKit.P("t", beforeTicket));
+
+        // Switch the setting off for this fixture's host only (its database is private to this test class); restored in finally.
+        var settings = fixture.Factory.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<AttachmentOptions>>().Value;
+        var subject = $"Off {Unique.Id()}";
+
+        settings.Enabled = false;
+        try
+        {
+            await fixture.ReceiveAsync(box, MailKit.Mail(MailKit.NewSender(), subject) with { Attachments = [new FakeAttachment("b.txt", "y"u8.ToArray())] });
+            var ticketId = Assert.Single(await d.Agent.TicketsAsync(d, subject)).GetProperty("id").GetGuid();
+
+            Assert.Equal("attachments_disabled", await fixture.ScalarAsync<string>("SELECT block_reason FROM attachments.attachments WHERE ticket_id = @t", TicketKit.P("t", ticketId)));
+            Assert.Equal(0L, await fixture.ScalarAsync<long>("SELECT count(*) FROM attachments.attachments WHERE ticket_id = @t AND storage_key IS NOT NULL", TicketKit.P("t", ticketId)));
+
+            var response = await d.Agent.Client.GetAsync($"/api/tickets/{beforeTicket}/attachments/{storedId}");
+            response.ExpectCode(HttpStatusCode.Conflict, "invalid_state");
+            Assert.Contains("attachments_disabled", response.Json.GetProperty("detail").GetString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            settings.Enabled = true;
+        }
     }
 
     // ----- validator rules (pure) -----

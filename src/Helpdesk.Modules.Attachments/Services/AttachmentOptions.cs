@@ -13,6 +13,12 @@ internal sealed class AttachmentOptions
     /// required before production release); Development/Testing configuration sets it to false so the flow works without an engine.
     /// </summary>
     public bool RequireCleanScan { get; set; } = true;
+
+    /// <summary>
+    /// Master switch. When false no attachment is stored, fetched or opened: uploads and inbound email attachments are recorded as Blocked (<c>attachments_disabled</c>, metadata only)
+    /// and downloads are refused. Production must keep it false until a malware scanning engine is integrated (D-08); the host refuses to start otherwise.
+    /// </summary>
+    public bool Enabled { get; set; } = true;
 }
 
 /// <summary>Bound from the <c>Storage</c> configuration section.</summary>

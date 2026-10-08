@@ -62,6 +62,7 @@ public sealed class ProductionHostingTests(HelpdeskFixture fixture) : IClassFixt
     [InlineData("AllowedHosts", "*", "AllowedHosts")]
     [InlineData("Storage:Provider", "InMemory", "Storage:Provider")]
     [InlineData("Attachments:RequireCleanScan", "false", "RequireCleanScan")]
+    [InlineData("Attachments:Enabled", "true", "Attachments:Enabled")]
     public void A_production_host_refuses_unsafe_settings(string key, string value, string expected)
     {
         var factory = Variant(b =>
@@ -80,6 +81,7 @@ public sealed class ProductionHostingTests(HelpdeskFixture fixture) : IClassFixt
             b.UseSetting("Storage:S3:AccessKey", "a");
             b.UseSetting("Storage:S3:SecretKey", "b");
             b.UseSetting("Attachments:RequireCleanScan", "true");
+            b.UseSetting("Attachments:Enabled", "false");
             b.UseSetting("AllowedHosts", "helpdesk.example.test");
             b.UseSetting("Proxy:KnownProxies:0", "10.0.0.2");
             b.UseSetting("Jobs:Enabled", "false");

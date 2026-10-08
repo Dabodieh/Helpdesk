@@ -101,6 +101,12 @@ internal static class ProductionHosting
             problems.Add("Attachments:RequireCleanScan must be true.");
         }
 
+        // No malware scanning engine exists yet (D-08), so attachments stay off in production: nothing is uploaded, fetched from mail, stored or served.
+        if (!bool.TryParse(configuration["Attachments:Enabled"], out var attachmentsEnabled) || attachmentsEnabled)
+        {
+            problems.Add("Attachments:Enabled must be false until a malware scanner is integrated (D-08).");
+        }
+
         if (problems.Count > 0)
         {
             throw new InvalidOperationException("Unsafe production configuration: " + string.Join(" ", problems));

@@ -53,6 +53,8 @@ services:
       Storage__S3__AccessKey: ${S3_ACCESS_KEY:?set in .env}
       Storage__S3__SecretKey: ${S3_SECRET_KEY:?set in .env}
       Attachments__RequireCleanScan: "true"
+      # Off until a malware scanning engine is integrated (D-08); the host refuses to start with it on.
+      Attachments__Enabled: "false"
     networks: [internal]
 
   # One-off: `run --rm migrate`. Applies every module migration in the registered order, then exits.

@@ -59,6 +59,9 @@ public sealed record AttachmentOpenResult(AttachmentDownload? Download, bool Not
 /// </summary>
 public interface IAttachmentStore
 {
+    /// <summary>False when attachments are switched off: callers need not fetch or read bytes (they would not be stored).</summary>
+    bool Enabled { get; }
+
     /// <summary>Validates (size, type, extension, magic bytes), hashes, stores and records the attachment. Idempotent on <c>SourceRef</c>.</summary>
     Task<AttachmentSummary> StoreAsync(StoreAttachmentRequest request, CancellationToken cancellationToken = default);
 

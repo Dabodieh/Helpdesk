@@ -332,7 +332,8 @@ internal sealed class InboundProcessor(
     {
         foreach (var info in email.Attachments)
         {
-            var bytes = info.Size > 0 && info.Size <= 50L * 1024 * 1024
+            // Attachments switched off: the file is not even fetched from the provider; it is recorded as blocked metadata only.
+            var bytes = attachments.Enabled && info.Size > 0 && info.Size <= 50L * 1024 * 1024
                 ? await provider.GetAttachmentAsync(mref, email.ProviderMessageId, info.ProviderAttachmentId, ct)
                 : [];
             await attachments.StoreAsync(

@@ -97,6 +97,7 @@ public sealed class AuthConfigurationTests(HelpdeskFixture fixture) : IClassFixt
             b.UseSetting("Storage:S3:AccessKey", "test-access");
             b.UseSetting("Storage:S3:SecretKey", "test-secret");
             b.UseSetting("Attachments:RequireCleanScan", "true");
+            b.UseSetting("Attachments:Enabled", "false");
             b.UseSetting("AllowedHosts", "helpdesk.example.test;localhost");
             b.UseSetting("Proxy:KnownProxies:0", "10.0.0.2");
             b.UseSetting("Jobs:Enabled", "false");
