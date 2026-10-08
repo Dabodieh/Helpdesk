@@ -11,15 +11,18 @@ set -euo pipefail
 : "${BACKUP_PASSPHRASE_FILE:?path of a file holding the encryption passphrase}"
 : "${BACKUP_DIR:?directory to write the backup to}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker/production/compose.yml}"
+DB_NAME="${DB_NAME:-helpdesk}"; DB_USER="${DB_USER:-helpdesk}"; PG_SERVICE="${PG_SERVICE:-postgres}"
 ENV_FILE="${ENV_FILE:-docker/production/.env}"
 [ -s "$BACKUP_PASSPHRASE_FILE" ] || { echo "passphrase file is missing or empty" >&2; exit 1; }
 mkdir -p "$BACKUP_DIR"
 
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 out="$BACKUP_DIR/helpdesk-$stamp.dump.enc"
+# A failed or interrupted run must not leave a partial file that looks like a backup.
+trap 'rc=$?; [ "$rc" -eq 0 ] || rm -f "$out" "$out.sha256"' EXIT
 
 # Custom-format dump streamed straight into encryption: no plaintext copy of the data is ever written to disk.
-docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T postgres pg_dump -U helpdesk -d helpdesk --format=custom --no-owner \
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T "$PG_SERVICE" pg_dump -U "$DB_USER" -d "$DB_NAME" --format=custom --no-owner \
   | openssl enc -aes-256-cbc -pbkdf2 -salt -pass "file:$BACKUP_PASSPHRASE_FILE" -out "$out"
 
 # An empty or truncated dump must never be mistaken for a backup.

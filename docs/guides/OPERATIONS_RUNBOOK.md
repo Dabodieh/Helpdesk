@@ -28,4 +28,4 @@ The thresholds are starting points, not approved service levels. Logs are struct
 **Entra ID.** Nobody can sign in; existing sessions keep working until they expire.
 
 ## Routine
-Backups hourly; restore drill quarterly (`BACKUP_AND_RESTORE.md`). Logs and operational tables are not pruned yet: retention periods are provisional (D7/D-09) and pruning will not be switched on until the organisation's policy approves them. Watch table growth until then.
+Backups hourly via the systemd timer (`scripts/ops/systemd/`), checked by `scripts/ops/check-backup-freshness.sh`; restore drill quarterly with `scripts/ops/restore-test.sh` (`BACKUP_AND_RESTORE.md`). Logs and operational tables are not pruned yet: retention periods are provisional (D7/D-09) and pruning will not be switched on until the organisation's policy approves them. Watch table growth until then.
