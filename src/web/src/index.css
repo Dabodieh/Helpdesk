@@ -3923,3 +3923,5 @@ a.workload-name:hover { text-decoration: underline; color: var(--accent); }
 .rail-chevron { display: grid; place-items: center; width: 22px; font-size: 18px; line-height: 1; }
 @media (max-width: 1000px) { .rail-collapse { display: none; } }
 .app-rail .rail-link { text-decoration: none; }
+.hub-department-name .admin-department-select { flex-direction: row; align-items: center; gap: 8px; font-size: 12px; }
+.hub-department-name .admin-department-select select { height: 32px; font-weight: 650; }

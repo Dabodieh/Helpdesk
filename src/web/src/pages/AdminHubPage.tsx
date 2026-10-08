@@ -31,7 +31,7 @@ export default function AdminHubPage() {
         <Link className={category === 'platform' ? 'active' : undefined} to={categoryLink('platform')}><Icon name="server" size={14} />Platform &amp; operations</Link>
       </nav>
       {!hasAnyPermission(me, 'tickets.read') && <p className="notice info" role="note">You have no access to tickets: ticket queues need a department membership with ticket permissions.</p>}
-      <div className="hub-search-row"><SettingsSearch value={search} onChange={value => change('q', value)} /><DepartmentSelect departments={departments} value={department?.id ?? ''} disabled={list.isPending || list.isError} onChange={id => change('department', id)} /></div>
+      <div className="hub-search-row"><SettingsSearch value={search} onChange={value => change('q', value)} /></div>
       {list.isPending && <Loading label="Loading authorised departments" />}
       {list.isError && <ErrorNotice error={list.error} onRetry={() => void list.refetch()} />}
       <h2 className="hub-group-label">Organisation &amp; platform</h2>
@@ -40,10 +40,10 @@ export default function AdminHubPage() {
         {globalMatches('platform operations system status health readiness') && <Link className="hub-platform-card" to="/admin/status"><span className="setting-icon"><Icon name="server" size={22} /></span><div><span className="settings-scope-label">Platform</span><h2>System status</h2><p>Check application readiness and availability</p></div><span aria-hidden="true">↗</span></Link>}
       </div>
       {department && category !== 'platform' && <>
-        <div className="hub-department-context"><div><h2 className="hub-group-label">Department settings</h2><div className="hub-department-name"><span className="scope-dot" aria-hidden="true" /><strong>{department.name}</strong><ActiveBadge active={department.isActive} /></div></div><Link to={`/admin/departments/${department.id}`}>Open control centre →</Link></div>
+        <div className="hub-department-context"><div><h2 className="hub-group-label">Department settings</h2><div className="hub-department-name"><DepartmentSelect departments={departments} value={department?.id ?? ''} disabled={list.isPending || list.isError} onChange={id => change('department', id)} /><ActiveBadge active={department.isActive} /></div></div><Link to={`/admin/departments/${department.id}`}>Open control centre →</Link></div>
         <SettingsCatalog settings={settings} departmentId={department.id} states={states} search={search} category={category} />
       </>}
-      {!department && list.isSuccess && <div className="settings-empty"><Icon name="organisation" size={28} /><h2>{departments.length ? 'Choose a department' : 'No departments available'}</h2><p>{departments.length ? 'Select an authorised department to browse its settings.' : 'Department settings appear when you have access to a department.'}</p><Link to="/admin/departments">Manage departments →</Link></div>}
+      {!department && list.isSuccess && <div className="settings-empty"><Icon name="organisation" size={28} /><h2>{departments.length ? 'Choose a department' : 'No departments available'}</h2><p>{departments.length ? 'Select an authorised department to browse its settings.' : 'Department settings appear when you have access to a department.'}</p>{departments.length > 0 && <DepartmentSelect departments={departments} value="" onChange={id => change('department', id)} />}<Link to="/admin/departments">Manage departments →</Link></div>}
       {category === 'platform' && !globalMatches('organisation departments management access create platform') && !globalMatches('platform operations system status health readiness') && <p className="empty">No platform settings match this search.</p>}
   </div>
 }
