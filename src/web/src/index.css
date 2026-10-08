@@ -3519,7 +3519,7 @@ table.compact th {
 .filters .chip { font-size:10px; border-radius:4px; padding:3px 6px; min-height:27px; }
 .filters .chips { flex-wrap:wrap; }
 .queue-sort { width:100%; }
-.queue-sort .fsel { flex-direction:row; align-items:center; justify-content:space-between; font-size:11px; }
+.queue-sort .fsel { flex-direction:row; align-items:center; justify-content:flex-start; gap:6px; font-size:11px; }
 .queue-sort select { font-size:11px; border-color:transparent; background:transparent; max-width:170px; }
 .queue-filter-details { width:100%; font-size:12px; color:var(--muted); }
 .queue-filter-details summary { cursor:pointer; padding:4px 0; }
