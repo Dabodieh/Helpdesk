@@ -12,3 +12,6 @@ coverage/
 *.log
 TestResults/
 playwright-report/
+
+# Production reference deployment secrets/certificates
+docker/production/tls/

@@ -35,7 +35,7 @@ dotnet user-secrets --project src/Helpdesk.Host set Authentication:Entra:ClientI
 dotnet user-secrets --project src/Helpdesk.Host set Authentication:Entra:ClientSecret <secret>
 dotnet user-secrets --project src/Helpdesk.Host set Authentication:BootstrapPlatformAdminSubjects:0 <your-entra-object-id>
 ```
-`GET /api/auth/login?returnUrl=/` starts the flow (the id token issuer and `tid` must match the configured tenant). The result is an HttpOnly, SameSite=Lax cookie session (`Secure` outside Development/Testing). Behind a reverse proxy set `Proxy:KnownProxies` so the scheme and client IP are trusted. The OIDC `state`/`nonce` correlation cookies and the session cookie are protected with ASP.NET Data Protection: the key ring is not persisted yet (open item, see the Phase 1 backend hand-over), so sessions end on every restart or container replacement until it is.
+`GET /api/auth/login?returnUrl=/` starts the flow (the id token issuer and `tid` must match the configured tenant). The result is an HttpOnly, SameSite=Lax cookie session (`Secure` outside Development/Testing). Behind a reverse proxy set `Proxy:KnownProxies` or `Proxy:KnownNetworks`; with neither set no forwarded header is honoured (production refuses to start without one, ADR-020). The OIDC `state`/`nonce` correlation cookies and the session cookie are protected with ASP.NET Data Protection: the key ring is not persisted yet (open item, see the Phase 1 backend hand-over), so sessions end on every restart or container replacement until it is.
 
 ### Development sign-in
 `Development` enables it by default (`appsettings.Development.json`, bootstrap subject `dev-admin`). Open

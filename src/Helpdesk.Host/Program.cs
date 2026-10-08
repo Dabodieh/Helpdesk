@@ -1,4 +1,5 @@
 using Helpdesk.Host.Errors;
+using Helpdesk.Host.Hosting;
 using Helpdesk.Host.Jobs;
 using Helpdesk.Modules.Attachments;
 using Helpdesk.Modules.Audit;
@@ -54,16 +55,8 @@ try
     builder.Services.AddExceptionHandler<HelpdeskExceptionHandler>();
     builder.Services.AddOpenApi();
 
-    builder.Services.Configure<ForwardedHeadersOptions>(o =>
-    {
-        o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-        // Trust only the configured reverse proxies (Proxy:KnownProxies); see docs/security/SECURITY.md.
-        o.KnownProxies.Clear();
-        foreach (var ip in builder.Configuration.GetSection("Proxy:KnownProxies").Get<string[]>() ?? [])
-        {
-            o.KnownProxies.Add(System.Net.IPAddress.Parse(ip));
-        }
-    });
+    builder.Services.Configure<ForwardedHeadersOptions>(o => ProductionHosting.ConfigureForwardedHeaders(o, builder.Configuration));
+    builder.Services.AddProductionSettingsGuard();
 
     builder.Services.AddOpenTelemetry()
         .ConfigureResource(r => r.AddService("helpdesk-host"))
@@ -96,28 +89,13 @@ try
         app.UseHsts();
     }
 
-    // Transport hardening for API responses (JSON that may contain user-supplied markup, never cacheable by shared caches).
-    app.Use(async (context, next) =>
-    {
-        context.Response.OnStarting(() =>
-        {
-            var headers = context.Response.Headers;
-            headers.XContentTypeOptions = "nosniff";
-            headers["Referrer-Policy"] = "no-referrer";
-            if (context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase))
-            {
-                headers.CacheControl = "no-store";
-                headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'";
-            }
-
-            return Task.CompletedTask;
-        });
-        await next();
-    });
+    app.UseResponseSecurityHeaders();
+    app.UseSpaStaticFiles();
 
     app.UseExceptionHandler();
     app.UseSerilogRequestLogging();
 
+    app.UseRealtimeOriginCheck();
     app.UseRouting();
     app.UseIdentityModule();   // authentication + CSRF validation
     app.UseAuthorization();
@@ -138,6 +116,7 @@ try
     app.MapKnowledgeEndpoints();
     app.MapMailEndpoints(app.Environment);
     app.MapAuditEndpoints();
+    app.MapSinglePageApp();
 
     app.Run();
 }

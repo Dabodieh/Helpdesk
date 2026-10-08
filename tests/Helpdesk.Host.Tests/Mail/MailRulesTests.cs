@@ -110,6 +110,15 @@ public sealed class MailRulesTests
         Assert.Contains("ok", safe, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Data_urls_survive_only_on_images()
+    {
+        var safe = MailText.SanitiseHtml("<a href=\"data:text/html,<b>x</b>\">link</a><img src=\"data:image/png;base64,AAAA\">");
+
+        Assert.DoesNotContain("data:text", safe, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("data:image/png", safe, StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// The S3 store against a REAL S3-compatible endpoint (local SeaweedFS: `docker compose --profile storage up -d`). Runs only when
     /// HELPDESK_TEST_S3_ENDPOINT, HELPDESK_TEST_S3_ACCESS_KEY and HELPDESK_TEST_S3_SECRET_KEY are set, so CI without storage stays green.

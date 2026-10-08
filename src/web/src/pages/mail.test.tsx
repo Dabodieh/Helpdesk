@@ -115,7 +115,7 @@ test('the ticket header shows the mailbox it arrived through and the people in c
         reference: 'IT-1',
         subject: 'Printer jam',
         mailbox: { id: 'mb1', address: 'desk@helpdesk.test', name: 'IT Desk' },
-        participants: [{ email: 'boss@client.test', displayName: 'The Boss' }, { email: 'copy@client.test' }],
+        participants: [{ email: 'boss@client.test', displayName: 'The Boss', isProtected: false }, { email: 'copy@client.test', isProtected: false }],
       }),
     ),
   )

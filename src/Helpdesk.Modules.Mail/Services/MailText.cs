@@ -49,6 +49,12 @@ internal static partial class MailText
             {
                 e.SanitizedUrl = null;
             }
+
+            // data: is for inline images only; a data: link (or any other element) is dropped (SEC-010).
+            if (e.Tag.LocalName != "img" && e.OriginalUrl.TrimStart().StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            {
+                e.SanitizedUrl = null;
+            }
         };
         return sanitizer;
     }
