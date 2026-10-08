@@ -7,14 +7,14 @@
 /* Graphite: dark is the default; the explicit preference applies to every route. */
 :root {
   color-scheme: dark;
-  --bg: #1a1e1b; --surface: #202521; --surface-2: #272d28; --hover: #303831;
-  --border: #363e36; --border-strong: #566052; --text: #e8ece3; --muted: #a8b1a4;
+  --bg: #17181c; --surface: #1e2025; --surface-2: #262830; --hover: #2e3039;
+  --border: #33363f; --border-strong: #4b4f5b; --text: #e8e9ee; --muted: #9fa3ad;
   --accent: #f08c70; --accent-text: #271d17; --accent-soft: #3e2e27;
-  --danger: #f4a094; --danger-bg: #442d28; --ok: #9ac49d; --warn: #e3bf77; --info-bg: #2c3940;
-  --st-open: #a6c2d0; --st-pending: #e3bf77; --st-resolved: #9ac49d; --st-closed: #a8b1a4;
+  --danger: #f4a094; --danger-bg: #442d28; --ok: #9ac49d; --warn: #e3bf77; --info-bg: #262e3a;
+  --st-open: #a6c2d0; --st-pending: #e3bf77; --st-resolved: #9ac49d; --st-closed: #9fa3ad;
   --internal-bg: #302d21; --internal-stripe: #393324; --internal-border: #625332; --internal-text: #e3c588;
-  --public-bg: #202521; --requester-bg: #1a1e1b;
-  --rail: #151a16; --rail-text: #acb8a9; --rail-active: #f0f4e9;
+  --public-bg: #1e2025; --requester-bg: #17181c;
+  --rail: #111216; --rail-text: #a3a7b1; --rail-active: #f2f3f7;
   --sans: Manrope, 'Segoe UI', sans-serif; --mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
   --radius: 7px; --row-h: 38px; --ctl-h: 32px;
   font: 14px/1.5 var(--sans); color: var(--text); background: var(--bg);
@@ -28,7 +28,7 @@
   --st-open: #426479; --st-pending: #875c15; --st-resolved: #34704e; --st-closed: #62685f;
   --internal-bg: #fcf5e6; --internal-stripe: #f4ead1; --internal-border: #e6cd92; --internal-text: #765415;
   --public-bg: #fdfdfb; --requester-bg: #f6f6f3;
-  --rail: #242925; --rail-text: #bec5bc; --rail-active: #f8f5ee;
+  --rail: #25272c; --rail-text: #bcc0c8; --rail-active: #f8f6f1;
 }
 
 * {
@@ -3360,7 +3360,7 @@ table.compact th {
 .shell-workspace { grid-template-columns:72px 170px minmax(0,1fr); }
 .app-rail { grid-column:1; grid-row:1 / -1; display:flex; flex-direction:column; align-items:center; padding:15px 0 12px; background:var(--rail); color:var(--rail-text); z-index:30; }
 .graphite-brand { display:flex; align-items:center; justify-content:center; gap:4px; width:40px; height:34px; }
-.graphite-brand span { width:8px; height:27px; border-radius:2px; background:#e8e9da; transform:skewY(-17deg); }
+.graphite-brand span { width:8px; height:27px; border-radius:2px; background:#e9eaef; transform:skewY(-17deg); }
 .graphite-brand span:nth-child(2) { height:16px; background:#e28165; }
 .app-rail-nav, .app-rail-foot { display:flex; flex-direction:column; align-items:center; gap:10px; }
 .app-rail-nav { margin-top:26px; }
@@ -3371,7 +3371,7 @@ table.compact th {
 .rail-link.active:before { content:''; position:absolute; left:-14px; top:12px; width:3px; height:20px; border-radius:0 2px 2px 0; background:#e88f72; }
 .app-rail .usermenu-trigger { width:44px; height:44px; padding:6px; justify-content:center; color:inherit; }
 .app-rail .usermenu-name { display:none; }
-.app-rail .avatar { width:32px; height:32px; background:#465044; border:0; color:#edf1e5; }
+.app-rail .avatar { width:32px; height:32px; background:#3a3d45; border:0; color:#edf1e5; }
 .app-rail .popover { left:53px; right:auto; bottom:0; width:240px; color:var(--text); }
 .app-topbar { grid-column:2 / -1; display:flex; align-items:center; gap:20px; padding:0 26px; background:var(--surface); border-bottom:1px solid var(--border); min-width:0; z-index:25; }
 .wordmark { color:var(--text); font-weight:800; letter-spacing:-.7px; font-size:20px; text-decoration:none; }
