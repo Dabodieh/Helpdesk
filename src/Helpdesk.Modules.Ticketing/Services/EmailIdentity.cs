@@ -39,6 +39,9 @@ internal static partial class TemplateText
     public static string Render(string template, IReadOnlyDictionary<string, string> values, Func<string, string> encode) =>
         Token().Replace(template, m => values.TryGetValue(m.Groups[1].Value, out var v) ? encode(v) : "");
 
+    /// <summary>The distinct placeholder names a template uses, in order of first use.</summary>
+    public static IReadOnlyList<string> PlaceholdersIn(string template) => [.. Token().Matches(template).Select(m => m.Groups[1].Value).Distinct(StringComparer.Ordinal)];
+
     public static string OneLine(string value) => value.ReplaceLineEndings(" ").Trim();
 }
 

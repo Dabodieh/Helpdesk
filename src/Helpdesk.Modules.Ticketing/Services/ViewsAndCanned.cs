@@ -245,6 +245,9 @@ internal sealed record CreateCannedRequest(string? Scope, Guid? DepartmentId, st
 
 internal sealed record UpdateCannedRequest(string? Version, string? Title, string? Body, bool? IsActive);
 
+/// <summary>A canned response with its placeholders filled in for one ticket, ready to insert into a draft. <see cref="EmptyPlaceholders"/> names placeholders whose value is empty for this ticket (the client may warn before the agent sends).</summary>
+internal sealed record CannedRenderDto(Guid Id, string Title, string Body, IReadOnlyList<string> EmptyPlaceholders);
+
 /// <summary>
 /// Canned responses: personal (owner only, usable in every department the owner can reply in) and department (shared; managed by
 /// <c>department.canned.manage</c>). Inserting one into the composer is a client action; nothing here sends anything.
@@ -256,9 +259,52 @@ internal sealed class CannedResponseService(
     IOrganisationDirectory organisation,
     TicketingAudit audit,
     ICurrentUser current,
-    TimeProvider clock)
+    TimeProvider clock,
+    TicketResolver tickets)
 {
     public const int MaxPerOwner = 200;
+
+    /// <summary>The only placeholders a canned response may use: the ticket's own facts and the inserting agent's name. Same fixed-list, single-pass mechanism as the email identity templates.</summary>
+    public static readonly string[] Placeholders = ["requester.name", "ticket.reference", "ticket.subject", "department.name", "agent.name"];
+
+    /// <summary>
+    /// The response filled in for ONE ticket, for insertion into the composer. Needs tickets.reply or tickets.note on the ticket's department (the endpoint filter already
+    /// resolved the ticket through the caller's department scope). Usable: the caller's own personal response, or an ACTIVE response of the ticket's own department;
+    /// anything else behaves as missing. Read-only: nothing is sent, stored or audited, and no internal-note content is involved.
+    /// </summary>
+    public async Task<CannedRenderDto> RenderAsync(string ticketRoute, Guid id, CancellationToken ct)
+    {
+        await scope.EnsureLoadedAsync(ct);
+        var key = await tickets.FindAsync(ticketRoute, ct) ?? throw new NotFoundException();
+        if (await authorizer.CheckAsync(PermissionCodes.TicketsReply, key.DepartmentId, ct) != AccessOutcome.Allowed
+            && await authorizer.CheckAsync(PermissionCodes.TicketsNote, key.DepartmentId, ct) != AccessOutcome.Allowed)
+        {
+            throw new ForbiddenException();
+        }
+
+        var me = current.UserId;
+        var response = await db.CannedResponses.AsNoTracking().SingleOrDefaultAsync(c => c.Id == id, ct);
+        var usable = response is not null && response.IsActive
+            && ((response.Scope == CannedScopes.Personal && response.OwnerUserId == me) || (response.Scope == CannedScopes.Department && response.DepartmentId == key.DepartmentId));
+        if (!usable)
+        {
+            throw new NotFoundException();
+        }
+
+        var ticket = await db.Tickets.AsNoTracking().Where(t => t.Id == key.Id && t.DepartmentId == key.DepartmentId)
+            .Select(t => new { t.Reference, t.Subject, RequesterName = t.Requester.DisplayName }).SingleOrDefaultAsync(ct) ?? throw new NotFoundException();
+        var department = await organisation.FindDepartmentAsync(key.DepartmentId, ct) ?? throw new NotFoundException();
+        var values = new Dictionary<string, string>
+        {
+            ["requester.name"] = TemplateText.OneLine(ticket.RequesterName ?? ""),
+            ["ticket.reference"] = ticket.Reference,
+            ["ticket.subject"] = TemplateText.OneLine(ticket.Subject ?? ""),
+            ["department.name"] = TemplateText.OneLine(department.Name),
+            ["agent.name"] = TemplateText.OneLine(current.DisplayName ?? ""),
+        };
+        var used = TemplateText.PlaceholdersIn(response!.Body);
+        return new CannedRenderDto(response.Id, response.Title, TemplateText.Render(response.Body, values, v => v), [.. used.Where(u => values.TryGetValue(u, out var v) && v.Length == 0)]);
+    }
 
     public async Task<IReadOnlyList<CannedResponseDto>> ListAsync(Guid? departmentId, bool includeInactive, CancellationToken ct)
     {
@@ -431,6 +477,11 @@ internal sealed class CannedResponseService(
             if (string.IsNullOrWhiteSpace(b) || b.Length > 5000 || TicketValidation.HasNul(b))
             {
                 errors["body"] = ["body is required and at most 5000 characters."];
+                b = null;
+            }
+            else if (TemplateText.Validate(b, Placeholders) is { } templateError)
+            {
+                errors["body"] = [templateError];
                 b = null;
             }
         }

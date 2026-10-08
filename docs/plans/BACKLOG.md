@@ -36,7 +36,7 @@
 - Cross-department ticket move (reference alias rules defined in TICKETING.md)
 - ~~SignalR push, resizable split~~ (done in Phase 4). Still open: optimistic UI for ticket edits.
 - SignalR backplane (Redis or PostgreSQL) before running more than one host instance.
-- Canned responses: variables/placeholders, per-team scope, usage statistics.
+- Canned responses: per-team scope, usage statistics. (Placeholders and per-ticket rendering are done: `GET /api/tickets/{ticket}/canned-responses/{id}/render`, fixed list `requester.name`, `ticket.reference`, `ticket.subject`, `department.name`, `agent.name`; the composer should call it instead of inserting the raw body.)
 - Ranked full-text search (tsvector, stemming, relevance) if substring search proves too coarse on real data.
 - Per-account storage of split width, density and column preferences (currently per browser).
 - Code-split the web bundle (about 540 kB).

@@ -145,6 +145,14 @@ internal static class TicketEndpoints
                 TypedResults.Ok(await canned.UpdateAsync(id, body, ct)))
             .RequireAuthenticatedOnly().WithTags("Canned responses");
 
+        // The placeholders a response may use, and a response filled in for one ticket (for insertion into a draft; nothing is sent).
+        app.MapGet("/api/canned-responses/placeholders", () => TypedResults.Ok(CannedResponseService.Placeholders))
+            .RequireAuthenticatedOnly().WithTags("Canned responses");
+        app.MapGet("/api/tickets/{ticket}/canned-responses/{id:guid}/render", async (string ticket, Guid id, CannedResponseService canned, CancellationToken ct) =>
+                TypedResults.Ok(await canned.RenderAsync(ticket, id, ct)))
+            .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsRead, Route)
+            .WithTags("Canned responses");
+
         // Bulk change: every id is authorised and validated individually (see TicketService.BulkAsync).
         app.MapPost("/api/tickets/bulk", async (BulkRequest body, TicketService tickets, CancellationToken ct) => TypedResults.Ok(await tickets.BulkAsync(body, ct)))
             .RequireAuthenticatedOnly().WithTags("Tickets");
