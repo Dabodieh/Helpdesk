@@ -14,6 +14,26 @@ Rules for the run
 - Never commit secrets. Keep the client certificate/secret in your secret store; examples use `$TOKEN` placeholders. Do not paste message bodies or tokens into tickets or the repo; record only ids, header names, booleans and timings.
 - Record every result in a copy of the table at the end of this file (observed / matches expectation / notes).
 
+## 0. Quick path: one supervised session (read this first)
+The experiments below are the detail. This is the minimum that closes D-16, in order. Stop and record at the first unexpected result; do not "fix forward" in the tenant.
+
+**Entry criteria (all must be true, none is invented by the agent):** a non-production tenant or an approved separate test mailbox set; two shared mailboxes plus the outside-scope control; an application registration restricted to those mailboxes (section 1); one external test address you control; a named operator; a copy of the results table (section 3). Start with a staging deployment pointed at that tenant, never the production database.
+
+| Area | Do (one controlled message each) | Evidence to record (ids, booleans, headers only; never bodies or secrets) | Pass when |
+|------|----------------------------------|-------------------------------------------------------------------------|-----------|
+| Access and scope | E-1..E-4: read mailbox A and B, be refused on the outside mailbox | HTTP status per mailbox | A and B succeed; outside is denied (403/404), not silently empty |
+| Receiving | E-5..E-11: external address mails A; observe webhook and delta; move the message Inbox, Archive, Inbox | notification latency, immutable id before/after move, one ticket created | exactly one ticket; same immutable id after moves; no duplicate on replay |
+| Sending | E-12, E-21..E-26: agent public reply on that ticket; then change team and assignee and reply again | From and Reply-To of each sent copy, Sent Items location and owner, agent address absent | From = ticket mailbox both times; Reply-To = same mailbox; agent personal address never appears |
+| Threading | E-15, E-19, E-23: requester replies to the reply; reply again after a subject edit | In-Reply-To/References of the arrival, ticket it attached to, `conversationId` | reply attaches to the same ticket; edited subject does not split it unexpectedly |
+| NDRs | E-27..E-29: send to one deliberately invalid recipient | does the NDR arrive, our token/footer quoted, resulting message state | NDR is not a requester ticket or reply; the outbound message becomes failed/bounced; a late NDR does not flip a delivered message |
+| Acknowledgement | E-23 region, if enabled for the department | one acknowledgement from the ticket mailbox, no agent signature, no loop | one acknowledgement only; none for auto/bounce/own-address mail |
+| Recovery | (a) block the webhook for 15 minutes, send mail, restore; (b) let or force a subscription to expire (E-31..E-35); (c) revoke then restore the app consent on mailbox B; (d) make the stored delta token invalid if the tenant allows | mailbox health state at each step (Healthy / Attention / Failed), time to catch up, tickets created | (a) mail arrives via the 5 minute delta reconcile with no loss or duplicate; (b) maintenance job recreates exactly one subscription; (c) health shows the problem without exposing secrets, and recovers after consent returns; (d) resync from start creates no duplicate tickets |
+| Uncertain send | simulate a send timeout if safely possible | state Uncertain, the automatic re-check after about 10 minutes, Sent Items check | no blind retry; never a second copy sent |
+
+**After the session:** copy the filled table into the results section, mark each of E-1..E-38 confirmed/amended/not run, update ADR-011 and risk R-04, set D-16 in `OPEN_DECISIONS.md` and the readiness report. Anything not run stays open and is stated as open. Simulator results are not evidence.
+
+**Not authorised to start without the criteria above.** As of 2026-10-08 no Graph configuration, tenant, shared mailbox or safe recipient exists in the development environment, so none of this has been run.
+
 ## 1. Prerequisites and least-privilege setup (operator steps)
 
 1. **Entra app registration** (single tenant). Credential: certificate preferred. Under *API permissions* do **not** grant admin consent for any `Mail.*` application permission (unscoped Entra grants are unioned with the scoped Exchange grants and would void the scoping; Microsoft docs: https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac). Record `AppId` (client id) and the **service principal object id** from *Enterprise applications* (not the app registration object id).
