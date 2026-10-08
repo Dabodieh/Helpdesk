@@ -1,6 +1,16 @@
 import type { ReactNode } from 'react'
 
 const paths: Record<string, ReactNode> = {
+  organisation: <><rect x="5" y="1.5" width="6" height="4" rx=".8" /><path d="M8 5.5v3M3 8.5h10M3 8.5v2M13 8.5v2" /><rect x="1" y="10.5" width="4" height="4" rx=".8" /><rect x="11" y="10.5" width="4" height="4" rx=".8" /></>,
+  ticket: <path d="M2 3.5h12v3a1.5 1.5 0 0 0 0 3v3H2v-3a1.5 1.5 0 0 0 0-3v-3Zm8 1v2m0 3v2" />,
+  fields: <><path d="M6 4h8M6 8h8M6 12h8" /><rect x="2" y="3" width="2" height="2" /><rect x="2" y="7" width="2" height="2" /><rect x="2" y="11" width="2" height="2" /></>,
+  book: <path d="M8 3.5C5 1.5 2 2 1 2.5v10c2-1 5-1 7 1 2-2 5-2 7-1v-10c-1-.5-4-1-7 1v10" />,
+  bolt: <path d="m9 1-6 8h4l-1 6 7-9H9V1Z" />,
+  calendar: <><rect x="2" y="3.5" width="12" height="11" rx="1.5" /><path d="M5 1.5v4M11 1.5v4M2 7h12M5 10h1M10 10h1" /></>,
+  route: <><rect x="1.5" y="1.5" width="4" height="4" rx="1" /><rect x="10.5" y="10.5" width="4" height="4" rx="1" /><path d="M5.5 3.5h4a3 3 0 0 1 3 3v4M3.5 5.5v5m0 0-2-2m2 2 2-2" /></>,
+  chart: <path d="M2 2v12h12M5 11V8M9 11V4M13 11V6" />,
+  server: <><rect x="2" y="2" width="12" height="5" rx="1" /><rect x="2" y="9" width="12" height="5" rx="1" /><path d="M5 4.5h.1M8 4.5h3M5 11.5h.1M8 11.5h3" /></>,
+  identity: <><rect x="1" y="3" width="14" height="10" rx="1.5" /><circle cx="5" cy="7" r="1.5" /><path d="M2.5 11c.5-2 4.5-2 5 0M10 6h2.5M10 9h2.5" /></>,
   inbox: <path d="M2 9l2-5h8l2 5v4H2V9zm0 0h3l1 2h4l1-2h3" />,
   team: (
     <>

@@ -10,6 +10,7 @@ export default function TicketingSection({ department }: { department: Departmen
   return (
     <Tabs
       label="Ticketing configuration"
+      param="tab"
       tabs={[
         { id: 'types', label: 'Ticket types', content: <TicketTypesSection department={department} /> },
         { id: 'fields', label: 'Ticket fields', content: <TicketFieldsSection department={department} /> },

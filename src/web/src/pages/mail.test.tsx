@@ -156,6 +156,7 @@ const MAILBOX = {
 const platformMe = makeMe({ isPlatformAdmin: true, memberships: adminMe.memberships })
 const deptRoutes = (me = adminMe) => ({
   'GET /api/me': () => me,
+  'GET /api/departments': () => [DEPT],
   'GET /api/departments/d1': () => DEPT,
   'GET /api/departments/d1/teams': () => [],
   'GET /api/departments/d1/members': () => [],

@@ -66,15 +66,6 @@ function CreateDepartment({ onClose }: { onClose: () => void }) {
   )
 }
 
-/** What each management area is and where it lives. Everything below Departments stays inside its department (its security boundary). */
-const AREAS = [
-  { name: 'Organisation', text: 'Departments, teams and members.', where: 'Departments' },
-  { name: 'Communication', text: 'Mailboxes, acknowledgements and shared responses.', where: 'Each department' },
-  { name: 'Ticketing and self service', text: 'Ticket types, fields, request forms and knowledge.', where: 'Each department' },
-  { name: 'Service management', text: 'Business hours, SLA policies and automations.', where: 'Each department' },
-  { name: 'Agent productivity', text: 'Macros and canned responses.', where: 'Each department' },
-] as const
-
 export default function DepartmentsPage() {
   const me = useMe()
   const list = useQuery({ queryKey: ['departments'], queryFn: listDepartments })
@@ -87,9 +78,9 @@ export default function DepartmentsPage() {
   return (
     <>
       <PageHeader
-        crumbs="Administration / Departments"
-        title="Administration"
-        subtitle="Manage the departments that support your organisation."
+        crumbs={<><Link to="/admin">Administration</Link> / Departments</>}
+        title="Departments"
+        subtitle="Manage department structure, access and service configuration."
         actions={
           canCreate && (
             <button type="button" className="primary" onClick={() => setCreating(true)}>
@@ -139,27 +130,6 @@ export default function DepartmentsPage() {
             </div>
           </>
         )}
-      </section>
-      <section aria-labelledby="areas-h">
-        <h2 id="areas-h" className="section-title">
-          Management areas
-        </h2>
-        <dl className="areas">
-          {AREAS.map((a) => (
-            <div key={a.name}>
-              <dt>{a.name}</dt>
-              <dd>
-                {a.text} <span className="muted small">{a.where}</span>
-              </dd>
-            </div>
-          ))}
-          <div>
-            <dt>System</dt>
-            <dd>
-              Health of mail, storage and background work. <Link to="/admin/status">System status</Link>
-            </dd>
-          </div>
-        </dl>
       </section>
       {creating && <CreateDepartment onClose={() => setCreating(false)} />}
     </>

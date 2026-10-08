@@ -125,7 +125,7 @@ export default function TeamPage() {
   return (
     <>
       <PageHeader title={<>{t.name} <ActiveBadge active={t.isActive} /></>} subtitle="Team details and department members."
-        crumbs={<><Link to="/admin">Departments</Link> / <Link to={`/admin/departments/${departmentId}?section=teams`}>{dept.data.name}</Link> / Team</>} />
+        crumbs={<><Link to="/admin/departments">Departments</Link> / <Link to={`/admin/departments/${departmentId}?section=teams`}>{dept.data.name}</Link> / Team</>} />
       <section aria-labelledby="details-h">
         <h2 id="details-h">Details</h2>
         <EditForm

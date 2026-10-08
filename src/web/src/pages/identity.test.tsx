@@ -83,8 +83,7 @@ test('a department configures its own acknowledgement: toggles, templates, previ
     },
     ...csrfHandler,
   })
-  renderApp('/admin/departments/d1')
-  fireEvent.click(await screen.findByRole('tab', { name: 'Mailboxes' }))
+  renderApp('/admin/departments/d1?section=acknowledgements')
   const form = await screen.findByRole('form', { name: 'Automatic acknowledgement' })
   expect(within(form).getByLabelText('Enabled')).not.toBeChecked() // off until the department turns it on
   expect(within(form).getByLabelText('Email-created tickets')).toBeChecked()

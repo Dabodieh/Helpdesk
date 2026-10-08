@@ -38,7 +38,7 @@ test('create department: invalid key is rejected client-side without calling the
     'GET /api/departments': () => [],
     ...csrfHandler,
   })
-  renderApp('/admin')
+  renderApp('/admin/departments')
   fireEvent.click(await screen.findByRole('button', { name: 'New department' }))
   type(await screen.findByRole('textbox', { name: /^Key/ }), 'a-b')
   type(screen.getByLabelText('Name'), 'Facilities')
@@ -57,7 +57,7 @@ test('create department: valid input posts key and name', async () => {
     'GET /api/departments/d9/members': () => [],
     ...csrfHandler,
   })
-  renderApp('/admin')
+  renderApp('/admin/departments')
   fireEvent.click(await screen.findByRole('button', { name: 'New department' }))
   type(await screen.findByRole('textbox', { name: /^Key/ }), 'fac')
   type(screen.getByLabelText('Name'), 'Facilities')
@@ -68,7 +68,7 @@ test('create department: valid input posts key and name', async () => {
 
 test('users without platform.departments.manage get no create form', async () => {
   mockFetch({ 'GET /api/me': () => adminMe, 'GET /api/departments': () => [DEPT] })
-  renderApp('/admin')
+  renderApp('/admin/departments')
   expect(await screen.findByRole('link', { name: 'IT Support' })).toBeInTheDocument()
   expect(screen.queryByRole('heading', { name: 'New department' })).not.toBeInTheDocument()
 })
@@ -171,9 +171,9 @@ test('department shell: grouped section navigation, a setup overview, and sectio
   mockFetch(deptRoutes())
   renderApp('/admin/departments/d1')
   expect(await screen.findByRole('tablist', { name: 'Department administration' })).toHaveAttribute('aria-orientation', 'vertical')
-  expect(await screen.findByRole('list', { name: 'People & access setup status' })).toBeInTheDocument()
-  expect(screen.getByText(/Department code:/)).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Open Members' }))
+  expect(await screen.findByRole('region', { name: 'Department control centre' })).toBeInTheDocument()
+  expect(screen.getByText(/Ticket prefix:/)).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('link', { name: 'Open Members & roles' }))
   expect(await screen.findByRole('tab', { name: 'Members', selected: true })).toBeInTheDocument()
 })
 

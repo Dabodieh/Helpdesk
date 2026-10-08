@@ -6,7 +6,6 @@ import { canInDepartment } from '../api/permissions'
 import type { Department } from '../api/schemas'
 import { useMe } from '../auth'
 import { formatDateTime } from '../lib/format'
-import AutoReplySection from './AutoReplySection'
 import { HEALTH_LABEL, HEALTH_REASON, HEALTH_TONE } from '../lib/mailHealth'
 import { ActiveBadge, ErrorNotice, Field, Loading, StatusBadge } from './common'
 import { isOutcomeUncertain } from '../api/errors'
@@ -350,7 +349,6 @@ export default function MailboxesSection({ department }: { department: Departmen
         <p className="muted">Messages that could not be processed or sent, and mail that was ignored on purpose (automatic replies, mailing lists, loops).</p>
         <Attention departmentId={department.id} />
       </section>
-      <AutoReplySection department={department} />
     </div>
   )
 }

@@ -7,6 +7,7 @@ import RequireAuth from './components/RequireAuth'
 import DashboardPage from './pages/DashboardPage'
 import DepartmentPage from './pages/DepartmentPage'
 import DepartmentsPage from './pages/DepartmentsPage'
+import AdminHubPage from './pages/AdminHubPage'
 import Landing from './pages/Landing'
 import RequesterPage from './pages/RequesterPage'
 import ProfilePage from './pages/ProfilePage'
@@ -26,13 +27,15 @@ function AdminLayout() {
   const path = useLocation().pathname
   const inDepartment = path.startsWith('/admin/departments/')
   const inTeam = inDepartment && path.includes('/teams/')
+  if (path === '/admin' || path === '/admin/') return <Outlet />
   return (
     <div className={inDepartment ? `page admin ${inTeam ? 'team-admin' : 'department-admin'}` : 'admin-layout'}>
       {!inDepartment && <aside className="admin-sidebar">
         <h2>Administration</h2>
         <span className="rail-heading">Organisation</span>
         <nav aria-label="Administration">
-          <NavLink to="/admin" end>Departments</NavLink>
+          <NavLink to="/admin" end>Settings hub</NavLink>
+          <NavLink to="/admin/departments" end>Departments</NavLink>
           <span className="rail-heading">Platform</span>
           <NavLink to="/admin/status">System status</NavLink>
         </nav>
@@ -72,7 +75,8 @@ export function AppRoutes() {
         <Route path="responses" element={<ResponsesPage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="admin" element={<AdminLayout />}>
-          <Route index element={<DepartmentsPage />} />
+          <Route index element={<AdminHubPage />} />
+          <Route path="departments" element={<DepartmentsPage />} />
           <Route path="departments/:departmentId" element={<DepartmentPage />} />
           <Route path="departments/:departmentId/teams/:teamId" element={<TeamPage />} />
           <Route path="status" element={<StatusPage />} />

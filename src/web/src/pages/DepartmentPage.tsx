@@ -1,10 +1,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { getDepartment, updateDepartment } from '../api/organisation'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { getDepartment, listDepartments, updateDepartment } from '../api/organisation'
 import { canInDepartment, canPlatform } from '../api/permissions'
 import { useMe } from '../auth'
 import { ROLE_LABEL } from '../api/schemas'
+import { DepartmentSelect, SettingsSearch } from '../components/AdminSettings'
+import AutoReplySection from '../components/AutoReplySection'
 import AutomationsSection from '../components/AutomationsSection'
 import BusinessHoursSection from '../components/BusinessHoursSection'
 import CannedManager from '../components/CannedManager'
@@ -28,7 +30,10 @@ export default function DepartmentPage() {
   const { departmentId = '' } = useParams()
   const me = useMe()
   const qc = useQueryClient()
-  const [, setSearch] = useSearchParams()
+  const [searchParams, setSearch] = useSearchParams()
+  const navigate = useNavigate()
+  const departments = useQuery({ queryKey: ['departments'], queryFn: listDepartments })
+  const filter = searchParams.get('find') ?? ''
   const [editing, setEditing] = useState(false)
   const dept = useQuery({ queryKey: ['department', departmentId], queryFn: () => getDepartment(departmentId) })
 
@@ -38,7 +43,7 @@ export default function DepartmentPage() {
       <>
         <ErrorNotice error={dept.error} onRetry={() => void dept.refetch()} />
         <p>
-          <Link to="/admin">Back to departments</Link>
+          <Link to="/admin/departments">Back to departments</Link>
         </p>
       </>
     )
@@ -46,14 +51,15 @@ export default function DepartmentPage() {
   const d = dept.data
   const canManage = canInDepartment(me, 'department.manage', d.id)
   const canActivate = canPlatform(me, 'platform.departments.manage')
-  const open = (section: string) => setSearch((s) => new URLSearchParams({ ...Object.fromEntries(s), [SECTION]: section }), { replace: true })
+  const choices = (departments.data ?? [d]).filter(item => canInDepartment(me, 'department.read', item.id))
+  const find = (value: string) => setSearch(s => { const next = new URLSearchParams(s); next.set(SECTION, 'overview'); if (value) next.set('find', value); else next.delete('find'); return next }, { replace: true })
 
   return (
     <div className="department-page">
       <PageHeader
         crumbs={
           <>
-            <Link to="/admin">Administration</Link> / {d.name}
+            <Link to="/admin">Administration</Link> / <Link to="/admin/departments">Departments</Link> / {d.name}
           </>
         }
         title={
@@ -63,8 +69,9 @@ export default function DepartmentPage() {
         }
         subtitle={
           <>
-            Department code: <code className="key-chip">{d.key}</code>
-            {d.myRole ? ` · Your role: ${ROLE_LABEL[d.myRole] ?? d.myRole}` : ''}
+            Ticket prefix: <code className="key-chip">{d.key}</code>
+            {d.myRole ? ` · ${ROLE_LABEL[d.myRole] ?? d.myRole}` : ' · Administrative access'}
+            {d.description && <span className="department-description">{d.description}</span>}
           </>
         }
         actions={
@@ -95,16 +102,21 @@ export default function DepartmentPage() {
       <Tabs
         label="Department administration"
         vertical
-        sidebarHeader={<div className="department-context"><Link to="/admin">← All departments</Link><strong>{d.name}</strong><span className="muted small">{d.key} · Department administration</span></div>}
+        sidebarHeader={<div className="department-context">
+          <Link to="/admin">← Settings hub</Link>
+          <DepartmentSelect departments={choices} value={d.id} disabled={departments.isPending || departments.isError} onChange={id => { const next = new URLSearchParams(searchParams); next.delete('find'); setEditing(false); void navigate(`/admin/departments/${id}?${next}`) }} />
+          {departments.isError && <button type="button" className="ghost" onClick={() => void departments.refetch()}>Retry department list</button>}
+          <SettingsSearch value={filter} onChange={find} label="Search department settings" />
+        </div>}
         param={SECTION}
         tabs={[
-          { id: 'overview', label: 'Overview', group: 'Department', content: <DepartmentOverview department={d} onOpen={open} /> },
-          { id: 'teams', label: 'Teams', group: 'People', content: <TeamsSection department={d} /> },
-          { id: 'members', label: 'Members', group: 'People', content: <MembersSection department={d} /> },
+          { id: 'overview', label: 'Overview', group: 'Department', content: <DepartmentOverview department={d} search={filter} /> },
+          { id: 'teams', label: 'Teams', group: 'People & access', content: <TeamsSection department={d} /> },
+          { id: 'members', label: 'Members', group: 'People & access', content: <MembersSection department={d} /> },
           {
             id: 'requesters',
             label: 'Requester identities',
-            group: 'People',
+            group: 'People & access',
             hidden: !canInDepartment(me, 'department.members.manage', d.id),
             content: <RequesterIdentitiesSection department={d} />,
           },
@@ -115,6 +127,7 @@ export default function DepartmentPage() {
             hidden: !canInDepartment(me, 'department.mailboxes.manage', d.id),
             content: <MailboxesSection department={d} />,
           },
+          { id: 'acknowledgements', label: 'Acknowledgements', group: 'Communication', hidden: !canInDepartment(me, 'department.mailboxes.manage', d.id), content: <AutoReplySection department={d} /> },
           {
             id: 'responses',
             label: 'Responses',
@@ -130,7 +143,7 @@ export default function DepartmentPage() {
           },
           {
             id: 'ticketing',
-            label: 'Ticketing',
+            label: 'Ticket settings',
             group: 'Ticket setup',
             hidden: !canInDepartment(me, 'department.forms.manage', d.id),
             content: <TicketingSection department={d} />,
