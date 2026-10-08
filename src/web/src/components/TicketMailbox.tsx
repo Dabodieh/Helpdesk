@@ -16,7 +16,10 @@ import { ErrorNotice } from './common'
 export default function TicketMailbox({ ticket: t, routeRef }: { ticket: TicketDetail; routeRef: string }) {
   const me = useMe()
   const [open, setOpen] = useState(false)
-  const canManage = canInDepartment(me, 'department.mailboxes.manage', t.departmentId) && !t.mergedInto
+  const mayManageMailboxes = canInDepartment(me, 'department.mailboxes.manage', t.departmentId)
+  // Sender identity is an administrator concern: agents without the permission never see the row.
+  if (!mayManageMailboxes) return null
+  const canManage = !t.mergedInto
   const offer = canManage && (!t.mailbox || t.mailboxAssigned)
   return (
     <div className="ctl">
