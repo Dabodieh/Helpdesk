@@ -1,0 +1,13 @@
+[Unit]
+Description=Helpdesk STAGING hourly backup (database, verification, optional object store)
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/helpdesk
+# BACKUP_PASSPHRASE_FILE, BACKUP_DIR, and (optional) OBJECT_BACKUP_DEST, S3_*, BACKUP_ALERT_COMMAND. Mode 0600, owned by the backup user; never in the repository.
+EnvironmentFile=/etc/helpdesk-staging/backup.env
+ExecStart=/opt/helpdesk/scripts/ops/backup-all.sh
+# A non-zero exit marks the unit failed (systemctl --failed, journalctl -u helpdesk-backup); backup-all.sh also runs BACKUP_ALERT_COMMAND and writes the status file.
+TimeoutStartSec=30min

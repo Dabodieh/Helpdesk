@@ -15,3 +15,6 @@ playwright-report/
 
 # Production reference deployment secrets/certificates
 docker/production/tls/
+
+# Staging TLS material
+docker/staging/tls/

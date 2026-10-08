@@ -5,7 +5,10 @@
 #   docker compose -f docker/production/compose.yml --env-file docker/production/.env run --rm migrate
 #   docker compose -f docker/production/compose.yml --env-file docker/production/.env up -d
 # Migration order and rollback (restore from backup) are in docs/guides/PRODUCTION_DEPLOYMENT.md.
-name: helpdesk
+# The project name names every volume and network (<name>_pgdata, <name>_internal). The default `helpdesk` is also the name of the LOCAL DEVELOPMENT compose
+# project, so running this file on a developer machine with the default name would attach the development database volume. A staging or second environment
+# MUST run under its own project name (COMPOSE_PROJECT_NAME in its env file, or scripts/ops/staging.sh, which fixes it) and its own PROXY_IP / INTERNAL_SUBNET.
+name: ${COMPOSE_PROJECT_NAME:-helpdesk}
 
 services:
   postgres:
@@ -37,7 +40,7 @@ services:
       AllowedHosts: ${PUBLIC_HOST:?set in .env}
       Realtime__AllowedOrigins__0: https://${PUBLIC_HOST}
       # Forwarded headers are trusted from the proxy's fixed address only.
-      Proxy__KnownProxies__0: 172.29.0.10
+      Proxy__KnownProxies__0: ${PROXY_IP:-172.29.0.10}
       Authentication__Entra__TenantId: ${ENTRA_TENANT_ID:?set in .env}
       Authentication__Entra__ClientId: ${ENTRA_CLIENT_ID:?set in .env}
       Authentication__Entra__ClientSecret: ${ENTRA_CLIENT_SECRET:?set in .env}
@@ -68,18 +71,18 @@ services:
     image: nginx:1.29.8-alpine
     restart: unless-stopped
     depends_on: [helpdesk]
-    ports: ["80:80", "443:443"]
+    ports: ["${HTTP_PORT:-80}:80", "${HTTPS_PORT:-443}:443"]
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./tls:/etc/nginx/tls:ro
+      - ${TLS_DIR:-./tls}:/etc/nginx/tls:ro
     networks:
       internal:
-        ipv4_address: 172.29.0.10
+        ipv4_address: ${PROXY_IP:-172.29.0.10}
 
 networks:
   internal:
     ipam:
-      config: [{ subnet: 172.29.0.0/24 }]
+      config: [{ subnet: "${INTERNAL_SUBNET:-172.29.0.0/24}" }]
 
 volumes:
   pgdata:

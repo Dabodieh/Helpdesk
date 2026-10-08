@@ -20,6 +20,9 @@ One database, one database role. `... run --rm migrate` applies the module migra
 ## Sessions
 The Data Protection key ring is stored in PostgreSQL (`identity.data_protection_keys`, application name `Helpdesk`), so sessions survive a restart or a replaced container, and the keys are in the database backup. Anyone who can read the database or its backup can read the keys: protect both (encrypted off-host backups, database access control).
 
+## Project name and a second environment
+The compose project name (`COMPOSE_PROJECT_NAME`, default `helpdesk`) names every volume and network. The default is also the name of the local development stack, so on a machine that runs development, run this file only under a different project name. Staging does exactly that: see `STAGING_DEPLOYMENT.md` and `scripts/ops/staging.sh`. Port, proxy address, subnet and TLS directory can be overridden with `HTTP_PORT`, `HTTPS_PORT`, `PROXY_IP`, `INTERNAL_SUBNET` and `TLS_DIR`; the defaults are unchanged.
+
 ## Topology
 One application instance. Do not run two: background jobs, realtime presence and the mail loop assume a single process (ADR-021).
 
