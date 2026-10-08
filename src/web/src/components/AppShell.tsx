@@ -17,6 +17,7 @@ import NotificationBell from './NotificationBell'
 import ShortcutHelp from './ShortcutHelp'
 import { ShellContext } from './ShellContext'
 import UserMenu from './UserMenu'
+import ThemeToggle from './ThemeToggle'
 
 const QUEUE_NAV = [
   { to: '/queue/my', label: 'My Queue', icon: 'inbox', count: 'my' },
@@ -46,6 +47,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const counts = useQueueCounts(hasTickets)
   const views = useQuery({ queryKey: ['views'], queryFn: listViews, enabled: hasTickets, staleTime: 60_000 })
   const pinned = (views.data ?? []).filter((v) => v.isPinned)
+  const inWorkspace = /^\/(queue|tickets|search)(\/|$)/.test(location.pathname)
   const activeView = new URLSearchParams(location.search).get('view')
   useRealtime(hasTickets, me.id)
   const live = useRealtimeStatus()
@@ -73,21 +75,34 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <ShellContext.Provider value={api}>
-      <div className="shell">
-        <aside className="rail">
-          <Link to="/" className="brand">
-            <span className="brand-mark" aria-hidden="true">
-              H
-            </span>
-            Helpdesk
-          </Link>
-          {canCreate && (
-            <button type="button" className="primary new-ticket" onClick={() => setDialog('ticket')}>
-              <Icon name="plus" /> New ticket
-            </button>
-          )}
+      <div className={`shell${inWorkspace ? ' shell-workspace' : ''}`}>
+        <a className="skip-link" href="#main-content">Skip to content</a>
+        <aside className="app-rail" aria-label="Application">
+          <Link to="/" className="graphite-brand" aria-label="Helpdesk home"><span /><span /><span /></Link>
+          <nav aria-label="Main" className="app-rail-nav">
+            {hasTickets && <>
+              <NavLink to="/queue/my" className={() => `rail-link${inWorkspace ? ' active' : ''}`} aria-label="Workspace" title="Workspace"><Icon name="inbox" /></NavLink>
+              <NavLink to="/dashboard" className="rail-link" aria-label="Dashboard" title="Dashboard"><Icon name="views" /></NavLink>
+            </>}
+            <NavLink to="/portal/knowledge" className="rail-link" aria-label="Knowledge" title="Knowledge"><Icon name="file" /></NavLink>
+            {canAdminister(me) && <NavLink to="/admin" className="rail-link" aria-label="Administration" title="Administration"><Icon name="admin" /></NavLink>}
+          </nav>
+          <div className="app-rail-foot">
+            <ThemeToggle />
+            <button type="button" className="rail-link" aria-label="Keyboard shortcuts" title="Keyboard shortcuts" onClick={() => setDialog('help')}><Icon name="help" /></button>
+            <UserMenu onSignOut={() => void signOut()} onHelp={() => setDialog('help')} />
+          </div>
+        </aside>
+        <header className="app-topbar">
+          <Link to="/" className="wordmark">helpdesk<span>.</span></Link>
+          <span className="topbar-context">{location.pathname.startsWith('/admin') ? 'Administration' : 'Agent workspace'}</span>
+          {hasTickets && <Link className="global-search" to="/search"><Icon name="search" /> Search tickets</Link>}
+          {live !== 'off' && <span className={`live live-${live}`} role="status"><span className="live-dot" aria-hidden="true" />{LIVE_TEXT[live]}</span>}
+          {canCreate && <button type="button" className="primary" onClick={() => setDialog('ticket')}><Icon name="plus" /> New ticket</button>}
           {hasTickets && <NotificationBell />}
-          <nav aria-label="Main">
+        </header>
+        {inWorkspace && <aside className="rail workspace-nav">
+          <nav aria-label="Queues">
             {hasTickets && (
               <>
                 <h2 className="rail-heading">Workspace</h2>
@@ -157,26 +172,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 )}
               </>
             )}
-            <ul className="rail-bottom">
-              {canAdminister(me) && (
-                <li>
-                  <h2 className="rail-heading">Administration</h2>
-                  <NavLink to="/admin">
-                    <Icon name="admin" />
-                    <span className="nav-label">Administration</span>
-                  </NavLink>
-                </li>
-              )}
-            </ul>
           </nav>
-          {live !== 'off' && (
-            <p className={`live live-${live}`} role="status">
-              <span className="live-dot" aria-hidden="true" /> {LIVE_TEXT[live]}
-            </p>
-          )}
-          <UserMenu onSignOut={() => void signOut()} onHelp={() => setDialog('help')} />
-        </aside>
-        <main className="main">{children}</main>
+        </aside>}
+        <main id="main-content" tabIndex={-1} className="main">{children}</main>
         {dialog === 'help' && <ShortcutHelp onClose={() => setDialog(null)} />}
         {dialog === 'ticket' && (
           <NewTicketDialog

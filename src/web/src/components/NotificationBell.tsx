@@ -63,7 +63,7 @@ export default function NotificationBell() {
         aria-label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
         onClick={() => setOpen(!open)}
       >
-        <Icon name="alert" />
+        <Icon name="bell" />
         <span className="nav-label">Notifications</span>
         {unread > 0 && (
           <span className="count notify-count" aria-hidden="true">
