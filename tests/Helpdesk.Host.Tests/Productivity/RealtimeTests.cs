@@ -94,6 +94,48 @@ public sealed class RealtimeTests(HelpdeskFixture fixture) : IClassFixture<Helpd
         return false;
     }
 
+    /// <summary>
+    /// Waits until the connection is really subscribed (QA-005): a probe action that the listener may see is repeated until it arrives. SignalR joins the groups after the
+    /// handshake, so a fixed sleep after StartAsync was a guess. The events are cleared afterwards.
+    /// </summary>
+    private static async Task WaitSubscribedAsync(List<JsonElement> events, Func<Task> probe)
+    {
+        for (var attempt = 0; attempt < 40; attempt++)
+        {
+            await probe();
+            if (await WaitForAsync(events, _ => true, 250))
+            {
+                await Task.Delay(100); // let a queued probe event land before clearing
+                lock (events)
+                {
+                    events.Clear();
+                }
+
+                return;
+            }
+        }
+
+        throw new Xunit.Sdk.XunitException("the realtime subscription never became active");
+    }
+
+    /// <summary>
+    /// A negative check that cannot pass by being early: after the suspect event, an event the listener IS allowed to see is produced and awaited. Events reach one connection
+    /// in the order they were sent, so anything leaked before the sentinel is already in the list when the sentinel arrives.
+    /// </summary>
+    private static async Task<bool> NoneBeforeSentinelAsync(List<JsonElement> events, Func<Task> produceSentinel, Func<JsonElement, bool> isSentinel, Func<JsonElement, bool> isForbidden)
+    {
+        await produceSentinel();
+        if (!await WaitForAsync(events, isSentinel))
+        {
+            return false;
+        }
+
+        lock (events)
+        {
+            return !events.Any(isForbidden);
+        }
+    }
+
     private static async Task<bool> StaysSilentAsync(List<JsonElement> events, int milliseconds = 1200)
     {
         await Task.Delay(milliseconds);
@@ -264,7 +306,11 @@ public sealed class RealtimeTests(HelpdeskFixture fixture) : IClassFixture<Helpd
         // An internal note is posted by a normal agent. The agent (with notes.read) is told; the restricted member hears nothing at all.
         (await d.Agent.PostMessageAsync(ticket.Id, "Internal", note)).Expect(HttpStatusCode.Created);
         Assert.True(await WaitForAsync(agentEvents, e => e.GetProperty("kind").GetString() == "note"));
-        Assert.True(await StaysSilentAsync(restrictedEvents), "restricted member received a realtime event for an internal note");
+        Assert.True(
+            await NoneBeforeSentinelAsync(
+                restrictedEvents, async () => { (await d.Agent.PostMessageAsync(ticket.Id, "Public", "sentinel reply")).Expect(HttpStatusCode.Created); },
+                e => e.GetProperty("kind").GetString() == "message", e => e.GetProperty("kind").GetString() == "note"),
+            "restricted member received a realtime event for an internal note");
 
         // REST: messages, detail, activity, search, list and counts reveal neither the text nor the existence of the note.
         var messages = (await restricted.Client.GetAsync($"/api/tickets/{ticket.Id}/messages")).Expect(HttpStatusCode.OK);
@@ -273,7 +319,7 @@ public sealed class RealtimeTests(HelpdeskFixture fixture) : IClassFixture<Helpd
         Assert.All(messages.Json.GetProperty("items").EnumerateArray(), m => Assert.Equal("Public", m.GetProperty("kind").GetString()));
 
         var activity = (await restricted.Client.GetAsync($"/api/tickets/{ticket.Id}/activity?limit=200")).Expect(HttpStatusCode.OK);
-        Assert.Equal(activityBefore, activity.Json.GetProperty("items").GetArrayLength());
+        Assert.Equal(activityBefore + 1, activity.Json.GetProperty("items").GetArrayLength()); // +1: only the visible sentinel reply, never the note
         Assert.DoesNotContain("Internal", activity.Body, StringComparison.Ordinal);
 
         foreach (var url in new[] { $"/api/tickets/{ticket.Id}", $"/api/tickets?q={note}", "/api/tickets/queue-counts" })
@@ -358,11 +404,8 @@ public sealed class RealtimeTests(HelpdeskFixture fixture) : IClassFixture<Helpd
         var newer = await d.Agent.CreateTicketAsync(d.Department, new { subject = $"Newer {tag}", description = "second", requester = new { email = $"b{tag}@customer.test" } });
         var (_, restrictedEvents) = await ConnectAsync(restricted);
         var (_, agentEvents) = await ConnectAsync(d.Agent);
-        await Task.Delay(300);
-        lock (restrictedEvents)
-        {
-            restrictedEvents.Clear();
-        }
+        await WaitSubscribedAsync(restrictedEvents, async () => { (await d.Agent.CreateTicketAsync(d.Department)).Expect(HttpStatusCode.Created); });
+        await WaitSubscribedAsync(agentEvents, async () => { (await d.Agent.CreateTicketAsync(d.Department)).Expect(HttpStatusCode.Created); });
 
         var before = await ObservationAsync(restricted, older.Id, newer.Id, tag);
         var versionBefore = await fixture.ScalarAsync<long>("SELECT xmin::text::bigint FROM ticketing.tickets WHERE id = @t", new NpgsqlParameter("t", older.Id));
@@ -392,7 +435,6 @@ public sealed class RealtimeTests(HelpdeskFixture fixture) : IClassFixture<Helpd
         Assert.Equal(before, await ObservationAsync(restricted, older.Id, newer.Id, tag));
         Assert.Equal(versionBefore, await fixture.ScalarAsync<long>("SELECT xmin::text::bigint FROM ticketing.tickets WHERE id = @t", new NpgsqlParameter("t", older.Id)));
         Assert.Equal(updatedBefore, await fixture.ScalarAsync<DateTime>("SELECT updated_at FROM ticketing.tickets WHERE id = @t", new NpgsqlParameter("t", older.Id)));
-        Assert.True(await StaysSilentAsync(restrictedEvents), "restricted member received a realtime event for an internal note");
 
         // The note did not reorder the restricted caller's queue: the older ticket is still the older one.
         var order = (await restricted.Client.GetAsync("/api/tickets?limit=100")).Expect(HttpStatusCode.OK).Json.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetGuid()).ToArray();
@@ -402,6 +444,13 @@ public sealed class RealtimeTests(HelpdeskFixture fixture) : IClassFixture<Helpd
         (await d.Agent.PostMessageAsync(older.Id, "Public", "visible reply")).Expect(HttpStatusCode.Created);
         Assert.NotEqual(before, await ObservationAsync(restricted, older.Id, newer.Id, tag));
         Assert.True(await WaitForAsync(restrictedEvents, e => e.GetProperty("kind").GetString() == "message"));
+
+        // That visible reply is the sentinel: every event sent before it has arrived, and none of them was about an internal note.
+        lock (restrictedEvents)
+        {
+            Assert.DoesNotContain(restrictedEvents, e => e.GetProperty("kind").GetString() == "note");
+        }
+
         Assert.True(await fixture.ScalarAsync<DateTime>("SELECT updated_at FROM ticketing.tickets WHERE id = @t", new NpgsqlParameter("t", older.Id)) > updatedBefore);
     }
 
@@ -413,11 +462,7 @@ public sealed class RealtimeTests(HelpdeskFixture fixture) : IClassFixture<Helpd
         var restricted = await fixture.NewMemberAsync(d.Department, RestrictedRole);
         var ticket = await d.Agent.CreateTicketAsync(d.Department);
         var (_, restrictedEvents) = await ConnectAsync(restricted);
-        await Task.Delay(300);
-        lock (restrictedEvents)
-        {
-            restrictedEvents.Clear();
-        }
+        await WaitSubscribedAsync(restrictedEvents, async () => { (await d.Agent.CreateTicketAsync(d.Department)).Expect(HttpStatusCode.Created); });
 
         (await d.Agent.PostMessageAsync(ticket.Id, "Internal", "private reasoning", status: "Pending")).Expect(HttpStatusCode.Created);
         Assert.True(await WaitForAsync(restrictedEvents, e => e.GetProperty("kind").GetString() == "status"));
@@ -451,7 +496,9 @@ public sealed class RealtimeTests(HelpdeskFixture fixture) : IClassFixture<Helpd
         var (_, viewerEvents) = await ConnectAsync(a.Viewer);
         var (_, outsiderEvents) = await ConnectAsync(b.Agent);
         var (_, noReadEvents) = await ConnectAsync(noRead);
-        await Task.Delay(300);
+        await WaitSubscribedAsync(outsiderEvents, async () => { (await b.Agent.CreateTicketAsync(b.Department)).Expect(HttpStatusCode.Created); });
+        await WaitSubscribedAsync(viewerEvents, async () => { (await a.Agent.CreateTicketAsync(a.Department)).Expect(HttpStatusCode.Created); });
+        await WaitSubscribedAsync(agentEvents, async () => { (await a.Agent.CreateTicketAsync(a.Department)).Expect(HttpStatusCode.Created); });
 
         var ticket = await a.Agent.CreateTicketAsync(a.Department, new { subject = "UNRELATEDSUBJECT-xyz", description = "UNRELATEDBODY-xyz", requester = new { email = $"r{Unique.Id()}@customer.test" } });
         foreach (var events in new[] { agentEvents, viewerEvents })
@@ -462,7 +509,11 @@ public sealed class RealtimeTests(HelpdeskFixture fixture) : IClassFixture<Helpd
         // Resolving completes the SLA: another sla event, same shape.
         (await a.Lead.PatchTicketAsync(ticket, new { Status = "Resolved" })).Expect(HttpStatusCode.OK);
         Assert.True(await WaitForAsync(agentEvents, e => e.GetProperty("kind").GetString() == "status"));
-        Assert.True(await StaysSilentAsync(outsiderEvents), "a member of another department received an event");
+        Assert.True(
+            await NoneBeforeSentinelAsync(
+                outsiderEvents, async () => { (await b.Agent.CreateTicketAsync(b.Department)).Expect(HttpStatusCode.Created); },
+                e => e.GetProperty("kind").GetString() == "created" && e.GetProperty("departmentId").GetGuid() == b.Id, e => e.GetProperty("departmentId").GetGuid() == a.Id),
+            "a member of another department received an event");
         Assert.True(await StaysSilentAsync(noReadEvents), "a member without tickets.read received an event");
 
         string[] allowed = ["ticketId", "departmentId", "reference", "kind", "actorUserId", "at"];
