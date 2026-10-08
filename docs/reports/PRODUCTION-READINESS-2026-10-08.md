@@ -2,14 +2,14 @@
 
 Scope: the seven checks requested after the SLA alert work. Method: targeted source and document inspection plus targeted tests. Nothing was deployed, no backup or restore was executed, the SLA backfill was not run against production, and no production data was touched. Simulator and unit tests are not live-tenant evidence.
 
-**Verdict: NOT production ready.** Three open gates (malware scanner, live Graph validation, restore evidence) block go-live; none is a code defect that can be closed by a small fix.
+**Verdict: NOT production ready.** Open gates: live Graph validation and a recorded production restore drill block go-live. The malware scanner is intentionally deferred and attachments are disabled in production instead (update below). None of the remaining gates is a code defect that can be closed by a small fix.
 
 | # | Check | Result |
 |---|-------|--------|
 | 1 | SLA backfill procedure documented | PASS |
 | 2 | Data Protection keys persist across restarts | PASS (WARN: not encrypted at rest) |
-| 3 | Attachment malware scanning enforced | PASS as enforcement, FAIL as capability (no engine) |
-| 4 | Backups and restore | WARN (tooling present) / FAIL (no evidence, no schedule) |
+| 3 | Attachment malware scanning enforced | PASS: external scanner integration intentionally deferred; attachments are disabled in production (see update) |
+| 4 | Backups and restore | WARN: scheduling, verification, object-store copy and restore test now exist and passed against test data; FAIL until a real production drill is recorded (see update) |
 | 5 | Department permissions and requester isolation | PASS |
 | 6 | Graph mailbox health, delivery failures, recovery | PASS by design / FAIL on live evidence |
 | 7 | Security, migration and deployment risks | see ranked list |
@@ -47,3 +47,15 @@ Scope: the seven checks requested after the SLA alert work. Method: targeted sou
 
 ## Not verified in this review
 The migrate-on-startup default for the production configuration, the reference compose behaviour under a real proxy, SignalR behaviour behind the proxy, the encrypted backup/restore pipeline end to end, and any behaviour in a real Entra or Graph tenant.
+
+## Update: verified follow-up work (same day)
+
+**Malware scanning (decision: external antivirus integration is intentionally deferred).** An attempted ClamAV integration was stopped and nothing from it is in the repository. Instead, attachments are switched off in production (`7bde968`): `Attachments:Enabled=false` is set in `docker/production/compose.yml` and the host **refuses to start in production** with it on or unset (`ProductionHosting`, covered by `ProductionHostingTests`). With it off: uploads (agent and portal) are recorded as blocked metadata with reason `attachments_disabled` and no bytes are stored; inbound email attachments are not even fetched from Graph and are recorded the same way; downloads, including of files stored earlier, are refused with `attachments_disabled`. The existing fail-closed checks (`RequireCleanScan`, validation, infected handling) are unchanged. Verified by `Mail.AttachmentTests` (new test for the off switch with mail attachments and an earlier stored file), `ProductionHostingTests` and `AuthConfigurationTests`: 55/55 pass. Limitation: the web UI still offers attaching files; the server records them as blocked (UI untouched on request). To enable attachments later: choose and integrate a scanner (D-08), then change the guard deliberately.
+
+**Backups (`7ad8a93`).** Added `scripts/ops/backup-all.sh` (hourly entry point: lock, backup, verify, optional object copy, status file, failure alert hook), `verify-backup.sh`, `backup-objects.sh` (AWS CLI, copy-only, never deletes at the destination, dry-run verification), `restore-test.sh` (generated scratch database, schema checks, RTO/RPO comparison, result file, scratch dropped), `check-backup-freshness.sh` (monitoring probe) and systemd service and timer units (`OnCalendar=hourly`, `Persistent=true`). `backup-database.sh` no longer leaves a partial file on failure (defect found while testing). Procedures are in `BACKUP_AND_RESTORE.md` and `OPERATIONS_RUNBOOK.md`.
+
+Verified against a throw-away database in the local development PostgreSQL container (never production data): backup + verification + status file OK; restore test OK (2 tables, within RTO and RPO, scratch database dropped); tampered file fails checksum; wrong passphrase fails decryption; a failing backup exits 1, writes the failed status, runs the alert command and leaves no partial file; the freshness probe passes after success and fails after a failed run; object copy verified with a stub `aws` (argument construction, `--delete` never used, incomplete copy detected). **Not verified:** the object-store copy against a real S3 endpoint (the AWS CLI is not installed here), the systemd units on a Linux host, and anything on production backups. The scheduling is provided, not installed: someone must install the timer, the environment file and an off-host mount, and name a drill owner.
+
+**Data Protection.** `CLAUDE.md` now records persistence as implemented and keeps the warning that the key ring is not encrypted at rest.
+
+**Remaining blockers, ranked.** High: live Graph tenant validation (D-16). High: install the backup timer, run and record one real restore drill with a named owner, and provide off-host storage. Medium: no malware scanner (D-08), so attachments stay off; retention policy (D-09); single-instance topology; deployment behind a real proxy and TLS not exercised.

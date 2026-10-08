@@ -366,8 +366,8 @@ Do not claim production readiness while required gates remain open.
 
 Important gates include:
 - real Graph tenant validation
-- malware scanning
-- persistent Data Protection keys
+- malware scanning (external scanner integration deferred; attachments are disabled in production until then)
+- Data Protection keys: persistence is implemented (PostgreSQL key ring, restored with the database backup); encryption at rest is NOT, so the database and its backups are the boundary and must be protected
 - approved retention/data lifecycle policy
 - backup/restore evidence
 - abuse controls
@@ -481,7 +481,7 @@ Do not fix these opportunistically unless the active task requires them:
 - requester contact refresh at sign-in
 - Graph production hardening
 - production malware scanner
-- persistent Data Protection keys
+- Data Protection key ring encryption at rest (persistence itself is done)
 - retention/data lifecycle tooling
 - backup/restore evidence
 
