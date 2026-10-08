@@ -23,7 +23,7 @@ public sealed class StableRequesterIdentityTests(HelpdeskFixture fixture) : ICla
     public async Task A_changed_address_keeps_ownership_and_the_same_requester_serves_future_requests()
     {
         var d = await fixture.NewDeptAsync();
-        var (formId, _) = await d.FormAsync("General");
+        var (formId, _) = await d.FormAsync(fixture, "General");
         var jane = await fixture.EmployeeAsync("jane");
         var first = (await jane.User.Client.PostAsync("/api/portal/requests", Request(formId, "First"))).Expect(HttpStatusCode.Created).Json.GetProperty("reference").GetString()!;
         var requesterId = await RequesterOfAsync(first);
@@ -46,7 +46,7 @@ public sealed class StableRequesterIdentityTests(HelpdeskFixture fixture) : ICla
     public async Task A_reused_address_never_inherits_history_and_an_address_alone_claims_nothing()
     {
         var d = await fixture.NewDeptAsync();
-        var (formId, _) = await d.FormAsync("General");
+        var (formId, _) = await d.FormAsync(fixture, "General");
         var alex = await fixture.EmployeeAsync("alex");
         var old = (await alex.User.Client.PostAsync("/api/portal/requests", Request(formId, "Old alex"))).Expect(HttpStatusCode.Created).Json.GetProperty("reference").GetString()!;
 
@@ -76,8 +76,8 @@ public sealed class StableRequesterIdentityTests(HelpdeskFixture fixture) : ICla
     {
         var it = await fixture.NewDeptAsync();
         var hr = await fixture.NewDeptAsync();
-        var (itForm, _) = await it.FormAsync("IT help");
-        var (hrForm, _) = await hr.FormAsync("HR help");
+        var (itForm, _) = await it.FormAsync(fixture, "IT help");
+        var (hrForm, _) = await hr.FormAsync(fixture, "HR help");
         var jane = await fixture.EmployeeAsync("jane");
         var itRef = (await jane.User.Client.PostAsync("/api/portal/requests", Request(itForm, "IT problem"))).Expect(HttpStatusCode.Created).Json.GetProperty("reference").GetString()!;
         var hrRef = (await jane.User.Client.PostAsync("/api/portal/requests", Request(hrForm, "HR question"))).Expect(HttpStatusCode.Created).Json.GetProperty("reference").GetString()!;
@@ -113,8 +113,8 @@ public sealed class StableRequesterIdentityTests(HelpdeskFixture fixture) : ICla
     public async Task Owning_a_requester_never_bypasses_the_form_audience_or_lets_crafted_ids_take_over_another_ticket()
     {
         var d = await fixture.NewDeptAsync();
-        var (formId, _) = await d.FormAsync("Open form");
-        var (restricted, _) = await d.FormAsync("Restricted form", new { Audience = "Selected" });
+        var (formId, _) = await d.FormAsync(fixture, "Open form");
+        var (restricted, _) = await d.FormAsync(fixture, "Restricted form", new { Audience = "Selected" });
         var jane = await fixture.EmployeeAsync("jane");
         var bob = await fixture.EmployeeAsync("bob");
         var janes = (await jane.User.Client.PostAsync("/api/portal/requests", Request(formId, "Janes"))).Expect(HttpStatusCode.Created).Json.GetProperty("reference").GetString()!;

@@ -24,7 +24,7 @@ public sealed class HelpTopicTests(HelpdeskFixture fixture) : IClassFixture<Help
     {
         var d = await fixture.NewDeptAsync();
         var alice = await fixture.EmployeeAsync("alice");
-        var (formId, _) = await d.FormAsync("Hardware issue");
+        var (formId, _) = await d.FormAsync(fixture, "Hardware issue");
         var topic = await TopicAsync(d, "Report an IT problem", formId, "Something is broken");
 
         var list = await MineAsync(alice.User, d);
@@ -61,7 +61,7 @@ public sealed class HelpTopicTests(HelpdeskFixture fixture) : IClassFixture<Help
         var d = await fixture.NewDeptAsync();
         var alice = await fixture.EmployeeAsync("alice");
         var bob = await fixture.EmployeeAsync("bob");
-        var (formId, _) = await d.FormAsync("Privileged access", new { Audience = "Selected", AudienceUserIds = new[] { alice.User.Id } });
+        var (formId, _) = await d.FormAsync(fixture, "Privileged access", new { Audience = "Selected", AudienceUserIds = new[] { alice.User.Id } });
         var topic = await TopicAsync(d, "Request access", formId);
 
         Assert.Equal(["Request access"], (await MineAsync(alice.User, d)).Select(t => t.Str("name")).ToArray());
@@ -83,8 +83,8 @@ public sealed class HelpTopicTests(HelpdeskFixture fixture) : IClassFixture<Help
     {
         var it = await fixture.NewDeptAsync();
         var hr = await fixture.NewDeptAsync();
-        var (itForm, _) = await it.FormAsync("IT form");
-        var (hrForm, _) = await hr.FormAsync("HR form");
+        var (itForm, _) = await it.FormAsync(fixture, "IT form");
+        var (hrForm, _) = await hr.FormAsync(fixture, "HR form");
         var a = await TopicAsync(it, "First", itForm);
         var b = await TopicAsync(it, "Second", itForm);
         var c = await TopicAsync(it, "Third", itForm);

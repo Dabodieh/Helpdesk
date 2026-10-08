@@ -19,6 +19,7 @@ internal static class MailAuditActions
     public const string SendFailed = "mail.send_failed";
     public const string SendUncertain = "mail.send_uncertain";
     public const string SendReconciled = "mail.send_reconciled";
+    public const string IgnoredReleased = "mail.ignored_released";
     public const string DeliveryFailedReported = "mail.delivery_failed_reported";
     public const string UncertainRetried = "mail.uncertain_retried";
     public const string ResentAfterBounce = "mail.resent_after_bounce";

@@ -2,6 +2,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
 import { getSignature } from '../api/emailIdentity'
 import { postMessage, searchMentionable } from '../api/tickets'
+import { FOCUS_REPLY_EVENT } from './SilentResolveDialog'
 import { canTicket } from '../api/permissions'
 import { STATUSES, type TicketDetail } from '../api/ticketSchemas'
 import { useMe } from '../auth'
@@ -115,6 +116,11 @@ ${draft}` : draft
   const mentionIds = picked.length > 0 ? picked : undefined
   // One id per composed message, kept across retries and double clicks so the server never posts it twice; a new one after it was accepted.
   const clientMessageId = useRef(crypto.randomUUID())
+  useEffect(() => {
+    const focus = () => area.current?.focus()
+    window.addEventListener(FOCUS_REPLY_EVENT, focus)
+    return () => window.removeEventListener(FOCUS_REPLY_EVENT, focus)
+  }, [])
   const send = useMutation({
     mutationFn: () =>
       postMessage(ticket.id, {

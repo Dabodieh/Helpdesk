@@ -69,6 +69,10 @@ export const updateTicket = (
   body: { version: string; subject?: string; status?: string; priority?: string },
 ) => api('PATCH', tk(ticket), { body, schema: ticketDetailSchema })
 
+/** D22: explicit assignment (or pre-send correction) of the ticket's mailbox. */
+export const assignTicketMailbox = (ticket: string, version: string, mailboxId: string) =>
+  api('POST', `${tk(ticket)}/mailbox`, { body: { version, mailboxId }, schema: ticketDetailSchema })
+
 export const setAssignment = (
   ticket: string,
   body: { version: string; teamId: string | null; assigneeUserId: string | null },

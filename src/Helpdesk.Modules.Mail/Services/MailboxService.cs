@@ -62,6 +62,8 @@ internal sealed record AttentionItemDto(
 
 internal sealed record RetryOutcomeDto(string Outcome);
 
+internal sealed record ReleaseOutcomeDto(string State, Guid? TicketId);
+
 internal sealed record AttentionPage(IReadOnlyList<AttentionItemDto> Items, string? NextCursor);
 
 /// <summary>Department mailbox administration (permission <c>department.mailboxes.manage</c> on the department route, enforced by the endpoint filter).</summary>
@@ -306,6 +308,42 @@ internal sealed partial class MailboxService(
             m.LastError, m.Attempts, content ? m.TicketId : null, m.Direction == MessageDirections.Outbound ? MailErrors.Category(m.LastError) : null)).ToList();
         var next = more ? Cursor.Encode(string.Create(CultureInfo.InvariantCulture, $"{rows[^1].CreatedAt.UtcTicks}|{rows[^1].Id}")) : null;
         return new AttentionPage(items, next);
+    }
+
+    /// <summary>
+    /// D12 / MSG-009: turns an IGNORED inbound message into (part of) a ticket by explicit decision. Allowed for the ordinary ignore reasons (auto-submitted, bulk, list mail, an
+    /// auto-response marker, the sender rate limit); never for delivery reports or loops (the mailbox's own address), duplicates, drafts or mail without a sender. Content
+    /// action: needs ticket read by membership as well (404 otherwise). The released message is processed as usual except that it is never acknowledged.
+    /// </summary>
+    public async Task<ReleaseOutcomeDto> ReleaseIgnoredAsync(Guid departmentId, Guid mailMessageId, CancellationToken ct)
+    {
+        await authorizer.RequireAsync(PermissionCodes.TicketsRead, departmentId, ct);
+
+        var message = await db.Messages.SingleOrDefaultAsync(
+            m => m.Id == mailMessageId && m.DepartmentId == departmentId && m.Direction == MessageDirections.Inbound && m.State == MessageStates.Ignored, ct) ?? throw new NotFoundException();
+        string[] releasable = [IgnoreReasons.AutoSubmitted, IgnoreReasons.Bulk, IgnoreReasons.AutoResponseSuppress, IgnoreReasons.MailingList, IgnoreReasons.SenderRateLimited];
+        if (message.IgnoreReason is not { } reason || !releasable.Contains(reason) || MessageFlags.Has(message.Flags, "ndr_correlated"))
+        {
+            throw new ConflictException("This message cannot be turned into a ticket (delivery reports, loops, duplicates and mail without a sender are never released).", ProblemCodes.InvalidState);
+        }
+
+        await using (var tx = await db.Database.BeginTransactionAsync(ct))
+        {
+            var now = clock.GetUtcNowMicroseconds();
+            message.State = MessageStates.Received;
+            message.IgnoreReason = null;
+            message.Flags = MessageFlags.With(message.Flags, MessageFlags.Released);
+            message.Attempts = 0;
+            message.NextAttemptAt = now;
+            message.UpdatedAt = now;
+            await db.SaveChangesAsync(ct);
+            await audit.WriteAsync(MailAuditActions.IgnoredReleased, MailAudit.MessageObject, message.Id, departmentId, new { reason }, new { state = MessageStates.Received }, ct);
+            await tx.CommitAsync(ct);
+        }
+
+        await processor.ProcessAsync(message.MailboxId, message.ProviderMessageId!, ct);
+        var released = await db.Messages.AsNoTracking().Where(m => m.Id == mailMessageId).Select(m => new { m.State, m.TicketId }).SingleAsync(ct);
+        return new ReleaseOutcomeDto(released.State, released.TicketId);
     }
 
     /// <summary>
@@ -566,6 +604,13 @@ internal sealed class MailboxDirectory(MailDbContext db) : IMailboxDirectory
             : active.FirstOrDefault(m => m.IsDefault) ?? (active.Count == 1 ? active[0] : null);
         return chosen is null ? null : new ReplyMailbox(chosen.Id, chosen.Address, chosen.DisplayName, chosen.IsDefault);
     }
+
+    public async Task<bool> HasExternalSendAsync(Guid departmentId, Guid ticketId, CancellationToken cancellationToken = default) =>
+        await db.Messages.AsNoTracking().AnyAsync(
+            m => m.DepartmentId == departmentId && m.TicketId == ticketId && m.Direction == MessageDirections.Outbound
+                && (m.State == MessageStates.Queued || m.State == MessageStates.Sending || m.State == MessageStates.Sent || m.State == MessageStates.Uncertain
+                    || (m.State == MessageStates.Failed && (m.LastError == MailErrorCodes.NdrDeliveryFailed || (m.Flags != null && m.Flags.Contains(MessageFlags.SubmitStarted))))),
+            cancellationToken);
 
     public async Task<IReadOnlyList<ReplyMailbox>> ListActiveAsync(Guid departmentId, CancellationToken cancellationToken = default) =>
         await db.Mailboxes.AsNoTracking().Where(m => m.DepartmentId == departmentId && m.IsActive).OrderByDescending(m => m.IsDefault).ThenBy(m => m.DisplayName)

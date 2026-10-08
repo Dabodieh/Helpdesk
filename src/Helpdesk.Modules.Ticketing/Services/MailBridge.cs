@@ -215,7 +215,8 @@ internal sealed class InboundTicketSink(
         await lifecycle.BeforeCommitAsync(ticket, requester.EmailNormalised, createdChange, cancellationToken, Provenances.Email);
 
         // The department acknowledgement (if enabled for email) is queued in THIS transaction: a replayed message finds the ticket and never gets here, and a lost race rolls this back.
-        var acknowledgement = await autoReplies.QueueForNewTicketAsync(ticket, requester, department.Name, TicketSources.Email, cancellationToken);
+        // A message an administrator released from the ignored list (auto-submitted, bulk, list mail) is never acknowledged: the sender is often a machine.
+        var acknowledgement = request.Acknowledge ? await autoReplies.QueueForNewTicketAsync(ticket, requester, department.Name, TicketSources.Email, cancellationToken) : null;
         await tx.CommitAsync(cancellationToken);
         if (acknowledgement is { } queued)
         {

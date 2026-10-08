@@ -39,6 +39,9 @@ internal static class MessageFlags
     /// <summary>Set once the dispatcher has automatically looked for the sent copy of an Uncertain message (one read-only attempt, MSG-008).</summary>
     public const string ReconcileAttempted = "reconcile_attempted";
 
+    /// <summary>An administrator released this ignored inbound message so that it becomes (part of) a ticket (D12). It is never acknowledged.</summary>
+    public const string Released = "released";
+
     public static string? Without(string? flags, string flag) =>
         flags is null ? null : string.Join(',', flags.Split(',', StringSplitOptions.RemoveEmptyEntries).Where(f => f != flag)) is { Length: > 0 } rest ? rest : null;
 

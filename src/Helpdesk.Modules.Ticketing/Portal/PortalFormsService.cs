@@ -21,8 +21,26 @@ internal sealed record PortalFormDto(Guid Id, string Name, string? Description, 
 /// A form is usable when it is active, offered to requesters, and its requester audience includes the caller (every employee, or an explicit user).
 /// Department membership plays no part: this grants the form and nothing else. Anything else is indistinguishable from a form that does not exist.
 /// </summary>
-internal sealed class PortalFormAccess(TicketingDbContext db, ICurrentUser current)
+internal sealed class PortalFormAccess(TicketingDbContext db, ICurrentUser current, Helpdesk.Modules.Mail.Contracts.IMailboxDirectory mailboxes)
 {
+    /// <summary>
+    /// D22-A: a request form can only be used while its department has a usable active DEFAULT mailbox, because the sender identity is chosen and stored when the ticket is
+    /// created. Without one the form is unavailable (as if it did not exist) instead of producing a ticket that can never be answered by email.
+    /// </summary>
+    public async Task<HashSet<Guid>> DepartmentsWithSenderAsync(IEnumerable<Guid> departmentIds, CancellationToken ct)
+    {
+        var result = new HashSet<Guid>();
+        foreach (var departmentId in departmentIds.Distinct())
+        {
+            if (await mailboxes.FindReplyMailboxAsync(departmentId, null, ct) is not null)
+            {
+                result.Add(departmentId);
+            }
+        }
+
+        return result;
+    }
+
     public IQueryable<RequestForm> Usable()
     {
         var userId = current.UserId;
@@ -41,7 +59,8 @@ internal sealed class PortalFormsService(PortalFormAccess access, IOrganisationD
     {
         var forms = await access.Usable().AsNoTracking().OrderBy(f => f.SortOrder).ThenBy(f => f.Name).Take(500).ToListAsync(ct);
         var departments = await organisation.GetDepartmentsAsync(forms.Select(f => f.DepartmentId).Distinct().ToArray(), ct);
-        return [.. forms.Where(f => departments.TryGetValue(f.DepartmentId, out var d) && d.IsActive).Select(f => new PortalFormListItemDto(f.Id, f.Name, f.Description, departments[f.DepartmentId].Name))
+        var withSender = await access.DepartmentsWithSenderAsync(forms.Select(f => f.DepartmentId), ct);
+        return [.. forms.Where(f => withSender.Contains(f.DepartmentId) && departments.TryGetValue(f.DepartmentId, out var d) && d.IsActive).Select(f => new PortalFormListItemDto(f.Id, f.Name, f.Description, departments[f.DepartmentId].Name))
             .OrderBy(f => f.Department, StringComparer.OrdinalIgnoreCase)];
     }
 
@@ -49,7 +68,7 @@ internal sealed class PortalFormsService(PortalFormAccess access, IOrganisationD
     {
         var form = await access.Usable().AsNoTracking().SingleOrDefaultAsync(f => f.Id == id, ct) ?? throw new NotFoundException();
         var department = await organisation.FindDepartmentAsync(form.DepartmentId, ct);
-        if (department is not { IsActive: true })
+        if (department is not { IsActive: true } || (await access.DepartmentsWithSenderAsync([form.DepartmentId], ct)).Count == 0)
         {
             throw new NotFoundException();
         }

@@ -61,9 +61,17 @@ public static class PortalKit
 
     public static string Reference(this ApiResponse ticket) => ticket.Json.GetProperty("reference").GetString()!;
 
-    /// <summary>Creates a request form (and optional fields) through the real admin API.</summary>
-    public static async Task<(Guid FormId, string Version)> FormAsync(this Dept d, string name, object? extra = null, params object[] fields)
+    /// <summary>
+    /// Creates a request form (and optional fields) through the real admin API. A form can only be used while its department has a usable default mailbox (D22), so one is
+    /// registered first when the department has none.
+    /// </summary>
+    public static async Task<(Guid FormId, string Version)> FormAsync(this Dept d, HelpdeskFixture fixture, string name, object? extra = null, params object[] fields)
     {
+        if ((await d.Admin.Client.GetAsync($"{d.Department.Url}/mailboxes")).Expect(HttpStatusCode.OK).Json.GetArrayLength() == 0)
+        {
+            await Mail.MailKit.CreateMailboxAsync(fixture, d);
+        }
+
         var body = new Dictionary<string, object?> { ["name"] = name, ["audience"] = "AllEmployees" };
         if (extra is not null)
         {

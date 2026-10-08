@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { fieldErrors } from '../api/errors'
-import { createMailbox, listAttention, listMailboxes, retryMail, updateMailbox, type AttentionItem, type Mailbox } from '../api/mail'
+import { createMailbox, listAttention, listMailboxes, releaseMail, retryMail, updateMailbox, type AttentionItem, type Mailbox } from '../api/mail'
 import { canInDepartment } from '../api/permissions'
 import type { Department } from '../api/schemas'
 import { useMe } from '../auth'
@@ -11,6 +11,9 @@ import { HEALTH_LABEL, HEALTH_REASON, HEALTH_TONE } from '../lib/mailHealth'
 import { ActiveBadge, ErrorNotice, Field, Loading, StatusBadge } from './common'
 import { isOutcomeUncertain } from '../api/errors'
 import Dialog from './Dialog'
+
+/** Ignored mail an administrator may turn into a ticket (D12). Delivery reports, loops, duplicates, drafts and mail without a sender never. */
+const RELEASABLE = new Set(['auto_submitted', 'precedence_bulk', 'auto_response_suppress', 'mailing_list', 'sender_rate_limited'])
 
 const IGNORE_REASONS: Record<string, string> = {
   own_address: 'sent from a helpdesk mailbox',
@@ -206,6 +209,10 @@ function Attention({ departmentId }: { departmentId: string }) {
     mutationFn: (item: AttentionItem) => retryMail(departmentId, item.id),
     onSettled: () => qc.invalidateQueries({ queryKey: ['mail-attention', departmentId] }),
   })
+  const release = useMutation({
+    mutationFn: (item: AttentionItem) => releaseMail(departmentId, item.id),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['mail-attention', departmentId] }),
+  })
   if (q.isPending) return <Loading label="Loading mail needing attention" />
   if (q.isError) return <ErrorNotice error={q.error} onRetry={() => void q.refetch()} />
   if (q.data.items.length === 0) return <p className="empty">No failed or ignored mail.</p>
@@ -245,6 +252,12 @@ function Attention({ departmentId }: { departmentId: string }) {
                     Resolve…
                   </button>
                 )}
+                {i.state === 'Ignored' && RELEASABLE.has(i.ignoreReason ?? '') && (
+                  <button type="button" disabled={release.isPending} onClick={() => release.mutate(i)}>
+                    Create ticket
+                    <span className="sr-only"> from the message “{i.subject}”</span>
+                  </button>
+                )}
                 {i.state === 'Failed' && (
                   <button type="button" disabled={retry.isPending} onClick={() => retry.mutate(i)}>
                     Retry
@@ -255,7 +268,7 @@ function Attention({ departmentId }: { departmentId: string }) {
           ))}
         </tbody>
       </table>
-      <ErrorNotice error={retry.error} />
+      <ErrorNotice error={retry.error ?? release.error} />
       {uncertain && <UncertainDialog departmentId={departmentId} item={uncertain} onClose={() => setUncertain(null)} />}
     </>
   )

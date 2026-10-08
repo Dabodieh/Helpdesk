@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { canTicket } from '../api/permissions'
 import { setAssignment, updateTicket } from '../api/tickets'
 import { updateTicketProperties } from '../api/ticketing'
@@ -8,6 +8,8 @@ import { useMe } from '../auth'
 import { useApplyTicket } from '../hooks/useApplyTicket'
 import { useDirectory } from '../hooks/useDirectory'
 import { PriorityMark, StatusPill } from './Pills'
+import SilentResolveDialog, { FOCUS_REPLY_EVENT } from './SilentResolveDialog'
+import TicketMailbox from './TicketMailbox'
 import { propertiesKey, useTicketProperties } from '../hooks/useTicketProperties'
 
 function Control({ label, value, disabled, onChange, children }: { label: string; value: string; disabled?: boolean; onChange: (v: string) => void; children: ReactNode }) {
@@ -44,6 +46,7 @@ export default function CoreProperties({ ticket: t, routeRef, onProblem }: { tic
   const canUpdate = canTicket(me, 'tickets.update', t.departmentId) && !merged
   const canAssignAny = canTicket(me, 'tickets.assign.any', t.departmentId) && !merged
   const canAssignSelf = canTicket(me, 'tickets.assign.self', t.departmentId) && !merged
+  const canRoute = canAssignAny || (canTicket(me, 'tickets.assign.team', t.departmentId) && !merged)
 
   const onSuccess = (res: TicketDetail) => {
     onProblem(null)
@@ -70,6 +73,8 @@ export default function CoreProperties({ ticket: t, routeRef, onProblem }: { tic
     onError: onProblem,
   })
   const busy = patch.isPending || assign.isPending || retype.isPending
+  // D24: resolving or closing from here sends nothing to the requester, so it is confirmed first.
+  const [silent, setSilent] = useState<string | null>(null)
 
   // Assignee choices: eligible department members. Without assign.any only "me" (and "unassigned" when it is me now).
   const eligible = dir.members.filter((m) => m.role !== 'Viewer')
@@ -84,7 +89,7 @@ export default function CoreProperties({ ticket: t, routeRef, onProblem }: { tic
       <h3>Ticket</h3>
       {canUpdate ? (
         <>
-          <Control label="Status" value={t.status} disabled={busy} onChange={(v) => patch.mutate({ status: v })}>
+          <Control label="Status" value={t.status} disabled={busy} onChange={(v) => (v === 'Resolved' || v === 'Closed' ? setSilent(v) : patch.mutate({ status: v }))}>
             {STATUSES.map((s) => (
               <option key={s}>{s}</option>
             ))}
@@ -119,7 +124,7 @@ export default function CoreProperties({ ticket: t, routeRef, onProblem }: { tic
           <ReadOnly label="Type">{props.data ? (props.data.type?.displayName ?? <span className="muted">No type</span>) : <span className="skeleton inline" aria-hidden="true" />}</ReadOnly>
         </>
       )}
-      {canAssignAny ? (
+      {canRoute ? (
         <Control label="Team" value={t.team?.id ?? ''} disabled={busy} onChange={(v) => assign.mutate({ teamId: v || null, assigneeUserId: t.assignee?.id ?? null })}>
           <option value="">No team</option>
           {teamOptions.map((x) => (
@@ -132,12 +137,7 @@ export default function CoreProperties({ ticket: t, routeRef, onProblem }: { tic
       ) : (
         <ReadOnly label="Team">{t.team?.name ?? <span className="muted">No team</span>}</ReadOnly>
       )}
-      {t.mailbox && (
-        <ReadOnly label="Replies sent from">
-          {t.mailbox.name}<br />
-          <span className="muted small">{t.mailbox.address}</span>
-        </ReadOnly>
-      )}
+      <TicketMailbox ticket={t} routeRef={routeRef} />
       {!assigneeLocked ? (
         <Control label="Assignee" value={t.assignee?.id ?? ''} disabled={busy} onChange={(v) => assign.mutate({ teamId: t.team?.id ?? null, assigneeUserId: v || null })}>
           {(canAssignAny || t.assignee?.id === me.id || !t.assignee) && <option value="">Unassigned</option>}
@@ -149,6 +149,20 @@ export default function CoreProperties({ ticket: t, routeRef, onProblem }: { tic
         </Control>
       ) : (
         <ReadOnly label="Assignee">{t.assignee?.displayName ?? <span className="muted">Unassigned</span>}</ReadOnly>
+      )}
+      {silent && (
+        <SilentResolveDialog
+          status={silent}
+          onClose={() => setSilent(null)}
+          onReplyFirst={() => {
+            setSilent(null)
+            window.dispatchEvent(new Event(FOCUS_REPLY_EVENT))
+          }}
+          onConfirm={() => {
+            patch.mutate({ status: silent })
+            setSilent(null)
+          }}
+        />
       )}
     </section>
   )

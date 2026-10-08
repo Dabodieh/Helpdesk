@@ -209,7 +209,8 @@ internal sealed class PortalHelpTopicsService(TicketingDbContext db, PortalFormA
             .Join(access.Usable().AsNoTracking(), t => t.RequestFormId, f => f.Id, (t, f) => new { Topic = t, FormId = f.Id })
             .OrderBy(x => x.Topic.SortOrder).ThenBy(x => x.Topic.Name).Take(500).ToListAsync(ct);
         var departments = await organisation.GetDepartmentsAsync([.. rows.Select(r => r.Topic.DepartmentId).Distinct()], ct);
-        return [.. rows.Where(r => departments.TryGetValue(r.Topic.DepartmentId, out var d) && d.IsActive)
+        var withSender = await access.DepartmentsWithSenderAsync(rows.Select(r => r.Topic.DepartmentId), ct); // a topic leads to a form, which needs a usable default mailbox (D22)
+        return [.. rows.Where(r => withSender.Contains(r.Topic.DepartmentId) && departments.TryGetValue(r.Topic.DepartmentId, out var d) && d.IsActive)
             .Select(r => new PortalHelpTopicDto(r.Topic.Id, r.Topic.Name, r.Topic.Description, departments[r.Topic.DepartmentId].Name, r.FormId))
             .OrderBy(t => t.Department, StringComparer.OrdinalIgnoreCase)];
     }

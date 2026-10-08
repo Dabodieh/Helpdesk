@@ -119,7 +119,7 @@ internal static class PortalEndpoints
         // Requester identity resolution: department-scoped, same authority as managing members (people). Platform administrators gain nothing extra:
         // every query is department-scope filtered, so without a membership the requesters and tickets simply do not exist.
         var identities = app.MapGroup("/api/departments/{departmentId:guid}/requester-identities").WithTags("Requester identities");
-        identities.MapGet("", async (Guid departmentId, RequesterIdentityAdminService service, CancellationToken ct) => TypedResults.Ok(await service.ListAsync(departmentId, ct)))
+        identities.MapGet("", async (Guid departmentId, string? q, int? skip, RequesterIdentityAdminService service, CancellationToken ct) => TypedResults.Ok(await service.ListAsync(departmentId, q, skip ?? 0, ct)))
             .RequirePermission(PermissionCodes.DepartmentMembersManage);
         identities.MapGet("{requesterId:guid}", async (Guid departmentId, Guid requesterId, RequesterIdentityAdminService service, CancellationToken ct) =>
                 TypedResults.Ok(await service.GetAsync(departmentId, requesterId, ct)))

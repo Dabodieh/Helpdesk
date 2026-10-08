@@ -27,7 +27,7 @@ namespace Helpdesk.Modules.Ticketing.Services;
 /// applies the finer, payload-dependent rules. Every mutation and its audit events commit in one transaction; message bodies are
 /// never audited or logged.
 /// </summary>
-internal sealed class TicketService(
+internal sealed partial class TicketService(
     TicketingDbContext db,
     IDepartmentScope scope,
     TicketingAudit audit,
@@ -1024,7 +1024,15 @@ internal sealed class TicketService(
         var currentAssignee = ticket?.AssigneeUserId;
         var selfAssignment = (assigneeUserId == current.UserId && (currentAssignee is null || currentAssignee == current.UserId))
             || (assigneeUserId is null && currentAssignee == current.UserId);
-        if (!(self && teamUnchanged && selfAssignment))
+
+        // D21: routing. Changing only the TEAM of an existing ticket (or together with taking or releasing it for oneself) needs tickets.assign.team, which agents hold;
+        // choosing another person as assignee stays with tickets.assign.any. On create the team is still assign.any.
+        var assigneeUnchanged = assigneeUserId == currentAssignee;
+        var allowed = teamUnchanged
+            ? self && selfAssignment
+            : ticket is not null && await authorizer.CheckAsync(PermissionCodes.TicketsAssignTeam, departmentId, ct) == AccessOutcome.Allowed
+                && (assigneeUnchanged || (self && selfAssignment));
+        if (!allowed)
         {
             throw new ForbiddenException();
         }

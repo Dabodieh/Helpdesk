@@ -59,5 +59,9 @@ export const listAttention = (departmentId: string, cursor: string | null) =>
   api('GET', `${base(departmentId)}/mail/attention${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { schema: attentionPageSchema })
 
 /** Retry failed mail. For an Uncertain send the server first checks the provider; re-sending anyway needs `acceptDuplicateRisk` (the requester may then get it twice). */
+/** D12: turn an ignored message into a ticket (never for delivery reports, loops, duplicates or mail without a sender; the server decides). */
+export const releaseMail = (departmentId: string, mailMessageId: string) =>
+  api('POST', `${base(departmentId)}/mail/${encodeURIComponent(mailMessageId)}/release`, { schema: z.object({ state: z.string(), ticketId: z.string().nullish() }) })
+
 export const retryMail = (departmentId: string, mailMessageId: string, acceptDuplicateRisk = false) =>
   api('POST', `${base(departmentId)}/mail/${encodeURIComponent(mailMessageId)}/retry`, acceptDuplicateRisk ? { body: { acceptDuplicateRisk: true } } : {})

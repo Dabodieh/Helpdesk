@@ -32,7 +32,7 @@ public sealed class RequesterIdentityResolutionTests(HelpdeskFixture fixture) : 
     public async Task An_administrator_resolves_the_portal_blocking_ambiguity_and_the_account_gets_its_history()
     {
         var d = await fixture.NewDeptAsync();
-        var (formId, _) = await d.FormAsync("General");
+        var (formId, _) = await d.FormAsync(fixture, "General");
         var email = $"jane-{Unique.Id()}@example.test";
         var legacy = (await d.TicketForAsync(email, "Emailed in")).Expect(HttpStatusCode.Created);
         var requesterId = await RequesterOfAsync(legacy.Reference());
@@ -115,7 +115,7 @@ public sealed class RequesterIdentityResolutionTests(HelpdeskFixture fixture) : 
     {
         var it = await fixture.NewDeptAsync();
         var hr = await fixture.NewDeptAsync();
-        var (restricted, _) = await it.FormAsync("Restricted", new { Audience = "Selected" });
+        var (restricted, _) = await it.FormAsync(fixture, "Restricted", new { Audience = "Selected" });
         var email = $"sam-{Unique.Id()}@example.test";
         var legacy = (await it.TicketForAsync(email, "Sam's IT problem")).Expect(HttpStatusCode.Created);
         var requesterId = await RequesterOfAsync(legacy.Reference());
@@ -160,5 +160,23 @@ public sealed class RequesterIdentityResolutionTests(HelpdeskFixture fixture) : 
         Assert.Equal([HttpStatusCode.OK, HttpStatusCode.Conflict], results.Select(r => r.Status).OrderBy(s => s).ToArray());
         Assert.Equal(1, await LinksAsync(requesterId));
         Assert.Equal(1, await fixture.CountAuditAsync("requester.identity_linked_by_admin", requesterId));
+    }
+
+    [Fact]
+    public async Task The_list_can_be_searched_by_name_or_address_and_paged()
+    {
+        var d = await fixture.NewDeptAsync();
+        var tag = Unique.Id();
+        var first = (await d.TicketForAsync($"findme-{tag}@example.test", $"One {tag}")).Expect(HttpStatusCode.Created);
+        (await d.TicketForAsync($"other-{tag}@example.test", $"Two {tag}")).Expect(HttpStatusCode.Created);
+        var firstRequester = await RequesterOfAsync(first.Reference());
+
+        var found = (await d.Admin.Client.GetAsync($"{Base(d)}?q=findme-{tag}")).Expect(HttpStatusCode.OK);
+        Assert.Equal([firstRequester], CaseIds(found));
+        Assert.Equal(2, CaseIds((await d.Admin.Client.GetAsync($"{Base(d)}?q={tag}")).Expect(HttpStatusCode.OK)).Length);
+        Assert.Empty(CaseIds((await d.Admin.Client.GetAsync($"{Base(d)}?q=no-such-person-{tag}")).Expect(HttpStatusCode.OK)));
+        Assert.Empty(CaseIds((await d.Admin.Client.GetAsync($"{Base(d)}?skip=2")).Expect(HttpStatusCode.OK))); // a second page past the two cases
+        (await d.Admin.Client.GetAsync($"{Base(d)}?skip=-1")).Expect(HttpStatusCode.BadRequest);
+        (await d.Admin.Client.GetAsync($"{Base(d)}?q=%25")).Expect(HttpStatusCode.OK); // a wildcard is plain text, not a pattern
     }
 }

@@ -27,7 +27,7 @@ public sealed class FormsTests(HelpdeskFixture fixture) : IClassFixture<Helpdesk
     {
         var d = await fixture.NewDeptAsync();
         var team = await fixture.CreateTeamAsync(d.Department);
-        var (formId, _) = await d.FormAsync(
+        var (formId, _) = await d.FormAsync(fixture, 
             "Hardware issue",
             new { DefaultTeamId = team.Id, DefaultPriority = "High", Description = "Broken equipment" },
             PortalKit.Field("Asset tag", "ShortText", required: true, key: "asset"),
@@ -46,7 +46,7 @@ public sealed class FormsTests(HelpdeskFixture fixture) : IClassFixture<Helpdesk
     {
         var d = await fixture.NewDeptAsync();
         var other = await fixture.NewDeptAsync();
-        var (formId, _) = await d.FormAsync("General", null, PortalKit.Field("Colour", "SingleSelect", options: Colours, key: "colour"));
+        var (formId, _) = await d.FormAsync(fixture, "General", null, PortalKit.Field("Colour", "SingleSelect", options: Colours, key: "colour"));
         var admin = d.Admin.Client;
 
         var fields = (await admin.GetAsync($"{d.Department.Url}/ticket-fields")).Expect(HttpStatusCode.OK).Json;
@@ -178,7 +178,7 @@ public sealed class FormsTests(HelpdeskFixture fixture) : IClassFixture<Helpdesk
         Assert.Equal(1, await fixture.CountAsync("SELECT count(*) FROM ticketing.tickets WHERE department_id = @d", TicketKit.P("d", d.Id)));
 
         // Hidden and inactive forms do not exist for requesters.
-        var (hidden, _) = await d.FormAsync("Hidden", new { VisibleToRequesters = false });
+        var (hidden, _) = await d.FormAsync(fixture, "Hidden", new { VisibleToRequesters = false });
         (await alice.User.Client.GetAsync($"/api/portal/forms/{hidden}")).Expect(HttpStatusCode.NotFound);
         (await alice.User.Client.PostAsync("/api/portal/requests", new { formId = hidden, subject = "x", description = "y" })).Expect(HttpStatusCode.NotFound);
         Assert.DoesNotContain(hidden.ToString(), (await alice.User.Client.GetAsync("/api/portal/forms")).Expect(HttpStatusCode.OK).Body, StringComparison.Ordinal);

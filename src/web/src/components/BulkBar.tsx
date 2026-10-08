@@ -7,6 +7,7 @@ import { useMe } from '../auth'
 import { useDirectory } from '../hooks/useDirectory'
 import { summarise } from '../lib/bulk'
 import { ErrorNotice } from './common'
+import SilentResolveDialog from './SilentResolveDialog'
 
 /** Bulk change bar. Shows only what the selection allows (UX only: the server authorises every ticket individually). */
 export default function BulkBar({ tickets, onClear }: { tickets: TicketListItem[]; onClear: () => void }) {
@@ -18,12 +19,14 @@ export default function BulkBar({ tickets, onClear }: { tickets: TicketListItem[
   const canUpdate = departmentIds.every((d) => canTicket(me, 'tickets.update', d))
   const canAssignAny = departmentIds.every((d) => canTicket(me, 'tickets.assign.any', d))
   const canAssignSelf = departmentIds.every((d) => canTicket(me, 'tickets.assign.self', d))
+  const canRoute = canAssignAny || departmentIds.every((d) => canTicket(me, 'tickets.assign.team', d))
 
   const [status, setStatus] = useState('')
   const [priority, setPriority] = useState('')
   const [team, setTeam] = useState('')
   const [assignee, setAssignee] = useState('')
   const [summary, setSummary] = useState<BulkResult | null>(null)
+  const [confirmSilent, setConfirmSilent] = useState(false) // D24: resolving or closing sends the requesters nothing
 
   const change: BulkChange = {}
   if (status) change.status = status
@@ -78,8 +81,8 @@ export default function BulkBar({ tickets, onClear }: { tickets: TicketListItem[
         <span>Team</span>
         <select
           value={team}
-          disabled={!canAssignAny || needDept}
-          title={needDept ? 'Select tickets from one department to assign a team' : !canAssignAny ? 'You cannot assign teams here' : undefined}
+          disabled={!canRoute || needDept}
+          title={needDept ? 'Select tickets from one department to assign a team' : !canRoute ? 'You cannot assign teams here' : undefined}
           onChange={(e) => setTeam(e.target.value)}
         >
           <option value="">No change</option>
@@ -113,7 +116,7 @@ export default function BulkBar({ tickets, onClear }: { tickets: TicketListItem[
             ))}
         </select>
       </label>
-      <button type="button" className="primary" disabled={!anything || apply.isPending} onClick={() => apply.mutate()}>
+      <button type="button" className="primary" disabled={!anything || apply.isPending} onClick={() => (status === 'Resolved' || status === 'Closed' ? setConfirmSilent(true) : apply.mutate())}>
         {apply.isPending ? 'Applying…' : 'Apply'}
       </button>
       <button type="button" onClick={onClear}>
@@ -128,6 +131,17 @@ export default function BulkBar({ tickets, onClear }: { tickets: TicketListItem[
         </p>
       )}
       <ErrorNotice error={apply.error} />
+      {confirmSilent && (
+        <SilentResolveDialog
+          status={status}
+          count={tickets.length}
+          onClose={() => setConfirmSilent(false)}
+          onConfirm={() => {
+            setConfirmSilent(false)
+            apply.mutate()
+          }}
+        />
+      )}
     </div>
   )
 }

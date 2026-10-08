@@ -299,7 +299,7 @@ internal sealed class InboundProcessor(
 
             result = await sink.CreateTicketAsync(
                 new InboundTicketRequest(
-                    mailbox.DepartmentId, mailbox.Id, sourceRef, from, cc, MailText.TicketSubject(message.Subject), message.BodyText!, html, message.OccurredAt, note), ct);
+                    mailbox.DepartmentId, mailbox.Id, sourceRef, from, cc, MailText.TicketSubject(message.Subject), message.BodyText!, html, message.OccurredAt, note, Acknowledge: !MessageFlags.Has(message.Flags, MessageFlags.Released)), ct);
         }
 
         var flags = new List<string>();

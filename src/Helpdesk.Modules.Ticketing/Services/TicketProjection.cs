@@ -127,7 +127,8 @@ internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirec
             fields,
             type,
             mergedInto,
-            mergedTickets);
+            mergedTickets,
+            ticket.MailboxAssignedAt is not null);
     }
 
     public async Task<IReadOnlyList<TicketListItemDto>> ListItemsAsync(IReadOnlyList<TicketRow> rows, CancellationToken ct, IReadOnlyDictionary<Guid, MatchDto>? matches = null, IReadOnlyDictionary<Guid, Helpdesk.Modules.Ticketing.Domain.TicketSla>? slas = null)
@@ -147,6 +148,13 @@ internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirec
             ? []
             : await db.Tickets.AsNoTracking().Where(t => mergedIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Reference, ct);
 
+        // D20: who spoke last in the PUBLIC conversation (never an internal note), so a queue can tell "waiting for us" from "waiting for them". No status is involved.
+        var rowIds = rows.Select(r => r.Id).ToArray();
+        var lastSpeaker = (await db.Messages.AsNoTracking().Where(m => rowIds.Contains(m.TicketId) && m.Kind == MessageKind.Public)
+            .GroupBy(m => m.TicketId)
+            .Select(g => new { TicketId = g.Key, Author = g.OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id).Select(m => m.AuthorType).First() })
+            .ToListAsync(ct)).ToDictionary(x => x.TicketId, x => x.Author);
+
         var now = clock.GetUtcNow();
         return rows.Select(r => new TicketListItemDto(
             r.Id,
@@ -164,6 +172,7 @@ internal sealed class TicketProjection(TicketingDbContext db, IOrganisationDirec
             matches is not null && matches.TryGetValue(r.Id, out var match) ? match : null,
             slas is not null && slas.TryGetValue(r.Id, out var sla) ? Helpdesk.Modules.Ticketing.Sla.SlaSummary.Of(sla, now) : null,
             r.MergedIntoTicketId is { } mergedTo && mergedRefs.TryGetValue(mergedTo, out var mergedRef) ? mergedRef : null,
-            ConcurrencyVersion.ToToken(r.Version))).ToList();
+            ConcurrencyVersion.ToToken(r.Version),
+            lastSpeaker.TryGetValue(r.Id, out var author) ? author switch { AuthorType.Requester => "Requester", AuthorType.Agent => "Agent", _ => null } : null)).ToList();
     }
 }

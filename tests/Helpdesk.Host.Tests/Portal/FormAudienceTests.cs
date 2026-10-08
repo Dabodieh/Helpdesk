@@ -56,7 +56,7 @@ public sealed class FormAudienceTests(HelpdeskFixture fixture) : IClassFixture<H
         var it = await fixture.NewDeptAsync();
         var alice = await fixture.EmployeeAsync("alice");
         var bob = await fixture.EmployeeAsync("bob");
-        var (formId, _) = await it.FormAsync("Report an IT issue");
+        var (formId, _) = await it.FormAsync(fixture, "Report an IT issue");
         var client = alice.User.Client;
 
         // Published to all employees: any employee (here with no membership anywhere) discovers, reads and submits it.
@@ -101,7 +101,7 @@ public sealed class FormAudienceTests(HelpdeskFixture fixture) : IClassFixture<H
         var it = await fixture.NewDeptAsync();
         var hr = await fixture.NewDeptAsync();
         var alice = await fixture.EmployeeAsync("alice");
-        var (formId, _) = await it.FormAsync("Request access");
+        var (formId, _) = await it.FormAsync(fixture, "Request access");
 
         (await SetAudienceAsync(it, formId, "Everyone")).Expect(HttpStatusCode.BadRequest);
         (await SetAudienceAsync(it, formId, "Selected", [Guid.NewGuid()])).Expect(HttpStatusCode.BadRequest); // unknown user

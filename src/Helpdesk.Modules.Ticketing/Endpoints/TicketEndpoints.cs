@@ -209,6 +209,13 @@ internal static class TicketEndpoints
             .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsRead, Route)
             .WithTags("Tickets");
 
+        // Baseline tickets.read (the ticket must be visible by membership: a Platform Admin without membership gets 404); the service requires department.mailboxes.manage (D22).
+        app.MapPost("/api/tickets/{ticket}/mailbox",
+                async (string ticket, AssignMailboxRequest body, TicketService tickets, CancellationToken ct) =>
+                    TypedResults.Ok(await tickets.AssignMailboxAsync(ticket, body, ct)))
+            .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsRead, Route)
+            .WithTags("Tickets");
+
         // Baseline tickets.read; the service requires tickets.reply.
         app.MapPost("/api/tickets/{ticket}/messages/{messageId:guid}/retry-delivery",
                 async (string ticket, Guid messageId, TicketService tickets, CancellationToken ct) =>

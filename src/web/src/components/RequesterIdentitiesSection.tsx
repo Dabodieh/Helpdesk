@@ -1,7 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { lookupUsers } from '../api/organisation'
-import { getIdentityCase, linkRequester, listIdentityCases, type AccountRef, type IdentityCase } from '../api/requesterIdentity'
+import { getIdentityCase, IDENTITY_PAGE, linkRequester, listIdentityCases, type AccountRef, type IdentityCase } from '../api/requesterIdentity'
 import type { Department } from '../api/schemas'
 import { formatDateTime } from '../lib/format'
 import { ErrorNotice, Field, Loading, StatusBadge } from './common'
@@ -170,10 +170,17 @@ function ResolveDialog({ department, c, onClose }: { department: Department; c: 
 
 /** Requesters with ticket history that are not linked to an account (department-scoped; permission department.members.manage). */
 export default function RequesterIdentitiesSection({ department }: { department: Department }) {
-  const q = useQuery({ queryKey: key(department.id), queryFn: () => listIdentityCases(department.id) })
+  const [find, setFind] = useState('')
+  const [term, setTerm] = useState('')
+  const q = useInfiniteQuery({
+    queryKey: [...key(department.id), term],
+    queryFn: ({ pageParam }) => listIdentityCases(department.id, term, pageParam),
+    initialPageParam: 0,
+    getNextPageParam: (last, pages) => (last.length === IDENTITY_PAGE ? pages.length * IDENTITY_PAGE : undefined),
+  })
   const [resolving, setResolving] = useState<IdentityCase | null>(null)
   const [showOthers, setShowOthers] = useState(false)
-  const all = q.data ?? []
+  const all = q.data?.pages.flat() ?? []
   const attention = all.filter((c) => c.needsAttention)
   const others = all.filter((c) => !c.needsAttention)
   return (
@@ -183,9 +190,25 @@ export default function RequesterIdentitiesSection({ department }: { department:
         A requester is the department&rsquo;s record of someone who raised tickets. Linking one to an account lets that person see those requests in the portal. An email address alone
         never proves ownership, so each link is an explicit, audited decision. Linking grants no staff access.
       </p>
+      <form
+        className="inline"
+        role="search"
+        aria-label="Find a requester"
+        onSubmit={(e) => {
+          e.preventDefault()
+          setTerm(find.trim())
+        }}
+      >
+        <Field label="Find a requester" hint="Part of a name or email address.">
+          {(p) => <input {...p} type="search" value={find} maxLength={200} onChange={(e) => setFind(e.target.value)} />}
+        </Field>
+        <button type="submit">Search</button>
+      </form>
       {q.isPending && <Loading label="Loading requesters" />}
       {q.isError && <ErrorNotice error={q.error} onRetry={() => void q.refetch()} />}
-      {q.isSuccess && all.length === 0 && <p className="empty">Nothing to resolve. Every requester with tickets is linked to an account.</p>}
+      {q.isSuccess && all.length === 0 && (
+        <p className="empty">{term ? 'No unlinked requester matches that search.' : 'Nothing to resolve. Every requester with tickets is linked to an account.'}</p>
+      )}
       {attention.length > 0 && (
         <>
           <h3 className="section-title">Needs attention ({attention.length})</h3>
@@ -212,6 +235,13 @@ export default function RequesterIdentitiesSection({ department }: { department:
             </ul>
           )}
         </>
+      )}
+      {q.hasNextPage && (
+        <p>
+          <button type="button" disabled={q.isFetchingNextPage} onClick={() => void q.fetchNextPage()}>
+            Load more requesters
+          </button>
+        </p>
       )}
       {resolving && <ResolveDialog department={department} c={resolving} onClose={() => setResolving(null)} />}
     </section>

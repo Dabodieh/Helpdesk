@@ -42,6 +42,8 @@ export const ticketListItemSchema = z.object({
   mergedInto: z.string().nullish(),
   /** Row version when the list was read; bulk edits send it so a ticket that changed since is left alone. */
   version: z.string().nullish(),
+  /** Who spoke last in the public conversation: lets a queue tell "waiting for us" from "waiting for them". */
+  lastPublicBy: z.enum(['Requester', 'Agent']).nullish(),
 })
 export type TicketListItem = z.infer<typeof ticketListItemSchema>
 
@@ -75,6 +77,8 @@ export const ticketDetailSchema = ticketListItemSchema.omit({ mergedInto: true }
     totalTicketCount: z.number(),
   }),
   mailbox: mailboxRefSchema.nullable().optional(),
+  /** True when the mailbox was explicitly assigned to a ticket that had none (it may still be corrected until something is sent). */
+  mailboxAssigned: z.boolean().default(false),
   participants: z.array(participantSchema).default([]),
   mergedInto: mergedIntoSchema.nullish(),
   /** On a canonical ticket: the tickets merged into it. */

@@ -34,11 +34,28 @@ internal sealed class RequesterIdentityAdminService(TicketingDbContext db, IDepa
 {
     public const int MaxCases = 100;
 
-    public async Task<IReadOnlyList<IdentityCaseDto>> ListAsync(Guid departmentId, CancellationToken ct)
+    /// <summary>One page of unlinked requesters (most recently active first). <paramref name="query"/> finds a name or address; <paramref name="skip"/> pages on (BE-012).</summary>
+    public async Task<IReadOnlyList<IdentityCaseDto>> ListAsync(Guid departmentId, string? query, int skip, CancellationToken ct)
     {
         await scope.EnsureLoadedAsync(ct);
-        var stats = await Stats(db.Tickets.AsNoTracking().Where(t => t.DepartmentId == departmentId && !db.RequesterLinks.Any(l => l.RequesterId == t.RequesterId)))
-            .OrderByDescending(s => s.Last).ThenBy(s => s.Id).Take(MaxCases).ToListAsync(ct);
+        if (skip is < 0 or > 100_000)
+        {
+            throw new RequestValidationException("skip", "skip is not valid.");
+        }
+
+        var tickets = db.Tickets.AsNoTracking().Where(t => t.DepartmentId == departmentId && !db.RequesterLinks.Any(l => l.RequesterId == t.RequesterId));
+        if (query?.Trim() is { Length: > 0 } text)
+        {
+            if (text.Length > 200)
+            {
+                throw new RequestValidationException("q", "q is at most 200 characters.");
+            }
+
+            var pattern = "%" + TicketValidation.EscapeLike(text) + "%";
+            tickets = tickets.Where(t => EF.Functions.ILike(t.Requester.DisplayName, pattern, "\\") || EF.Functions.ILike(t.Requester.Email, pattern, "\\"));
+        }
+
+        var stats = await Stats(tickets).OrderByDescending(s => s.Last).ThenBy(s => s.Id).Skip(skip).Take(MaxCases).ToListAsync(ct);
         return await ToDtosAsync(departmentId, stats, ct);
     }
 

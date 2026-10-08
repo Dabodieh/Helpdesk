@@ -25,7 +25,11 @@ export const identityDetailSchema = z.object({
 })
 
 const base = (d: string) => `/api/departments/${d}/requester-identities`
-export const listIdentityCases = (d: string) => api('GET', base(d), { schema: z.array(identityCaseSchema) })
+/** One page (100) of unlinked requesters; `q` finds a name or address, `skip` pages on. */
+export const listIdentityCases = (d: string, q = '', skip = 0) =>
+  api('GET', `${base(d)}?${new URLSearchParams({ ...(q ? { q } : {}), skip: String(skip) })}`, { schema: z.array(identityCaseSchema) })
+
+export const IDENTITY_PAGE = 100
 export const getIdentityCase = (d: string, requesterId: string) => api('GET', `${base(d)}/${requesterId}`, { schema: identityDetailSchema })
 export const linkRequester = (d: string, requesterId: string, userId: string) =>
   api('POST', `${base(d)}/${requesterId}/link`, { body: { userId }, schema: z.object({ alreadyLinked: z.boolean() }) })

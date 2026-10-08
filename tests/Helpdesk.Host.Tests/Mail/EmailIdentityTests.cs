@@ -358,14 +358,14 @@ public sealed class EmailIdentityTests(HelpdeskFixture fixture) : IClassFixture<
     }
 
     [Fact]
-    public async Task Portal_tickets_are_acknowledged_only_when_the_department_enables_it_from_the_ticket_mailbox_and_a_missing_mailbox_is_recorded_not_faked()
+    public async Task Portal_tickets_are_acknowledged_only_when_the_department_enables_it_from_the_ticket_mailbox_and_a_department_without_a_mailbox_takes_no_portal_requests()
     {
         var withBox = await fixture.NewDeptAsync();
         var box = await fixture.CreateMailboxAsync(withBox);
         var noBox = await fixture.NewDeptAsync();
         var emp = await fixture.EmployeeAsync("pat");
-        var formA = (await withBox.FormAsync("Portal form A")).FormId;
-        var formB = (await noBox.FormAsync("Portal form B")).FormId;
+        var formA = (await withBox.FormAsync(fixture, "Portal form A")).FormId;
+        var formB = (await noBox.Admin.Client.PostAsync($"{noBox.Department.Url}/request-forms", new { name = "Portal form B", audience = "AllEmployees" })).Expect(HttpStatusCode.Created).Id; // no mailbox registered
 
         async Task<ApiResponse> SubmitAsync(Guid formId) =>
             await emp.User.Client.PostAsync("/api/portal/requests", new { formId, subject = $"Portal {Unique.Id()}", description = "Please help", fields = new Dictionary<string, object>(), submissionId = Guid.NewGuid() });
@@ -388,12 +388,11 @@ public sealed class EmailIdentityTests(HelpdeskFixture fixture) : IClassFixture<
         var ticketId = await fixture.ScalarAsync<Guid>("SELECT id FROM ticketing.tickets WHERE reference = @r", TicketKit.P("r", created));
         Assert.Equal(box.Id, await fixture.ScalarAsync<Guid>("SELECT mailbox_id FROM ticketing.tickets WHERE id = @t", TicketKit.P("t", ticketId))); // the department mailbox is now the ticket's
 
-        // A department with no mailbox: the ticket is created, nothing is sent from anywhere else, and the failure is on record.
+        // D22-A: a department without a usable default mailbox takes no portal requests at all (no mailbox-less ticket is created), and the form is not offered.
         (await SetAutoReplyAsync(noBox, new { enabled = true, forPortal = true, subject = "Ack {{ticket.reference}}", body = "Hello" })).Expect(HttpStatusCode.OK);
-        var orphan = (await SubmitAsync(formB)).Expect(HttpStatusCode.Created).Json.Str("reference");
-        await fixture.DispatchAsync();
-        Assert.Equal(1, await fixture.CountAsync(
-            "SELECT count(*) FROM audit.audit_events e JOIN ticketing.tickets t ON t.id = e.object_id WHERE t.reference = @r AND e.action = 'ticket.auto_reply_failed'", TicketKit.P("r", orphan)));
+        (await SubmitAsync(formB)).Expect(HttpStatusCode.NotFound);
+        Assert.DoesNotContain(formB.ToString(), (await emp.User.Client.GetAsync("/api/portal/forms")).Expect(HttpStatusCode.OK).Body, StringComparison.OrdinalIgnoreCase);
+        (await emp.User.Client.GetAsync($"/api/portal/forms/{formB}")).Expect(HttpStatusCode.NotFound);
         Assert.Equal(0, await OutboundCountAsync(noBox));
     }
 

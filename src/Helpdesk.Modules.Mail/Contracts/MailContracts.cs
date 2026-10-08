@@ -38,6 +38,12 @@ public interface IMailboxDirectory
     Task<ReplyMailbox?> FindReplyMailboxAsync(Guid departmentId, Guid? ticketMailboxId, CancellationToken cancellationToken = default);
 
     /// <summary>The department's active mailboxes (the choices when a ticket is created by hand). Never another department's.</summary>
+    /// <summary>
+    /// True when an email of this ticket has been, or may have been, handed to the outside: queued or sending, sent, uncertain, or failed after a submit started or confirmed
+    /// non-delivered. Once true the ticket's sender identity is permanently fixed (D22). Drafts and failures where nothing was submitted do not count.
+    /// </summary>
+    Task<bool> HasExternalSendAsync(Guid departmentId, Guid ticketId, CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<ReplyMailbox>> ListActiveAsync(Guid departmentId, CancellationToken cancellationToken = default);
 
     Task<IReadOnlyDictionary<Guid, ReplyMailbox>> GetManyAsync(Guid departmentId, IReadOnlyCollection<Guid> mailboxIds, CancellationToken cancellationToken = default);
@@ -112,7 +118,8 @@ public sealed record InboundTicketRequest(
     string BodyText,
     string? BodyHtmlSanitised,
     DateTimeOffset ReceivedAt,
-    string? SystemNote);
+    string? SystemNote,
+    bool Acknowledge = true);
 
 public sealed record InboundMessageRequest(
     Guid DepartmentId,

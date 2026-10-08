@@ -30,7 +30,8 @@ internal sealed record TicketListItemDto(
     MatchDto? Match = null,
     Helpdesk.Modules.Ticketing.Sla.SlaSummaryDto? Sla = null,
     string? MergedInto = null,
-    string? Version = null);
+    string? Version = null,
+    string? LastPublicBy = null);
 
 internal sealed record MailboxRefDto(Guid Id, string Address, string Name);
 
@@ -64,7 +65,8 @@ internal sealed record TicketDetailDto(
     IReadOnlyList<AgentFieldDto>? Fields = null,
     RefDto? Type = null,
     MergedIntoDto? MergedInto = null,
-    IReadOnlyList<MergedTicketDto>? MergedTickets = null);
+    IReadOnlyList<MergedTicketDto>? MergedTickets = null,
+    bool MailboxAssigned = false);
 
 /// <summary>Shown on a merged ticket: where it went, when and by whom.</summary>
 internal sealed record MergedIntoDto(Guid Id, string Reference, string Subject, DateTimeOffset MergedAt, ActorDto? MergedBy);
@@ -125,6 +127,8 @@ internal sealed record CreateTicketRequest(
     Guid? MailboxId = null);
 
 internal sealed record UpdateTicketRequest(string? Version, string? Subject, string? Status, string? Priority);
+
+internal sealed record AssignMailboxRequest(string? Version, Guid? MailboxId);
 
 internal sealed record AssignTicketRequest(string? Version, Guid? TeamId, Guid? AssigneeUserId);
 

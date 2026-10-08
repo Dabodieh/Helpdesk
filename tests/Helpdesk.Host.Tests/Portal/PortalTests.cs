@@ -220,7 +220,7 @@ public sealed class PortalTests(HelpdeskFixture fixture) : IClassFixture<Helpdes
     public async Task A_requester_cannot_claim_a_requester_that_belongs_to_another_account()
     {
         var d = await fixture.NewDeptAsync();
-        var form = await d.FormAsync("General");
+        var form = await d.FormAsync(fixture, "General");
         var alice = await fixture.EmployeeAsync("alice");
         var ticket = await d.TicketForAsync(alice.Email, "Mine");
         Assert.Single((await alice.PortalListAsync()).GetProperty("items").EnumerateArray()); // alice claims her requester

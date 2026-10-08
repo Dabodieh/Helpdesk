@@ -85,6 +85,11 @@ function PortalRequest({ reference }: { reference: string }) {
         <p>
           <StatusBadge status={r.status} label={r.statusLabel} /> <span className="muted small">Opened {formatDateTime(r.createdAt)} · Last update {formatDateTime(r.lastActivityAt)}</span>
         </p>
+        {r.status === 'Waiting' && (
+          <p className="notice info">
+            “Waiting” means we are waiting for some information or for another team or system. It does not always mean there is something for you to do; if we need you, we will say so in the conversation below.
+          </p>
+        )}
         {r.status === 'Resolved' && <p className="notice info">We marked this as resolved. If it isn’t, reply below and we’ll pick it up again.</p>}
         {r.status === 'Closed' && <p className="notice info">This request is closed. Replying below will reopen it.</p>}
       </header>

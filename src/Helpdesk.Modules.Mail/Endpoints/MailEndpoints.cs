@@ -56,6 +56,11 @@ internal static class MailEndpoints
                 TypedResults.Ok(await service.AttentionAsync(departmentId, cursor, limit, ct)))
             .RequirePermission(PermissionCodes.DepartmentMailboxesManage);
 
+        // D12: an audited "create ticket from this message" for ignored mail (not for delivery reports or loops).
+        mail.MapPost("{mailMessageId:guid}/release", async (Guid departmentId, Guid mailMessageId, MailboxService service, CancellationToken ct) =>
+                TypedResults.Ok(await service.ReleaseIgnoredAsync(departmentId, mailMessageId, ct)))
+            .RequirePermission(PermissionCodes.DepartmentMailboxesManage);
+
         mail.MapPost("{mailMessageId:guid}/retry", async (Guid departmentId, Guid mailMessageId, RetryRequest? body, MailboxService service, CancellationToken ct) =>
             {
                 var outcome = await service.RetryAsync(departmentId, mailMessageId, body?.AcceptDuplicateRisk == true, ct);

@@ -27,5 +27,8 @@ public static class PermissionCodes
     public const string TicketsNotesRead = "tickets.notes.read";
     public const string TicketsUpdate = "tickets.update";
     public const string TicketsAssignSelf = "tickets.assign.self";
+
+    /// <summary>Change a ticket's team (routing and escalation) without being able to choose another person as assignee (D21).</summary>
+    public const string TicketsAssignTeam = "tickets.assign.team";
     public const string TicketsAssignAny = "tickets.assign.any";
 }

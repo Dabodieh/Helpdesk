@@ -25,6 +25,11 @@ public sealed class HelpdeskFactory(string connectionString) : WebApplicationFac
         builder.UseSetting("Storage:Provider", "InMemory");
         builder.UseSetting("Attachments:RequireCleanScan", "false");
         builder.UseSetting("Jobs:Enabled", "false");
+
+        // The rate limits are for abuse; the shared test accounts submit far more than a person would. AbuseControlTests lowers them on purpose.
+        builder.UseSetting("RateLimits:PortalCreate:Permits", "100000");
+        builder.UseSetting("RateLimits:PortalReply:Permits", "100000");
+        builder.UseSetting("RateLimits:Search:Permits", "100000");
     }
 }
 

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { listRules } from '../api/automation'
+import { getAutoReply } from '../api/emailIdentity'
 import { listMailboxes } from '../api/mail'
 import { listMembers, listTeams } from '../api/organisation'
 import { canInDepartment } from '../api/permissions'
@@ -28,6 +29,7 @@ export default function DepartmentOverview({ department: d, onOpen }: { departme
   const sla = useQuery({ queryKey: ['sla-policies', d.id], queryFn: () => listSlaPolicies(d.id), enabled: can('department.sla.manage') })
   const rules = useQuery({ queryKey: ['automations', d.id], queryFn: () => listRules(d.id), enabled: can('department.automation.manage') })
   const forms = useQuery({ queryKey: ['request-forms', d.id], queryFn: () => listForms(d.id), enabled: can('department.forms.manage') })
+  const ack = useQuery({ queryKey: ['auto-reply', d.id], queryFn: () => getAutoReply(d.id), enabled: can('department.mailboxes.manage') })
 
   const rows: Row[] = []
   if (members.data) {
@@ -62,14 +64,36 @@ export default function DepartmentOverview({ department: d, onOpen }: { departme
     rows.push({ id: 'automations', label: 'Automations', tone: n > 0 ? 'ok' : 'off', state: n > 0 ? plural(n, 'active rule') : 'None', section: 'automations' })
   }
   if (forms.data) {
-    const n = forms.data.filter((f) => f.isActive).length
+    // A form counts only when at least one requester can use it: active, offered to requesters, and an audience that is not empty (ITSM-006).
+    const usable = forms.data.filter((f) => f.isActive && f.visibleToRequesters && (f.audience === 'AllEmployees' || f.audienceUsers.length > 0))
+    const active = forms.data.filter((f) => f.isActive).length
+    const hasSender = mailboxes.data ? mailboxes.data.some((m) => m.isActive && m.isDefault) : true
+    const n = usable.length
     rows.push({
       id: 'forms',
       label: 'Request forms',
-      tone: n > 0 ? 'ok' : 'off',
-      state: n > 0 ? plural(n, 'active form') : 'None',
-      detail: n > 0 ? undefined : 'Requesters cannot raise tickets through the portal',
+      tone: n > 0 && hasSender ? 'ok' : n > 0 ? 'warn' : 'off',
+      state: n > 0 ? plural(n, 'form') + ' available to requesters' : active > 0 ? `${plural(active, 'active form')}, none available to anyone` : 'None',
+      detail:
+        n === 0
+          ? active > 0
+            ? 'Open a form and choose who may use it (new forms start restricted to selected people)'
+            : 'Requesters cannot raise tickets through the portal'
+          : hasSender
+            ? undefined
+            : 'Requesters cannot submit until the department has a usable default mailbox (set up the mailbox first)',
       section: 'ticketing',
+    })
+  }
+  if (ack.data) {
+    const on = ack.data.enabled && (ack.data.forEmail || ack.data.forPortal)
+    rows.push({
+      id: 'acknowledgements',
+      label: 'Acknowledgements',
+      tone: on ? 'ok' : 'off',
+      state: on ? 'On' : 'Off',
+      detail: on ? [ack.data.forEmail && 'for email', ack.data.forPortal && 'for the portal'].filter(Boolean).join(' and ') : 'Requesters get no automatic confirmation',
+      section: 'mailboxes',
     })
   }
 

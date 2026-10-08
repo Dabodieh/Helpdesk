@@ -214,6 +214,16 @@ export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
         return (
           <td className="col-status">
             {t.mergedInto ? <span className="badge off">Merged into {t.mergedInto}</span> : <StatusPill status={t.status} />}
+            {!t.mergedInto && (t.status === 'Open' || t.status === 'Pending') && t.lastPublicBy === 'Requester' && (
+              <span className="turn turn-us" title="The requester wrote last: waiting for us">
+                Requester replied
+              </span>
+            )}
+            {!t.mergedInto && (t.status === 'Open' || t.status === 'Pending') && t.lastPublicBy === 'Agent' && (
+              <span className="turn turn-them" title="We replied last: waiting for the requester">
+                We replied
+              </span>
+            )}
             <span className="sla-inline">
               <SlaBadge sla={t.sla} />
             </span>

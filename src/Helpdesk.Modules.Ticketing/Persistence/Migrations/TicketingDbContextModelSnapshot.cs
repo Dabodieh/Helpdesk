@@ -1217,6 +1217,10 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_public_activity_at");
 
+                    b.Property<DateTimeOffset?>("MailboxAssignedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("mailbox_assigned_at");
+
                     b.Property<Guid?>("MailboxId")
                         .HasColumnType("uuid")
                         .HasColumnName("mailbox_id");

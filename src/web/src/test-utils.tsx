@@ -89,6 +89,7 @@ export const AGENT_PERMS = [
   'tickets.notes.read',
   'tickets.update',
   'tickets.assign.self',
+  'tickets.assign.team',
 ]
 export const membership = (permissions: string[], role = 'Agent') => ({
   departmentId: 'd1',
@@ -128,6 +129,7 @@ export function makeDetail(over: Partial<TicketDetail> = {}): TicketDetail {
     version: 'v1',
     requester: { id: 'r1', displayName: 'Rita Requester', email: 'rita@example.test', openTicketCount: 2, totalTicketCount: 5 },
     mailbox: null,
+    mailboxAssigned: false,
     participants: [],
     ...over,
   }

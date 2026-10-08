@@ -347,9 +347,9 @@ internal sealed class PortalRequestService(
         var formId = request.FormId!.Value;
         var form = await formAccess.Usable().AsNoTracking().SingleOrDefaultAsync(f => f.Id == formId, ct) ?? throw new NotFoundException();
         var department = await organisation.FindDepartmentAsync(form.DepartmentId, ct);
-        if (department is null || !department.IsActive)
+        if (department is null || !department.IsActive || (await formAccess.DepartmentsWithSenderAsync([form.DepartmentId], ct)).Count == 0)
         {
-            throw new NotFoundException();
+            throw new NotFoundException(); // D22-A: no usable default mailbox, so the form cannot be submitted
         }
 
         var asked = (await catalog.ForFormAsync(form.Id, form.DepartmentId, ct)).Where(b => b.Field.RequesterVisible).ToList();

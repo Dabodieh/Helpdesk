@@ -83,7 +83,7 @@ public sealed class TicketTypesAndFieldsTests(HelpdeskFixture fixture) : IClassF
         var foreign = await FieldAsync(other, PortalKit.Field("Asset", "ShortText", key: "asset")); // the same key in another department is fine
         var type = await TypeAsync(d, "Hardware");
         var foreignType = await TypeAsync(other, "Hardware");
-        var (formId, _) = await d.FormAsync("Hardware form");
+        var (formId, _) = await d.FormAsync(fixture, "Hardware form");
 
         await LinkAsync(d, type, new { fieldId = mine.Id });
         (await d.Admin.Client.PutAsync($"{d.Department.Url}/ticket-types/{type.Id}/fields", new { fields = new[] { new { fieldId = foreign.Id } } })).Expect(HttpStatusCode.BadRequest);

@@ -343,8 +343,8 @@ public sealed class TicketIsolationLeakageTests(HelpdeskFixture fixture) : IClas
         var f = await w.NewTicketAsync();
         var teamed = (await w.Lead.AssignAsync(f.Id, f.Version, w.TeamA.Id, null)).Expect(HttpStatusCode.OK);
 
-        (await w.Agent.AssignAsync(f.Id, teamed.Version, null, w.Agent.Id)).Expect(HttpStatusCode.Forbidden);          // would clear the team
-        (await w.Agent.AssignAsync(f.Id, teamed.Version, w.TeamB.Id, w.Agent.Id)).Expect(HttpStatusCode.Forbidden);    // would change the team
+        (await w.Agent.AssignAsync(f.Id, teamed.Version, null, w.Lead.Id)).Expect(HttpStatusCode.Forbidden);           // clearing the team (routing, D21) never also lets an agent pick someone else
+        (await w.Agent.AssignAsync(f.Id, teamed.Version, w.TeamB.Id, w.Lead.Id)).Expect(HttpStatusCode.Forbidden);     // a team change never lets an agent pick someone else either
         (await w.Agent.AssignAsync(f.Id, teamed.Version, w.TeamA.Id, w.Lead.Id)).Expect(HttpStatusCode.Forbidden);    // someone else
         (await w.Agent.AssignAsync(f.Id, teamed.Version, w.TeamA.Id, null)).Expect(HttpStatusCode.Forbidden);          // not the assignee: nothing to release
         (await w.Viewer.AssignAsync(f.Id, teamed.Version, w.TeamA.Id, w.Viewer.Id)).Expect(HttpStatusCode.Forbidden);

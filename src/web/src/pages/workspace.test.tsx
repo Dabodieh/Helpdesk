@@ -45,15 +45,31 @@ test('permission-aware controls: a viewer sees values only, no composer and no e
   expect(screen.queryByRole('textbox', { name: /reply|note/i })).not.toBeInTheDocument()
 })
 
-test('permission-aware controls: an agent edits status and priority, but team needs assign.any', async () => {
+test('permission-aware controls: an agent edits status, priority and team (D21), the assignee stays limited to themself', async () => {
   mockFetch(ticketRoutes(agentMe()))
   await openTicket()
   expect(pane().getByRole('combobox', { name: 'Status' })).toBeEnabled()
   expect(pane().getByRole('combobox', { name: 'Priority' })).toBeEnabled()
-  expect(pane().queryByRole('combobox', { name: 'Team' })).not.toBeInTheDocument()
+  expect(pane().getByRole('combobox', { name: 'Team' })).toBeEnabled() // routing is open to agents (tickets.assign.team)
   // unassigned ticket: assign.self allows taking it
   const assignee = pane().getByRole('combobox', { name: 'Assignee' })
   expect(within(assignee).getByRole('option', { name: /\(me\)/ })).toBeInTheDocument()
+})
+
+test('resolving from the properties rail warns that the requester gets no message, and can send the agent to the reply box first (D24)', async () => {
+  const calls = mockFetch({ ...ticketRoutes(), 'PATCH /api/tickets/t1': (c) => makeDetail({ ...(c.body as object), version: 'v2' }) })
+  await openTicket()
+  fireEvent.change(pane().getByRole('combobox', { name: 'Status' }), { target: { value: 'Resolved' } })
+  const dialog = await screen.findByRole('dialog', { name: /Resolve without a reply/ })
+  expect(calls.some((c) => c.method === 'PATCH')).toBe(false) // nothing happens before the choice
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Write a reply first' }))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(calls.some((c) => c.method === 'PATCH')).toBe(false)
+
+  fireEvent.change(pane().getByRole('combobox', { name: 'Status' }), { target: { value: 'Resolved' } })
+  fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Resolve without a message' }))
+  await waitFor(() => expect(calls.some((c) => c.method === 'PATCH')).toBe(true))
+  expect(calls.find((c) => c.method === 'PATCH')!.body).toMatchObject({ status: 'Resolved' })
 })
 
 test('permission-aware controls: assign.self cannot reassign a ticket owned by someone else', async () => {

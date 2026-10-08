@@ -3375,3 +3375,18 @@ table.compact th {
 .dialog-actions.start {
   justify-content: flex-start;
 }
+
+/* Whose turn it is (D20): text first, colour second. */
+.turn {
+  display: block;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  margin-top: 2px;
+}
+.turn-us {
+  color: var(--accent);
+  font-weight: 600;
+}
+.turn-them {
+  color: var(--muted);
+}

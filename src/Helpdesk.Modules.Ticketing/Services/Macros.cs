@@ -454,7 +454,7 @@ internal sealed class MacroRunService(
     private async Task<HashSet<string>> AllowedAsync(Guid departmentId, CancellationToken ct)
     {
         var allowed = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var permission in new[] { PermissionCodes.TicketsUpdate, PermissionCodes.TicketsNote, PermissionCodes.TicketsReply, PermissionCodes.TicketsAssignAny, PermissionCodes.TicketsAssignSelf })
+        foreach (var permission in new[] { PermissionCodes.TicketsUpdate, PermissionCodes.TicketsNote, PermissionCodes.TicketsReply, PermissionCodes.TicketsAssignAny, PermissionCodes.TicketsAssignSelf, PermissionCodes.TicketsAssignTeam })
         {
             if (await authorizer.CheckAsync(permission, departmentId, ct) == AccessOutcome.Allowed)
             {
@@ -474,6 +474,12 @@ internal sealed class MacroRunService(
             allowed.Add("assign.self");
         }
 
+        // D21: routing a ticket to a team is open to every agent; choosing a person is not.
+        if (allowed.Contains(PermissionCodes.TicketsAssignTeam) || allowed.Contains(PermissionCodes.TicketsAssignAny))
+        {
+            allowed.Add("assign.team");
+        }
+
         return allowed;
     }
 
@@ -486,7 +492,10 @@ internal sealed class MacroRunService(
                 case MacroActionTypes.SetStatus or MacroActionTypes.SetPriority or MacroActionTypes.SetType or MacroActionTypes.SetField:
                     yield return PermissionCodes.TicketsUpdate;
                     break;
-                case MacroActionTypes.SetTeam or MacroActionTypes.SetAssignee or MacroActionTypes.ClearAssignee:
+                case MacroActionTypes.SetTeam:
+                    yield return "assign.team";
+                    break;
+                case MacroActionTypes.SetAssignee or MacroActionTypes.ClearAssignee:
                     yield return "assign";
                     break;
                 case MacroActionTypes.AssignToMe:

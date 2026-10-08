@@ -71,7 +71,7 @@ public sealed class DepartmentIsolationMatrixTests(HelpdeskFixture fixture) : IC
 
         var type = (await it.Admin.Client.PostAsync($"{it.Department.Url}/ticket-types", new { name = $"{token} Incident" })).Expect(HttpStatusCode.Created);
         var field = (await it.Admin.Client.PostAsync($"{it.Department.Url}/ticket-fields", PortalKit.Field($"{token} Asset tag", "ShortText", key: "asset_tag"))).Expect(HttpStatusCode.Created);
-        var form = (await it.FormAsync($"{token} Request form")).FormId;
+        var form = (await it.FormAsync(fixture, $"{token} Request form")).FormId;
         var team = await fixture.CreateTeamAsync(it.Department, $"{token} Network");
         var hrTicket = (await hr.TicketForAsync($"hr-{Unique.Id()}@example.test", "HR matter")).Expect(HttpStatusCode.Created);
         var both = await fixture.NewMemberAsync(it.Department, "Agent");
@@ -314,7 +314,7 @@ public sealed class DepartmentIsolationMatrixTests(HelpdeskFixture fixture) : IC
         var w = await WorldAsync();
         var hr = w.Hr;
         var hrType = (await hr.Admin.Client.PostAsync($"{hr.Department.Url}/ticket-types", new { name = "HR type" })).Expect(HttpStatusCode.Created);
-        var hrForm = (await hr.FormAsync("HR form")).FormId;
+        var hrForm = (await hr.FormAsync(fixture, "HR form")).FormId;
 
         await SameAsRandomAsync("form -> type", id => hr.Admin.Client.PostAsync($"{hr.Department.Url}/request-forms", new { name = $"F {Unique.Id()}", ticketTypeId = id }), w.ItType.Id);
         await SameAsRandomAsync("form patch -> type", id => hr.Admin.Client.PatchAsync($"{hr.Department.Url}/request-forms/{hrForm}", new { version = "1", ticketTypeId = id }), w.ItType.Id);

@@ -131,6 +131,9 @@ internal sealed class Ticket
     /// <summary>The mailbox the ticket arrived through (replies leave from it while it is active); null for tickets created in the web UI.</summary>
     public Guid? MailboxId { get; set; }
 
+    /// <summary>Set when an authorised user explicitly assigned (or corrected) the mailbox of a ticket that had none (D22). Null for the mailbox chosen at creation, which is never changed.</summary>
+    public DateTimeOffset? MailboxAssignedAt { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset UpdatedAt { get; set; }

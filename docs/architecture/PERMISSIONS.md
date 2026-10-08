@@ -22,7 +22,8 @@
 | `department.mailboxes.manage` | administrative | DepartmentAdmin; PlatformAdmin (registering a NEW mailbox additionally requires Platform Admin, ADR-019) |
 | `tickets.read`, `tickets.notes.read` | **content** | Viewer, Agent, TeamLead, DepartmentAdmin (membership only) |
 | `tickets.create`, `tickets.reply`, `tickets.note`, `tickets.update`, `tickets.assign.self` | **content** | Agent, TeamLead, DepartmentAdmin (membership only) |
-| `tickets.assign.any` | **content** | TeamLead, DepartmentAdmin (membership only) |
+| `tickets.assign.team` | **content** | Agent, TeamLead, DepartmentAdmin (membership only): change a ticket's team for routing/escalation (D21) |
+| `tickets.assign.any` | **content** | TeamLead, DepartmentAdmin (membership only): choose another person as assignee |
 Activation (`isActive`) of a department needs `platform.departments.manage`.
 Phase 2 adds the ticket resource and the ticket permission set (all *content* kind, membership only): `tickets.read`, `tickets.create`, `tickets.reply`, `tickets.note`, `tickets.notes.read`, `tickets.update`, `tickets.assign.self`, `tickets.assign.any`; role mapping and enforcement details in `TICKETING.md`. The Phase 1 probe endpoint was removed.
 TeamLead-scoped team management is deferred (backlog): in Phase 1 `teams.manage` is DepartmentAdmin only.
@@ -33,6 +34,7 @@ TeamLead-scoped team management is deferred (backlog): in Phase 1 `teams.manage`
 | tickets.read, tickets.notes.read | x | x | x | x |
 | tickets.create / reply / note / update (status, priority, subject) | | x | x | x |
 | tickets.assign.self | | x | x | x |
+| tickets.assign.team (routing, D21) | | x | x | x |
 | tickets.assign.any / reassign | | | x | x |
 | tickets.move (cross-department, needs target too) | | | | x |
 | tickets.delete | | | | x |

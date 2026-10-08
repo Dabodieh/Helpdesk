@@ -15,7 +15,7 @@ namespace Helpdesk.Host.Tests.Ticketing;
 /// <summary>ITicketIngress (D-15 reopen rules), the fail-closed department scope and the ticket permission model.</summary>
 public sealed class TicketIngressAndScopeTests(HelpdeskFixture fixture) : IClassFixture<HelpdeskFixture>
 {
-    private static readonly string[] AgentTicketPermissions = ["tickets.create", "tickets.note", "tickets.notes.read", "tickets.read", "tickets.reply", "tickets.assign.self", "tickets.update"];
+    private static readonly string[] AgentTicketPermissions = ["tickets.create", "tickets.note", "tickets.notes.read", "tickets.read", "tickets.reply", "tickets.assign.self", "tickets.assign.team", "tickets.update"];
 
     private static Guid RequesterOf(ApiResponse ticket) => ticket.Json.GetProperty("requester").GetProperty("id").GetGuid();
 
@@ -200,13 +200,13 @@ public sealed class TicketIngressAndScopeTests(HelpdeskFixture fixture) : IClass
         string[] codes =
         [
             PermissionCodes.TicketsRead, PermissionCodes.TicketsCreate, PermissionCodes.TicketsReply, PermissionCodes.TicketsNote,
-            PermissionCodes.TicketsNotesRead, PermissionCodes.TicketsUpdate, PermissionCodes.TicketsAssignSelf, PermissionCodes.TicketsAssignAny,
+            PermissionCodes.TicketsNotesRead, PermissionCodes.TicketsUpdate, PermissionCodes.TicketsAssignSelf, PermissionCodes.TicketsAssignTeam, PermissionCodes.TicketsAssignAny,
         ];
         Assert.All(codes, c => Assert.Equal(PermissionKind.Content, PermissionCatalogue.Get(c).Kind));
         Assert.All(codes, c => Assert.Equal(EvaluationOutcome.NotFound, PermissionEvaluator.Evaluate(PermissionCatalogue.Get(c), true, null, true))); // never via the platform flag
 
         string[] viewer = [PermissionCodes.TicketsRead, PermissionCodes.TicketsNotesRead];
-        string[] agent = [.. viewer, PermissionCodes.TicketsCreate, PermissionCodes.TicketsReply, PermissionCodes.TicketsNote, PermissionCodes.TicketsUpdate, PermissionCodes.TicketsAssignSelf];
+        string[] agent = [.. viewer, PermissionCodes.TicketsCreate, PermissionCodes.TicketsReply, PermissionCodes.TicketsNote, PermissionCodes.TicketsUpdate, PermissionCodes.TicketsAssignSelf, PermissionCodes.TicketsAssignTeam];
         string[] lead = [.. agent, PermissionCodes.TicketsAssignAny];
         foreach (var (role, expected) in new[] { (DepartmentRoles.Viewer, viewer), (DepartmentRoles.Agent, agent), (DepartmentRoles.TeamLead, lead), (DepartmentRoles.DepartmentAdmin, lead) })
         {

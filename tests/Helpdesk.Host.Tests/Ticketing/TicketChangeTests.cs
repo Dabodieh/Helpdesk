@@ -164,7 +164,7 @@ public sealed class TicketChangeTests(HelpdeskFixture fixture) : IClassFixture<H
 
         (await d.Viewer.AssignAsync(t.Id, t.Version, null, d.Viewer.Id)).Expect(HttpStatusCode.Forbidden); // no assign permission at all
         (await d.Agent.AssignAsync(t.Id, t.Version, null, d.Lead.Id)).Expect(HttpStatusCode.Forbidden);     // someone else
-        (await d.Agent.AssignAsync(t.Id, t.Version, team.Id, d.Agent.Id)).Expect(HttpStatusCode.Forbidden); // changes the team
+        (await d.Agent.AssignAsync(t.Id, t.Version, team.Id, d.Lead.Id)).Expect(HttpStatusCode.Forbidden); // routing is open to agents (D21), choosing another person is not
         (await d.Agent.AssignAsync(t.Id, t.Version, null, null)).Expect(HttpStatusCode.Forbidden);          // not the assignee: nothing to release
 
         var taken = (await d.Agent.AssignAsync(t.Id, t.Version, null, d.Agent.Id)).Expect(HttpStatusCode.OK);

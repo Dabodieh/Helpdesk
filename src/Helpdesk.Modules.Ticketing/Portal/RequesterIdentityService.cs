@@ -46,9 +46,10 @@ internal sealed class RequesterIdentityService(TicketingDbContext db, ICurrentUs
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var owner = await db.RequesterLinks.AsNoTracking().SingleOrDefaultAsync(l => l.RequesterId == requester.Id, ct);
-        if (owner is null && !created && await db.Tickets.AsNoTracking().IgnoreDepartmentScope().AnyAsync(t => t.RequesterId == requester.Id, ct))
+        if (owner is null && !created)
         {
-            // Unproven history under this address (email-created tickets, or the previous holder of the address): never inherited on the strength of the address alone.
+            // D15: the address is a mutable claim, not proof. An existing requester row for it (with history or without) is never taken over on the strength of the address alone:
+            // only a requester row created by this very submission, or one already linked to this account, belongs to it. Anything else needs an administrator's explicit decision.
             await audit.WriteAsync(TicketAuditActions.RequesterLinkAmbiguous, "requester", requester.Id, departmentId, null, new { userId }, ct);
             await tx.CommitAsync(ct);
             throw new ConflictException("Your address already has request history that is not linked to your account. Ask an administrator to resolve it.", ProblemCodes.Conflict);

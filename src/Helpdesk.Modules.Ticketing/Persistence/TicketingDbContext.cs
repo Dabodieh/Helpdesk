@@ -98,6 +98,7 @@ internal sealed partial class TicketingDbContext(DbContextOptions<TicketingDbCon
             e.Property(x => x.AssigneeUserId).HasColumnName("assignee_user_id");
             e.Property(x => x.CreatedByUserId).HasColumnName("created_by_user_id");
             e.Property(x => x.MailboxId).HasColumnName("mailbox_id");
+            e.Property(x => x.MailboxAssignedAt).HasColumnName("mailbox_assigned_at");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
             e.Property(x => x.LastPublicActivityAt).HasColumnName("last_public_activity_at");
