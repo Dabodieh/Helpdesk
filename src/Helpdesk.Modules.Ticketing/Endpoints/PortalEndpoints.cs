@@ -3,9 +3,11 @@ using Helpdesk.Modules.Ticketing.Fields;
 using Helpdesk.Modules.Ticketing.Portal;
 using Helpdesk.SharedKernel.Authorization;
 using Helpdesk.SharedKernel.Errors;
+using Helpdesk.SharedKernel.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
 
 namespace Helpdesk.Modules.Ticketing.Endpoints;
@@ -17,6 +19,9 @@ namespace Helpdesk.Modules.Ticketing.Endpoints;
 /// </summary>
 internal static class PortalEndpoints
 {
+    /// <summary>Largest portal reply request: 25 MiB attachment (the attachment limit) plus 4 MiB for the other parts.</summary>
+    private const long MaxReplyRequestBytes = (25L + 4) * 1024 * 1024;
+
     private sealed record ReplyJson(string? Body);
 
     private sealed record FieldsJson(Dictionary<string, JsonElement>? Fields);
@@ -40,6 +45,7 @@ internal static class PortalEndpoints
                 var created = await requests.CreateAsync(body, ct);
                 return TypedResults.Created($"/api/portal/requests/{created.Reference}", created);
             })
+            .RequireRateLimiting(RateLimitPolicies.PortalCreate)
             .RequireAuthenticatedOnly();
         portal.MapGet("requests/{reference}", async (string reference, PortalRequestService requests, CancellationToken ct) => TypedResults.Ok(await requests.GetAsync(reference, ct)))
             .RequireAuthenticatedOnly();
@@ -51,6 +57,8 @@ internal static class PortalEndpoints
                 IReadOnlyList<IFormFile> files = [];
                 if (http.HasFormContentType)
                 {
+                    // Explicit and bounded (SEC-003): one maximal attachment plus the text, roughly what the server default allowed implicitly.
+                    http.LimitRequestBody(MaxReplyRequestBytes);
                     var form = await http.ReadFormAsync(ct);
                     body = form["body"].ToString();
                     files = [.. form.Files];
@@ -62,6 +70,7 @@ internal static class PortalEndpoints
 
                 return TypedResults.Created($"/api/portal/requests/{reference}", await requests.ReplyAsync(reference, body, files, ct));
             })
+            .RequireRateLimiting(RateLimitPolicies.PortalReply)
             .RequireAuthenticatedOnly();
 
         portal.MapPut("requests/{reference}/fields", async (string reference, FieldsJson body, PortalRequestService requests, CancellationToken ct) =>

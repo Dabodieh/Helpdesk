@@ -20,7 +20,7 @@ namespace Helpdesk.Modules.Mail.Services;
 /// The outbox side used by Ticketing: the reply row is inserted on the caller's own connection and transaction, so the ticket
 /// message and its outbound mail commit or roll back together (nothing is "sent" that the ticket does not show, and vice versa).
 /// </summary>
-internal sealed class MailOutbox(IMailJobScheduler scheduler, TimeProvider clock, IAuditWriter auditWriter, ICurrentUser current) : IMailOutbox
+internal sealed class MailOutbox(IMailJobScheduler scheduler, TimeProvider clock, IAuditWriter auditWriter, ICurrentUser current, Microsoft.Extensions.Options.IOptions<MailOptions> options) : IMailOutbox
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -101,7 +101,7 @@ internal sealed class MailOutbox(IMailJobScheduler scheduler, TimeProvider clock
         WHERE mb.id = @mailbox_id AND mb.department_id = @department_id AND mb.is_active
         """;
 
-    public async Task<Guid> QueueAutoReplyAsync(OutboundAutoReplyRequest request, DbContext caller, CancellationToken cancellationToken = default)
+    public async Task<Guid?> QueueAutoReplyAsync(OutboundAutoReplyRequest request, DbContext caller, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(caller);
@@ -112,6 +112,16 @@ internal sealed class MailOutbox(IMailJobScheduler scheduler, TimeProvider clock
 
         var id = Guid.CreateVersion7();
         var now = clock.GetUtcNowMicroseconds();
+
+        // Per-mailbox cap (D11): the sender address is unauthenticated and can be rotated, so the limit is on what the MAILBOX sends.
+        var since = now - TimeSpan.FromMinutes(options.Value.AcknowledgementWindowMinutes);
+        var recent = await caller.Database.SqlQuery<long>(
+            $"SELECT count(*) AS \"Value\" FROM mail.messages WHERE mailbox_id = {request.MailboxId} AND direction = 'Outbound' AND flags = 'auto_reply' AND created_at > {since}").SingleAsync(cancellationToken);
+        if (recent >= options.Value.AcknowledgementLimitPerWindow)
+        {
+            return null;
+        }
+
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
         var subject = request.Subject.ReplaceLineEndings(" ").Trim();
         var inserted = await caller.Database.ExecuteSqlRawAsync(

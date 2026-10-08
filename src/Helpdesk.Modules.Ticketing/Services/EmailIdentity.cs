@@ -322,11 +322,17 @@ internal sealed class AutoReplyService(
         }
 
         var values = Values(requester.DisplayName, ticket.Reference, ticket.Subject, departmentName, mailbox);
-        var id = await outbox.QueueAutoReplyAsync(
+        var queued = await outbox.QueueAutoReplyAsync(
             new OutboundAutoReplyRequest(
                 ticket.DepartmentId, mailbox.MailboxId, ticket.Id, ticket.Reference, new MailParticipant(requester.Email, requester.DisplayName),
                 TemplateText.OneLine(TemplateText.Render(config.SubjectTemplate, values, TemplateText.OneLine)), TemplateText.Render(config.BodyTemplate, values, x => x)),
             db, ct);
+        if (queued is not { } id)
+        {
+            await audit.WriteSystemAsync(TicketAuditActions.AutoReplyFailed, TicketingAudit.TicketObject, ticket.Id, ticket.DepartmentId, null, new { reason = "mailbox_limit", source }, ct);
+            return null;
+        }
+
         await audit.WriteSystemAsync(TicketAuditActions.AutoReplyQueued, TicketingAudit.TicketObject, ticket.Id, ticket.DepartmentId, null, new { source, mailboxId = mailbox.MailboxId }, ct);
         return id;
     }

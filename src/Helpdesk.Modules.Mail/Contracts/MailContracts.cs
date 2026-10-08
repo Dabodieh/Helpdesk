@@ -90,8 +90,8 @@ public interface IMailOutbox
     /// </summary>
     Task<Guid> QueueReplyAsync(OutboundReplyRequest request, DbContext caller, CancellationToken cancellationToken = default);
 
-    /// <summary>Queues an automatic acknowledgement on the caller's open transaction (so it commits with the ticket it acknowledges). Same mailbox rule as replies.</summary>
-    Task<Guid> QueueAutoReplyAsync(OutboundAutoReplyRequest request, DbContext caller, CancellationToken cancellationToken = default);
+    /// <summary>Queues an automatic acknowledgement on the caller's open transaction (so it commits with the ticket it acknowledges). Same mailbox rule as replies. Null when the mailbox has reached its acknowledgement limit for the window (nothing is queued).</summary>
+    Task<Guid?> QueueAutoReplyAsync(OutboundAutoReplyRequest request, DbContext caller, CancellationToken cancellationToken = default);
 
     /// <summary>Asks the scheduler to send soon (a periodic dispatcher also picks queued rows up, so a lost nudge is harmless).</summary>
     Task NotifyQueuedAsync(Guid outboundId, CancellationToken cancellationToken = default);

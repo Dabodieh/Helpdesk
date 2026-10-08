@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using Helpdesk.Host.Tests.Infrastructure;
 using Helpdesk.Host.Tests.Portal;
 using Helpdesk.Host.Tests.Ticketing;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Helpdesk.Host.Tests.Mail;
 
@@ -58,6 +59,35 @@ public sealed class EmailIdentityTests(HelpdeskFixture fixture) : IClassFixture<
         await fixture.CountAsync("SELECT count(*) FROM mail.messages WHERE department_id = @d AND direction = 'Outbound' AND (@f::text IS NULL OR @f = ANY(string_to_array(flags, ',')))", TicketKit.P("d", d.Id), new Npgsql.NpgsqlParameter("f", NpgsqlTypes.NpgsqlDbType.Text) { Value = (object?)flag ?? DBNull.Value });
 
     // ----- sender identity -----
+
+    [Fact]
+    public async Task One_mailbox_sends_only_a_capped_number_of_acknowledgements_per_window_but_still_creates_every_ticket()
+    {
+        var d = await fixture.NewDeptAsync();
+        var box = await fixture.CreateMailboxAsync(d);
+        (await SetAutoReplyAsync(d, new { enabled = true, forEmail = true, forPortal = false, subject = "Got it {{ticket.reference}}", body = "Hi {{requester.name}}" })).Expect(HttpStatusCode.OK);
+        var options = fixture.Factory.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<Helpdesk.Modules.Mail.Services.MailOptions>>().Value;
+        var original = options.AcknowledgementLimitPerWindow;
+        options.AcknowledgementLimitPerWindow = 2;
+        try
+        {
+            // Four different (possibly forged) senders: the per-sender limit never trips, the per-mailbox cap does.
+            var marker = Unique.Id();
+            for (var i = 0; i < 4; i++)
+            {
+                await fixture.ReceiveAsync(box, MailKit.Mail(MailKit.NewSender(), $"Flood {marker} {i}"));
+            }
+
+            await fixture.DispatchAsync();
+            Assert.Equal(4, (await d.Agent.TicketsAsync(d, $"Flood {marker}")).Count);
+            Assert.Equal(2, fixture.Fake().SentMail(box.Address).Count);
+            Assert.Equal(2, await fixture.CountAsync("SELECT count(*) FROM audit.audit_events WHERE action = 'ticket.auto_reply_failed' AND department_id = @d", TicketKit.P("d", d.Department.Id)));
+        }
+        finally
+        {
+            options.AcknowledgementLimitPerWindow = original;
+        }
+    }
 
     [Fact]
     public async Task Every_reply_leaves_from_the_ticket_mailbox_with_that_mailbox_as_reply_to_whoever_sends_it_and_whichever_team_owns_the_ticket()

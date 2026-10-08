@@ -28,6 +28,16 @@ internal sealed class MailOptions
     [Range(1, 1440)]
     public int SenderWindowMinutes { get; set; } = 10;
 
+    /// <summary>
+    /// Automatic acknowledgements one mailbox sends per window (MSG-005, D11). A forged or rotating From address cannot make the mailbox send more than this; beyond it the
+    /// ticket is still created and the missing acknowledgement is audited. Provisional starting values: tune to the real inbound volume.
+    /// </summary>
+    [Range(1, 100000)]
+    public int AcknowledgementLimitPerWindow { get; set; } = 60;
+
+    [Range(1, 1440)]
+    public int AcknowledgementWindowMinutes { get; set; } = 10;
+
     public GraphOptions Graph { get; set; } = new();
 }
 

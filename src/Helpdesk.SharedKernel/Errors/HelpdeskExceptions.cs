@@ -12,6 +12,7 @@ public static class ProblemCodes
     public const string Inactive = "inactive";
     public const string InvalidState = "invalid_state";
     public const string CsrfInvalid = "csrf_invalid";
+    public const string RateLimited = "rate_limited";
 }
 
 /// <summary>Base for errors that map to a specific HTTP problem response. The Host maps these in one place.</summary>

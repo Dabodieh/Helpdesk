@@ -73,6 +73,8 @@ try
 
     builder.Services.Configure<ForwardedHeadersOptions>(o => ProductionHosting.ConfigureForwardedHeaders(o, builder.Configuration));
     builder.Services.AddProductionSettingsGuard();
+    builder.Services.AddAbuseControls(builder.Configuration);
+    builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = AbuseControls.DefaultMaxRequestBodyBytes);
 
     builder.Services.AddOpenTelemetry()
         .ConfigureResource(r => r.AddService("helpdesk-host"))
@@ -122,6 +124,7 @@ try
     app.UseRealtimeOriginCheck();
     app.UseRouting();
     app.UseIdentityModule();   // authentication + CSRF validation
+    app.UseRateLimiter();      // per-user policies need the signed-in user
     app.UseAuthorization();
     app.UseJobDashboard(builder.Configuration);
 

@@ -150,6 +150,19 @@ public sealed class AttachmentTests(HelpdeskFixture fixture) : IClassFixture<Hel
     [InlineData("a.txt", new byte[] { 0x01 }, true)]
     [InlineData("a.unknownext", new byte[] { 0x01 }, true)]
     [InlineData("a.sh", new byte[] { 0x01 }, false)]
+    [InlineData("a.docm", new byte[] { 0x50, 0x4B, 0x03, 0x04 }, false)]
+    [InlineData("a.xlsm", new byte[] { 0x50, 0x4B, 0x03, 0x04 }, false)]
+    [InlineData("a.pptm", new byte[] { 0x50, 0x4B, 0x03, 0x04 }, false)]
+    [InlineData("a.xll", new byte[] { 0x01 }, false)]
+    [InlineData("a.iso", new byte[] { 0x01 }, false)]
+    [InlineData("a.vhdx", new byte[] { 0x01 }, false)]
+    [InlineData("a.html", new byte[] { 0x01 }, false)]
+    [InlineData("a.svg", new byte[] { 0x01 }, false)]
+    [InlineData("a.url", new byte[] { 0x01 }, false)]
+    [InlineData("a.scf", new byte[] { 0x01 }, false)]
+    [InlineData("a.one", new byte[] { 0x01 }, false)]
+    [InlineData("a.msix", new byte[] { 0x01 }, false)]
+    [InlineData("report.xlsm.pdf", new byte[] { 0x25, 0x50, 0x44, 0x46 }, false)]
     public void Signatures_and_blocked_types_are_enforced(string name, byte[] content, bool accepted) =>
         Assert.Equal(accepted, AttachmentValidator.Validate(name, content, 1024).Accepted);
 }

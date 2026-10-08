@@ -18,6 +18,14 @@ internal static class AttachmentValidator
     {
         "exe", "dll", "bat", "cmd", "com", "scr", "msi", "msp", "ps1", "psm1", "vbs", "vbe", "js", "jse", "wsf", "wsh", "jar",
         "lnk", "hta", "cpl", "reg", "sh", "apk", "app", "pif", "gadget", "inf",
+
+        // D13 (until a malware scanner exists): macro-enabled Office files and add-ins, disk and container images, HTML/SVG, shortcuts and other launchers.
+        // Legitimate macro-enabled documents may be allowed only after a clean scan, once a scanner exists.
+        "docm", "dotm", "xlsm", "xltm", "xlam", "xll", "wll", "pptm", "potm", "ppam", "ppsm", "sldm", "one",
+        "iso", "img", "vhd", "vhdx", "dmg",
+        "html", "htm", "xhtml", "svg",
+        "url", "scf", "library-ms", "settingcontent-ms", "chm",
+        "msix", "msixbundle", "appx", "appxbundle", "appinstaller",
     };
 
     private static readonly Dictionary<string, string> ContentTypes = new(StringComparer.OrdinalIgnoreCase)

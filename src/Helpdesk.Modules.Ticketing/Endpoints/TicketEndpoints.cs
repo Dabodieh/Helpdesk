@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
 
 namespace Helpdesk.Modules.Ticketing.Endpoints;
@@ -82,6 +83,7 @@ internal static class TicketEndpoints
         // Authorization is the department scope of the query itself (accessible departments for tickets.read).
         app.MapGet("/api/tickets", async ([AsParameters] TicketListQuery query, TicketQueryService queries, CancellationToken ct) =>
                 TypedResults.Ok(await queries.ListAsync(query, ct)))
+            .RequireRateLimiting(Helpdesk.SharedKernel.Security.RateLimitPolicies.Search)
             .RequireAuthenticatedOnly()
             .WithTags("Tickets");
 
