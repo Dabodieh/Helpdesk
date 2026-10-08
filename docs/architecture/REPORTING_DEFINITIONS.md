@@ -13,6 +13,8 @@ The one place that says what a headline figure means. The code lives in `QueuePr
 | First response when a ticket is resolved or closed without a reply | Not applicable: neither met nor breached (D18) | SLA state `NotApplicable` |
 | Created in a period | Every ticket raised in it, including one merged away later (it was raised) | `QueuePredicates.CreatedBetween` |
 | Merged volume | Duplicates merged away, reported as their own figure, never as backlog or independent demand | `QueuePredicates.MergedAway` |
+| Received in a period | `GET /api/departments/{id}/reports/volume?from&to` (yyyy-MM-dd, Europe/London days, inclusive, max 366 days, default last 30). Same rule as Created in a period | `DepartmentVolumeReportService` |
+| Resolved in a period | Distinct tickets that moved into Resolved, or into Closed from an open state, in the period (lifecycle record); merged sources excluded; reopen and re-resolve counts once. Team split uses the ticket's current team | `DepartmentVolumeReportService` |
 | Who spoke last | The latest PUBLIC message's author (requester or agent); notes never count | ticket list `lastPublicBy` |
 
 ## Sources of history

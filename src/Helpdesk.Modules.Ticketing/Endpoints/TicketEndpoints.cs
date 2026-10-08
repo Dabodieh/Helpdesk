@@ -43,6 +43,12 @@ internal static class TicketEndpoints
             .RequirePermission(PermissionCodes.TicketsRead)
             .WithTags("Dashboard");
 
+        // Historical volume (received and resolved) of ONE department; counts only. Same permission as the dashboard.
+        app.MapGet("/api/departments/{departmentId:guid}/reports/volume",
+                async (Guid departmentId, string? from, string? to, DepartmentVolumeReportService report, CancellationToken ct) => TypedResults.Ok(await report.GetAsync(departmentId, from, to, ct)))
+            .RequirePermission(PermissionCodes.TicketsRead)
+            .WithTags("Reports");
+
         app.MapGet("/api/departments/{departmentId:guid}/requesters/lookup",
                 async (Guid departmentId, string? q, RequesterService requesters, CancellationToken ct) =>
                     TypedResults.Ok(await requesters.LookupAsync(departmentId, q, ct)))
