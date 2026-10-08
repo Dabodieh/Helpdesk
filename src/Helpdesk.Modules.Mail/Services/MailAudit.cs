@@ -23,6 +23,7 @@ internal static class MailAuditActions
     public const string DeliveryFailedReported = "mail.delivery_failed_reported";
     public const string UncertainRetried = "mail.uncertain_retried";
     public const string ResentAfterBounce = "mail.resent_after_bounce";
+    public const string FailedRetried = "mail.failed_retried";
 }
 
 /// <summary>Writes mail-category audit events on the Mail DbContext's open transaction. Never receives subjects, addresses of correspondents or bodies.</summary>

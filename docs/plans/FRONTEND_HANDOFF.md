@@ -12,3 +12,8 @@ Maintained by the backend work; the frontend (Graphite redesign) owner ticks ite
 - **Sender mailbox row** ("Replies sent from") is shown only to users with `department.mailboxes.manage`; keep that behaviour in the redesigned ticket properties rail.
 - **Department volume report:** `GET /api/departments/{id}/reports/volume?from&to` (received and resolved counts by period and team) has no UI yet.
 - **SLA alerts** arrive as in-app notifications to the assigned agent only (80% of target consumed, then breach).
+
+## Email delivery monitoring (mailbox administrators, `department.mailboxes.manage`)
+- **New:** `GET /api/departments/{id}/mail/waiting?limit` lists outbound email that is late: `{ items, total, waitingAfterMinutes }`. Each item has `reason` (`retrying` after a failed send, `overdue` queued longer than expected, `sending_stalled` claimed by a worker that never finished), `state`, `attempts`, `queuedAt`, `updatedAt`, `nextAttemptAt`, `lastError`, `category`, `nature`, and, only for callers who also hold `tickets.read` in the department, `address`, `subject`, `ticketId` (empty/null for a platform administrator without a membership).
+- **New field:** the existing `GET .../mail/attention` items now carry `nature` for outbound problems: `temporary` (provider/throttling; retry normally works), `permanent` (rejected or bounced), `action_required` (mailbox consent or configuration), `uncertain` (may already have been delivered; resend needs the explicit duplicate-risk confirmation), `unknown`. Use it for wording and for which action to offer.
+- Manual retry of a failed send (`POST .../mail/{id}/retry`) is now audited (`mail.failed_retried`); no API change.

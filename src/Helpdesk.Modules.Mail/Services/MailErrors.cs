@@ -61,6 +61,30 @@ internal static class MailErrors
     }
 }
 
+/// <summary>
+/// What an operator can expect of a problem: <c>temporary</c> (the provider or network was unavailable or throttling; retrying later normally works), <c>permanent</c> (the message itself
+/// was rejected or bounced; retrying the same message will not help), <c>action_required</c> (the mailbox or its consent is misconfigured; fix that, then retry), <c>uncertain</c>
+/// (the message may already have been delivered; never retried automatically), <c>unknown</c> (no usable cause recorded).
+/// </summary>
+internal static class MailProblemNature
+{
+    public const string Temporary = "temporary";
+    public const string Permanent = "permanent";
+    public const string ActionRequired = "action_required";
+    public const string Uncertain = "uncertain";
+    public const string Unknown = "unknown";
+
+    public static string? Of(string? category) => category switch
+    {
+        null => null,
+        MailErrors.Uncertain => Uncertain,
+        MailErrors.RateLimited or MailErrors.ProviderUnavailable => Temporary,
+        MailErrors.DeliveryFailed or MailErrors.Rejected => Permanent,
+        MailErrors.Authentication or MailErrors.PermissionDenied or MailErrors.MailboxUnavailable => ActionRequired,
+        _ => Unknown,
+    };
+}
+
 /// <summary>Machine codes of problem responses specific to mail administration.</summary>
 internal static class MailProblemCodes
 {

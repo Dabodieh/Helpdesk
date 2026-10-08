@@ -58,7 +58,27 @@ internal sealed record AttentionItemDto(
     string? LastError,
     int Attempts,
     Guid? TicketId,
-    string? Category = null);
+    string? Category = null,
+    string? Nature = null);
+
+/// <summary>An outbound email that has not left yet and is late: <see cref="Reason"/> is <c>retrying</c> (a send failed and will be tried again), <c>overdue</c> (queued longer than expected) or <c>sending_stalled</c> (claimed by a worker that has not finished).</summary>
+internal sealed record WaitingItemDto(
+    Guid Id,
+    Guid MailboxId,
+    string State,
+    string Reason,
+    DateTimeOffset QueuedAt,
+    DateTimeOffset UpdatedAt,
+    DateTimeOffset? NextAttemptAt,
+    int Attempts,
+    string Address,
+    string Subject,
+    string? LastError,
+    string? Category,
+    string? Nature,
+    Guid? TicketId);
+
+internal sealed record WaitingPage(IReadOnlyList<WaitingItemDto> Items, int Total, int WaitingAfterMinutes);
 
 internal sealed record RetryOutcomeDto(string Outcome);
 
@@ -305,9 +325,44 @@ internal sealed partial class MailboxService(
         var content = await authorizer.CheckAsync(PermissionCodes.TicketsRead, departmentId, ct) == AccessOutcome.Allowed;
         var items = rows.Select(m => new AttentionItemDto(
             m.Id, m.MailboxId, m.Direction, m.State, m.IgnoreReason, m.OccurredAt, content ? m.FromAddress : "", content ? (m.Subject.Length > 200 ? m.Subject[..200] : m.Subject) : "",
-            m.LastError, m.Attempts, content ? m.TicketId : null, m.Direction == MessageDirections.Outbound ? MailErrors.Category(m.LastError) : null)).ToList();
+            m.LastError, m.Attempts, content ? m.TicketId : null, m.Direction == MessageDirections.Outbound ? MailErrors.Category(m.LastError) : null,
+            m.Direction == MessageDirections.Outbound ? MailProblemNature.Of(MailErrors.Category(m.LastError)) : null)).ToList();
         var next = more ? Cursor.Encode(string.Create(CultureInfo.InvariantCulture, $"{rows[^1].CreatedAt.UtcTicks}|{rows[^1].Id}")) : null;
         return new AttentionPage(items, next);
+    }
+
+    public const int WaitingAfterMinutes = 5;
+
+    /// <summary>
+    /// Outbound email that has not been sent and is late, so a stuck dispatcher, an unavailable mailbox or a provider outage is visible per department and not only as a global metric:
+    /// queued mail that is retrying after a failure, queued longer than <see cref="WaitingAfterMinutes"/> minutes, or claimed by a worker that has not finished in that time (a crashed worker's
+    /// claim is reconciled by the maintenance job after ten minutes, never blindly re-sent). Oldest first. Same content rule as <see cref="AttentionAsync"/>: addresses, subjects and ticket links
+    /// only for a caller who also holds tickets.read here.
+    /// </summary>
+    public async Task<WaitingPage> WaitingAsync(Guid departmentId, int? limit, CancellationToken ct)
+    {
+        var take = limit ?? 50;
+        if (take is < 1 or > MaxLimit)
+        {
+            throw new RequestValidationException("limit", $"limit must be between 1 and {MaxLimit}.");
+        }
+
+        var cutoff = clock.GetUtcNowMicroseconds() - TimeSpan.FromMinutes(WaitingAfterMinutes);
+        var query = db.Messages.AsNoTracking().Where(m => m.DepartmentId == departmentId && m.Direction == MessageDirections.Outbound
+            && ((m.State == MessageStates.Queued && (m.Attempts > 0 || m.CreatedAt < cutoff || (m.NextAttemptAt != null && m.NextAttemptAt < cutoff)))
+                || (m.State == MessageStates.Sending && m.UpdatedAt < cutoff)));
+        var total = await query.CountAsync(ct);
+        var rows = await query.OrderBy(m => m.CreatedAt).ThenBy(m => m.Id).Take(take).ToListAsync(ct);
+        var content = await authorizer.CheckAsync(PermissionCodes.TicketsRead, departmentId, ct) == AccessOutcome.Allowed;
+        var items = rows.Select(m =>
+        {
+            var category = MailErrors.Category(m.LastError);
+            var reason = m.State == MessageStates.Sending ? "sending_stalled" : m.Attempts > 0 ? "retrying" : "overdue";
+            return new WaitingItemDto(
+                m.Id, m.MailboxId, m.State, reason, m.CreatedAt, m.UpdatedAt, m.NextAttemptAt, m.Attempts, content ? m.FromAddress : "",
+                content ? (m.Subject.Length > 200 ? m.Subject[..200] : m.Subject) : "", m.LastError, category, MailProblemNature.Of(category), content ? m.TicketId : null);
+        }).ToList();
+        return new WaitingPage(items, total, WaitingAfterMinutes);
     }
 
     /// <summary>
@@ -405,9 +460,13 @@ internal sealed partial class MailboxService(
             }
             else
             {
-                await db.Database.ExecuteSqlAsync(
+                var requeuedPlain = await db.Database.ExecuteSqlAsync(
                     $"UPDATE mail.messages SET state = 'Queued', attempts = 0, last_error = NULL, next_attempt_at = {now}, delivery_reported_at = NULL, updated_at = {now} WHERE id = {mailMessageId} AND department_id = {departmentId} AND state = 'Failed'",
                     ct);
+                if (requeuedPlain == 1)
+                {
+                    await audit.WriteAsync(MailAuditActions.FailedRetried, MailAudit.MessageObject, mailMessageId, departmentId, new { state = MessageStates.Failed }, new { state = MessageStates.Queued }, ct);
+                }
             }
 
             await tx.CommitAsync(ct);

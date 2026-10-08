@@ -56,6 +56,11 @@ internal static class MailEndpoints
                 TypedResults.Ok(await service.AttentionAsync(departmentId, cursor, limit, ct)))
             .RequirePermission(PermissionCodes.DepartmentMailboxesManage);
 
+        // Outbound mail that is late (retrying, overdue, stalled): the per-department view of a stuck dispatcher or provider outage.
+        mail.MapGet("waiting", async (Guid departmentId, int? limit, MailboxService service, CancellationToken ct) =>
+                TypedResults.Ok(await service.WaitingAsync(departmentId, limit, ct)))
+            .RequirePermission(PermissionCodes.DepartmentMailboxesManage);
+
         // D12: an audited "create ticket from this message" for ignored mail (not for delivery reports or loops).
         mail.MapPost("{mailMessageId:guid}/release", async (Guid departmentId, Guid mailMessageId, MailboxService service, CancellationToken ct) =>
                 TypedResults.Ok(await service.ReleaseIgnoredAsync(departmentId, mailMessageId, ct)))

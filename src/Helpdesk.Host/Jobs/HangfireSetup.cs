@@ -8,6 +8,12 @@ namespace Helpdesk.Host.Jobs;
 
 internal static class HangfireSetup
 {
+    /// <summary>The recurring jobs whose last start is exported as a lag metric (<c>helpdesk_job_&lt;suffix&gt;_lag_seconds</c>); a job that stops starting shows as growing lag.</summary>
+    internal static readonly (string JobId, string MetricSuffix)[] MonitoredJobs =
+    [
+        ("mail-sync-all", "mail_sync"), ("mail-dispatch", "mail_dispatch"), ("mail-subscriptions", "mail_subscriptions"), ("sla-monitor", "sla_monitor"), ("notification-outbox", "notification_drain"),
+    ];
+
     /// <summary>Background jobs run in this process (ROLE=all). <c>Jobs:Enabled=false</c> (tests) registers no server and a no-op scheduler.</summary>
     public static IServiceCollection AddBackgroundJobs(this IServiceCollection services, IConfiguration configuration)
     {
@@ -29,7 +35,7 @@ internal static class HangfireSetup
         services.AddSingleton<IMailJobScheduler, HangfireMailJobScheduler>();
         services.AddHostedService<RecurringJobsRegistration>();
         services.AddSingleton<Helpdesk.SharedKernel.Operations.IOperationalSignal, Operations.FailedJobsSignal>();
-        foreach (var (jobId, suffix) in new[] { ("mail-sync-all", "mail_sync"), ("mail-dispatch", "mail_dispatch"), ("sla-monitor", "sla_monitor"), ("notification-outbox", "notification_drain") })
+        foreach (var (jobId, suffix) in MonitoredJobs)
         {
             services.AddSingleton<Helpdesk.SharedKernel.Operations.IOperationalSignal>(sp => new Operations.RecurringJobLagSignal(jobId, suffix, sp.GetRequiredService<TimeProvider>()));
         }
