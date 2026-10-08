@@ -4,7 +4,7 @@ import { formatBucket, formatValue } from '../../lib/analytics'
 
 const TONE: Record<string, string> = {
   neutral: 'var(--text)',
-  info: 'var(--accent)',
+  info: 'var(--chart-info, var(--accent))',
   good: 'var(--ok)',
   warn: 'var(--warn)',
   bad: 'var(--danger)',
