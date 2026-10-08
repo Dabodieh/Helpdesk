@@ -1,5 +1,6 @@
 using Helpdesk.Modules.Ticketing.Fields;
 using Helpdesk.Modules.Ticketing.Services;
+using Helpdesk.Modules.Ticketing.Services.Reporting;
 using Helpdesk.SharedKernel.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -46,6 +47,18 @@ internal static class TicketEndpoints
         // Historical volume (received and resolved) of ONE department; counts only. Same permission as the dashboard.
         app.MapGet("/api/departments/{departmentId:guid}/reports/volume",
                 async (Guid departmentId, string? from, string? to, DepartmentVolumeReportService report, CancellationToken ct) => TypedResults.Ok(await report.GetAsync(departmentId, from, to, ct)))
+            .RequirePermission(PermissionCodes.TicketsRead)
+            .WithTags("Reports");
+
+        // Historical reports of ONE department (one response shape, see ReportDto). Same permission as the dashboard. The tickets behind a figure come from /reports/tickets.
+        app.MapGet("/api/departments/{departmentId:guid}/reports/tickets",
+                async (Guid departmentId, string metric, string? bucket, string? from, string? to, string? group, [AsParameters] ReportFilterParams f, ReportingService reports, CancellationToken ct) =>
+                    TypedResults.Ok(await reports.TicketsAsync(departmentId, metric, f.ToQuery(from, to, group), bucket, ct)))
+            .RequirePermission(PermissionCodes.TicketsRead)
+            .WithTags("Reports");
+        app.MapGet("/api/departments/{departmentId:guid}/reports/{kind}",
+                async (Guid departmentId, string kind, string? from, string? to, string? group, [AsParameters] ReportFilterParams f, ReportingService reports, CancellationToken ct) =>
+                    TypedResults.Ok(await reports.RunAsync(departmentId, kind, f.ToQuery(from, to, group), ct)))
             .RequirePermission(PermissionCodes.TicketsRead)
             .WithTags("Reports");
 

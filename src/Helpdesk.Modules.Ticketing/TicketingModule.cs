@@ -76,6 +76,7 @@ public static class TicketingModule
         services.AddScoped<RequesterIdentityAdminService>();
         services.AddScoped<DepartmentDashboardService>();
         services.AddScoped<DepartmentVolumeReportService>();
+        services.AddScoped<Services.Reporting.ReportingService>();
         services.AddScoped<QueuePreferencesService>();
         services.AddScoped<ReplyLinkService>();
         services.AddScoped<HelpTopicsAdminService>();
