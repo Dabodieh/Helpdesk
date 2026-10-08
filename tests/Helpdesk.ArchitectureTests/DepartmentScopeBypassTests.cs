@@ -23,6 +23,9 @@ public sealed class DepartmentScopeBypassTests
             typeof(Helpdesk.Modules.Ticketing.Portal.PortalRequestService), typeof(Helpdesk.Modules.Ticketing.Fields.TicketFieldsService), typeof(Helpdesk.Modules.Ticketing.Fields.FieldValueStore),
             typeof(Helpdesk.Modules.Ticketing.Fields.TicketPropertiesService),
             typeof(TicketEventPublisher),
+            // Reviewed during the post-Refinement-10 remediation (already in place since the notification, presence and identity work): each names an explicit department and
+            // authorises per row (notification recipients by permission, presence by ticket read, the caller's own requester links).
+            typeof(NotificationRecorder), typeof(PresenceService), typeof(Helpdesk.Modules.Ticketing.Portal.RequesterIdentityService),
         ];
 
     private static readonly BindingFlags AllMembers =
@@ -106,7 +109,9 @@ public sealed class DepartmentScopeBypassTests
     public void IgnoreDepartmentScope_is_called_only_from_the_reviewed_call_sites()
     {
         var callers = CallersOf(nameof(DepartmentScopeBypass.IgnoreDepartmentScope));
-        Assert.Equal(AllowedBypassCallers.Select(t => t.FullName).Order(), callers.Select(t => t.FullName).Order());
+        var unreviewed = callers.Select(t => t.FullName).Except(AllowedBypassCallers.Select(t => t.FullName)).ToList();
+        var vanished = AllowedBypassCallers.Select(t => t.FullName).Except(callers.Select(t => t.FullName)).ToList();
+        Assert.True(unreviewed.Count == 0 && vanished.Count == 0, $"Calling the bypass but not reviewed: [{string.Join("; ", unreviewed)}]. Reviewed but no longer calling it: [{string.Join("; ", vanished)}].");
     }
 
     [Fact]

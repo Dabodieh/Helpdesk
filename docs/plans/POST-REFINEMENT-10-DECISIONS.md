@@ -235,3 +235,21 @@ Source of truth for each decision's options: `docs/reports/POST-REFINEMENT-10-MA
 
 ### D29. Dead foreign-change realtime code (UX-018; WS-15)
 - **Decision:** A. Remove it; do not turn it into a new feature.
+
+---
+
+# Ratified implementation clarifications (approved after WS-3 to WS-16)
+
+These choices were made during implementation where the resolved decision left the mechanism or an edge open. They are now approved.
+
+### D21 clarification: the team-routing permission
+- **Approved:** the permission `tickets.assign.team` (content kind) lets Agents and above change a ticket's Team for routing and escalation. Agents do NOT receive `tickets.assign.any`; choosing another person as assignee stays with `tickets.assign.any`. The separation stays (ADR-026, `PERMISSIONS.md`).
+
+### D17 clarification: no matching replacement policy
+- **Approved:** when Team, Type or Priority changes, the SLA policy is re-evaluated. If another policy matches, the ticket switches to it while keeping the original cycle timing rules (never restarted, spent business time kept, an exceeded target shown as exceeded). If NO policy matches, the currently active SLA for that cycle is KEPT. An existing SLA commitment is never removed merely because later classification or routing matches no replacement (ADR-025).
+
+### D15 clarification: requester identity tightening
+- **Approved:** an address or email equality alone must not claim or link an existing requester identity. Where stable identity cannot establish ownership, explicit Department-admin identity resolution is required. Claim-by-email behaviour is not to be restored.
+
+### Initial rate-limit and acknowledgement defaults
+- **Approved as INITIAL operational values (configurable, not permanent policy):** portal request creation 10 per 10 minutes; replies 30 per 10 minutes; searches 60 per minute; automatic acknowledgements 60 per 10 minutes per mailbox. They are starting defaults (`RateLimits` section, `Mail:AcknowledgementLimitPerWindow` and `AcknowledgementWindowMinutes`) to be tuned from observed production traffic (ADR-022).

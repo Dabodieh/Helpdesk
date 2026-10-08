@@ -23,6 +23,15 @@ public sealed class EndpointAuthorizationTests(AppFixture app) : IClassFixture<A
         "GET /api/requesters/{requesterId:guid}",
         "GET /api/requesters/{requesterId:guid}/tickets",
         "GET /api/me",
+        // Personal, owner-only endpoints (each row is the caller's own: notifications, queue preferences) and the portal help-topic catalogue, which applies the same
+        // requester-audience rule as the forms it leads to (ADR-029).
+        "GET /api/me/queue-preferences",
+        "PUT /api/me/queue-preferences",
+        "GET /api/notifications",
+        "POST /api/notifications/{id:guid}/read",
+        "POST /api/notifications/read-all",
+        "GET /api/portal/help-topics",
+        "GET /api/portal/help-topics/{topicId:guid}",
         "GET /api/tickets",
         "GET /api/tickets/queue-counts",
         "GET /api/users/lookup",
@@ -111,7 +120,10 @@ public sealed class EndpointAuthorizationTests(AppFixture app) : IClassFixture<A
         var authenticatedOnly = Endpoints().Where(e => e.Metadata.GetMetadata<AuthenticatedOnlyMetadata>() is not null)
             .Select(Describe).Order().ToList();
         // The two ticket lists are scoped by the query itself (accessible departments), see TICKETING.md "Department scope".
-        Assert.Equal(ReviewedAuthenticatedOnly.Order(), authenticatedOnly);
+        // Strict equality, reported as the two differences so a failure names the endpoint.
+        var unreviewed = authenticatedOnly.Except(ReviewedAuthenticatedOnly).ToList();
+        var vanished = ReviewedAuthenticatedOnly.Except(authenticatedOnly).ToList();
+        Assert.True(unreviewed.Count == 0 && vanished.Count == 0, $"Not in the reviewed list: [{string.Join("; ", unreviewed)}]. In the list but no longer authenticated-only: [{string.Join("; ", vanished)}].");
     }
 
     [Fact]

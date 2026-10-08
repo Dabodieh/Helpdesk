@@ -1,3 +1,4 @@
+import { SENT } from '../components/Conversation'
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { applyPresence } from '../lib/realtime'
 import { afterEach, expect, test, vi } from 'vitest'
@@ -196,7 +197,7 @@ test('public reply: payload carries status-after and the entry says it was recor
   const label = await screen.findByText('Recorded, not emailed (the ticket’s mailbox is not available to send from)')
   expect(label).toBeInTheDocument()
   // never claims a send
-  expect(screen.queryByText(/\bsent\b/i)).not.toBeInTheDocument()
+  expect(screen.queryByText(SENT)).not.toBeInTheDocument() // the conversation's delivery line, not unrelated words such as the queue filter "Reply not sent"
   expect(screen.queryByText(/delivered to/i)).not.toBeInTheDocument()
 })
 
