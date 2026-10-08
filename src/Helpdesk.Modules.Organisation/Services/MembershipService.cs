@@ -3,6 +3,7 @@ using Helpdesk.Modules.Organisation.Authorization;
 using Helpdesk.Modules.Organisation.Contracts;
 using Helpdesk.Modules.Organisation.Domain;
 using Helpdesk.Modules.Organisation.Persistence;
+using Helpdesk.SharedKernel.Authorization;
 using Helpdesk.SharedKernel.Errors;
 using Helpdesk.SharedKernel.Security;
 using Microsoft.EntityFrameworkCore;
@@ -59,6 +60,7 @@ internal sealed class MembershipService(
 
         var existing = await db.DepartmentMemberships.SingleOrDefaultAsync(m => m.DepartmentId == departmentId && m.UserId == userId, ct);
         var selfGrant = userId == current.UserId;
+        var roleEndedAssignments = false;
         var now = clock.GetUtcNow();
 
         if (existing is null)
@@ -86,15 +88,32 @@ internal sealed class MembershipService(
             }
 
             var previous = existing.Role;
+            // A role that cannot work tickets cannot own them: end the member's assignments in this same transaction (the foreign key only checks membership, not role).
+            var endsAssignments = RoleCatalogue.RoleGrants(previous, PermissionCodes.TicketsUpdate) && !RoleCatalogue.RoleGrants(role, PermissionCodes.TicketsUpdate);
+            if (endsAssignments)
+            {
+                await db.Database.ExecuteSqlAsync($"SELECT 1 FROM organisation.department_memberships WHERE department_id = {departmentId} AND user_id = {userId} FOR UPDATE", ct);
+                var transaction = tx.GetDbTransaction();
+                foreach (var listener in removalListeners)
+                {
+                    await listener.MembershipRemovingAsync(departmentId, userId, MemberAssignmentEndReasons.RoleChanged, transaction, ct);
+                }
+            }
+
             existing.Role = role;
             existing.UpdatedAt = now;
             await db.SaveChangesAsync(ct);
             await audit.WriteAsync("membership.role_changed", "department_membership", userId, departmentId, new { role = previous }, new { role, selfGrant }, ct);
+            roleEndedAssignments = endsAssignments;
         }
 
         await tx.CommitAsync(ct);
         memberships.Invalidate();
         await NotifyAccessChangedAsync(userId, ct);
+        if (roleEndedAssignments)
+        {
+            await NotifyAssignmentsEndedAsync(departmentId, userId, ct);
+        }
 
         var teamIds = await db.TeamMemberships.AsNoTracking().Where(m => m.DepartmentId == departmentId && m.UserId == userId)
             .Select(m => m.TeamId).OrderBy(id => id).ToListAsync(ct);
@@ -121,7 +140,7 @@ internal sealed class MembershipService(
         var transaction = tx.GetDbTransaction();
         foreach (var listener in removalListeners)
         {
-            await listener.MembershipRemovingAsync(departmentId, userId, transaction, ct);
+            await listener.MembershipRemovingAsync(departmentId, userId, MemberAssignmentEndReasons.MembershipRemoved, transaction, ct);
         }
 
         // Remove (and audit) team memberships explicitly; the composite FK cascade is only the backstop.
@@ -140,6 +159,11 @@ internal sealed class MembershipService(
         await tx.CommitAsync(ct);
         memberships.Invalidate();
         await NotifyAccessChangedAsync(userId, ct);
+        await NotifyAssignmentsEndedAsync(departmentId, userId, ct);
+    }
+
+    private async Task NotifyAssignmentsEndedAsync(Guid departmentId, Guid userId, CancellationToken ct)
+    {
         foreach (var listener in removalListeners)
         {
             try
@@ -148,7 +172,7 @@ internal sealed class MembershipService(
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // The membership is already gone and everything durable is committed; only conveniences such as the realtime refresh run here.
+                // Everything durable is committed; only conveniences such as the realtime refresh run here.
                 FollowUpFailed(log, listener.GetType().Name, ex.GetType().Name, null);
             }
         }

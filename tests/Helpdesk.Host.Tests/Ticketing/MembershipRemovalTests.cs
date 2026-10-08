@@ -140,7 +140,7 @@ public sealed class MembershipRemovalTests(HelpdeskFixture fixture) : IClassFixt
     /// <summary>Registered after Ticketing's own listener, so it runs after the ticket work and fails the removal transaction.</summary>
     private sealed class FailingListener : IMembershipRemovalListener
     {
-        public Task MembershipRemovingAsync(Guid departmentId, Guid userId, DbTransaction transaction, CancellationToken cancellationToken = default) =>
+        public Task MembershipRemovingAsync(Guid departmentId, Guid userId, string reason, DbTransaction transaction, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("simulated failure inside the removal transaction");
 
         public Task MembershipRemovedAsync(Guid departmentId, Guid userId, CancellationToken cancellationToken = default) => Task.CompletedTask;
@@ -219,5 +219,65 @@ public sealed class MembershipRemovalTests(HelpdeskFixture fixture) : IClassFixt
 
         Assert.Equal(2L, await RemovalAuditCountAsync(d.Id));
         Assert.Equal(2, (await UnreadAsync(d.Lead)).Length);
+    }
+
+    private const string RoleReason = "department_role_changed";
+
+    private static bool IsRoleEntry(JsonElement e) => e.Str("action") == "ticket.assignee_changed" && e.TryGetProperty("reason", out var r) && r.ValueKind == JsonValueKind.String && r.GetString() == RoleReason;
+
+    [Fact]
+    public async Task Demoting_a_member_to_a_role_that_cannot_work_tickets_unassigns_their_tickets_with_the_same_records()
+    {
+        var d = await fixture.NewDeptAsync();
+        var member = await fixture.NewMemberAsync(d.Department, "TeamLead");
+        var tickets = new List<ApiResponse>();
+        for (var i = 0; i < 2; i++)
+        {
+            tickets.Add(await AssignedTicketAsync(d, member.Id));
+        }
+
+        var other = await AssignedTicketAsync(d, d.Agent.Id);
+        await d.Lead.Client.PostAsync("/api/notifications/read-all");
+
+        // TeamLead to Agent still works tickets: nothing changes.
+        (await d.Admin.Client.PutAsync($"{d.Department.Url}/members/{member.Id}", new { role = "Agent" })).Expect(HttpStatusCode.OK);
+        Assert.All(tickets, t => Assert.DoesNotContain(ActivityAsync(d.Lead, t.Id).Result, IsRoleEntry));
+        Assert.Equal(member.Id, (await d.Lead.GetTicketAsync(tickets[0].Id)).Expect(HttpStatusCode.OK).Json.GetProperty("assignee").GetProperty("id").GetGuid());
+
+        // Agent to Viewer cannot work tickets: the assignments end, audited and told to the leads, once.
+        (await d.Admin.Client.PutAsync($"{d.Department.Url}/members/{member.Id}", new { role = "Viewer" })).Expect(HttpStatusCode.OK);
+        await DrainAsync();
+        foreach (var t in tickets)
+        {
+            var entry = Assert.Single(await ActivityAsync(d.Lead, t.Id), IsRoleEntry);
+            Assert.Equal(member.Id, entry.GetProperty("previous").GetProperty("assigneeUserId").GetGuid());
+            Assert.Equal(d.Admin.Id, entry.GetProperty("actor").GetProperty("id").GetGuid());
+            Assert.Equal(JsonValueKind.Null, (await d.Lead.GetTicketAsync(t.Id)).Expect(HttpStatusCode.OK).Json.GetProperty("assignee").ValueKind);
+        }
+
+        Assert.Equal(d.Agent.Id, (await d.Lead.GetTicketAsync(other.Id)).Expect(HttpStatusCode.OK).Json.GetProperty("assignee").GetProperty("id").GetGuid());
+        Assert.Equal(2, (await UnreadAsync(d.Lead)).Length);
+
+        // Repeating the same role change does nothing more; the member is still a (read-only) member.
+        (await d.Admin.Client.PutAsync($"{d.Department.Url}/members/{member.Id}", new { role = "Viewer" })).Expect(HttpStatusCode.OK);
+        await DrainAsync();
+        Assert.Equal(2L, await fixture.ScalarAsync<long>("SELECT count(*) FROM audit.audit_events WHERE action = 'ticket.assignee_changed' AND department_id = @d AND next->>'reason' = @r", TicketKit.P("d", d.Id), TicketKit.P("r", RoleReason)));
+        Assert.Equal(2, (await UnreadAsync(d.Lead)).Length);
+    }
+
+    [Fact]
+    public async Task A_failure_while_demoting_leaves_the_role_and_the_assignments_untouched()
+    {
+        var d = await fixture.NewDeptAsync();
+        var member = await fixture.NewMemberAsync(d.Department, "Agent");
+        var ticket = await AssignedTicketAsync(d, member.Id);
+
+        await using var failing = new HelpdeskFactory(fixture.ConnectionString).WithWebHostBuilder(b => b.ConfigureServices(s => s.AddScoped<IMembershipRemovalListener, FailingListener>()));
+        var admin = await fixture.SignInAsync(d.Admin.Subject, factory: failing);
+        (await admin.Client.PutAsync($"{d.Department.Url}/members/{member.Id}", new { role = "Viewer" })).Expect(HttpStatusCode.InternalServerError);
+
+        Assert.Equal("Agent", await fixture.ScalarAsync<string>("SELECT role FROM organisation.department_memberships WHERE department_id = @d AND user_id = @u", TicketKit.P("d", d.Id), TicketKit.P("u", member.Id)));
+        Assert.Equal(member.Id, (await d.Lead.GetTicketAsync(ticket.Id)).Expect(HttpStatusCode.OK).Json.GetProperty("assignee").GetProperty("id").GetGuid());
+        Assert.DoesNotContain(await ActivityAsync(d.Lead, ticket.Id), IsRoleEntry);
     }
 }

@@ -9,12 +9,13 @@ using Microsoft.EntityFrameworkCore;
 namespace Helpdesk.Modules.Ticketing.Services;
 
 /// <summary>
-/// What removing a department member does to the tickets assigned to them. It runs INSIDE the removal transaction (it joins Organisation's connection and transaction),
+/// What happens to the tickets assigned to a department member who can no longer own them: their membership is removed, or their role changes to one that cannot work
+/// tickets (<see cref="MemberAssignmentEndReasons"/>). It runs INSIDE the Organisation transaction (it joins Organisation's connection and transaction),
 /// after the membership row is locked, so it is all-or-nothing with the removal: no crash window can leave the member removed without the records, a failure aborts the
 /// removal, and a retry cannot record twice (the first attempt either committed everything or nothing). Assignments in flight when the removal starts are waited for (they
 /// hold a key-share lock on the membership through the foreign key) and included; none can start afterwards.
 /// For every ticket assigned to the member it unassigns the ticket explicitly (the foreign key would otherwise do it silently), writes one <c>ticket.assignee_changed</c>
-/// audit entry (previous assignee, the removing administrator as actor, reason <c>department_membership_removed</c>; this also feeds the ticket activity and the
+/// audit entry (previous assignee, the administrator as actor, reason <c>department_membership_removed</c> or <c>department_role_changed</c>; this also feeds the ticket activity and the
 /// content-free lifecycle record), resets the "assigned to me" bookkeeping, and stages notification-outbox items for at most <see cref="MaxNotifiedTickets"/> open tickets.
 /// The durable outbox drain turns those into in-app notifications for everyone who can reassign tickets (<c>tickets.assign.any</c>), never the acting administrator.
 /// The ticket's team, status and department are untouched; its concurrency version and updated time change like any assignment.
@@ -22,14 +23,13 @@ namespace Helpdesk.Modules.Ticketing.Services;
 /// </summary>
 internal sealed class MembershipRemovalHandler(TicketingDbContext db, TicketingAudit audit, ITicketEvents events, ICurrentUser current, TimeProvider clock) : IMembershipRemovalListener
 {
-    public const string Reason = "department_membership_removed";
     public const int MaxNotifiedTickets = 5;
 
     private sealed record UnassignedTicket(Guid Id, string Reference, bool IsOpen);
 
     private List<UnassignedTicket> _done = [];
 
-    public async Task MembershipRemovingAsync(Guid departmentId, Guid userId, DbTransaction transaction, CancellationToken cancellationToken = default)
+    public async Task MembershipRemovingAsync(Guid departmentId, Guid userId, string reason, DbTransaction transaction, CancellationToken cancellationToken = default)
     {
         // Join the removal transaction: same connection, same transaction. Nothing here commits it.
         db.Database.SetDbConnection(transaction.Connection!);
@@ -51,7 +51,7 @@ internal sealed class MembershipRemovalHandler(TicketingDbContext db, TicketingA
         foreach (var ticket in rows)
         {
             await audit.WriteAsync(TicketAuditActions.AssigneeChanged, TicketingAudit.TicketObject, ticket.Id, departmentId,
-                new { assigneeUserId = userId }, new { assigneeUserId = (Guid?)null, reason = Reason }, cancellationToken);
+                new { assigneeUserId = userId }, new { assigneeUserId = (Guid?)null, reason }, cancellationToken);
         }
 
         // The "assigned to me" bookkeeping must forget the member, so a later assignment to them notifies as a change.
