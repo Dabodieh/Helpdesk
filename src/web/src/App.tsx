@@ -27,7 +27,6 @@ function AdminLayout() {
   const path = useLocation().pathname
   const inDepartment = path.startsWith('/admin/departments/')
   const inTeam = inDepartment && path.includes('/teams/')
-  if (path === '/admin' || path === '/admin/') return <Outlet />
   return (
     <div className={inDepartment ? `page admin ${inTeam ? 'team-admin' : 'department-admin'}` : 'admin-layout'}>
       {!inDepartment && <aside className="admin-sidebar">

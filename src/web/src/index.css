@@ -3890,3 +3890,8 @@ a.team-name:hover { text-decoration: underline; color: var(--accent); }
 .department-context .settings-search { flex:none; max-width:none; }
 .department-context .admin-department-select select { min-width:0; width:100%; }
 .department-context .admin-department-select { margin:0; }
+.hub-categories { display:flex; flex-wrap:wrap; gap:6px; margin:14px 0 0; }
+.hub-categories a { display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border:1px solid var(--border); border-radius:999px; color:var(--muted); font-size:12px; text-decoration:none; }
+.hub-categories a:hover { border-color:var(--border-strong); color:var(--text); }
+.hub-categories a.active { border-color:var(--accent); background:var(--accent-soft); color:var(--text); font-weight:600; }
+.hub-categories + .hub-search-row { margin-top:12px; }
