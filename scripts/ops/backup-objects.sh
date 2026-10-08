@@ -21,7 +21,11 @@ export AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY" AWS_SECRET_ACCESS_KEY="$S3_SECRET_KEY"
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 case "$OBJECT_BACKUP_DEST" in s3://*) ;; *) mkdir -p "$OBJECT_BACKUP_DEST";; esac
 
-aws s3 sync "s3://$S3_BUCKET" "$OBJECT_BACKUP_DEST" --endpoint-url "$S3_ENDPOINT" --only-show-errors
+# Attachments are not encrypted by this script: protect the destination. For an s3:// destination set OBJECT_BACKUP_SSE=AES256 (or aws:kms) to request server-side
+# encryption on write; for a directory, the off-host volume must be encrypted. The database dump is always encrypted by backup-database.sh.
+sse=()
+case "$OBJECT_BACKUP_DEST" in s3://*) [ -z "${OBJECT_BACKUP_SSE:-}" ] || sse=(--sse "$OBJECT_BACKUP_SSE");; esac
+aws s3 sync "s3://$S3_BUCKET" "$OBJECT_BACKUP_DEST" --endpoint-url "$S3_ENDPOINT" --only-show-errors "${sse[@]}"
 # Verification: a second dry-run sync must have nothing left to copy (every source object is present at the destination with the same size and time).
 pending="$(aws s3 sync "s3://$S3_BUCKET" "$OBJECT_BACKUP_DEST" --endpoint-url "$S3_ENDPOINT" --dryrun | grep -c '(dryrun)' || true)"
 [ "$pending" = "0" ] || { echo "object backup incomplete: $pending object(s) not at the destination" >&2; exit 1; }

@@ -7,6 +7,7 @@
 # pair them with the object-storage state taken at the same time: the database and the attachment store are ONE recoverable system (docs/guides/BACKUP_AND_RESTORE.md).
 # Run at least hourly. The passphrase file is never printed; keep a copy of it somewhere that survives the loss of this host.
 set -euo pipefail
+umask 077 # backups and their checksums are readable by the backup user only
 
 : "${BACKUP_PASSPHRASE_FILE:?path of a file holding the encryption passphrase}"
 : "${BACKUP_DIR:?directory to write the backup to}"
