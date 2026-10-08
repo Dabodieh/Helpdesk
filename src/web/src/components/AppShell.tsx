@@ -131,11 +131,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
             {hasTickets && <>
               <NavLink to="/dashboard" className="rail-link" aria-label="Dashboard" title="Dashboard"><Icon name="views" /><span className="rail-label">Dashboard</span></NavLink>
               <NavLink to="/queue/my" className={() => `rail-link${inWorkspace ? ' active' : ''}`} aria-label="Tickets" title="Tickets"><Icon name="inbox" /><span className="rail-label">Tickets</span></NavLink>
+              <NavLink to="/analytics" className="rail-link" aria-label="Analytics" title="Analytics"><Icon name="chart" /><span className="rail-label">Analytics</span></NavLink>
             </>}
             <NavLink to="/portal/knowledge" className="rail-link" aria-label="Knowledge" title="Knowledge"><Icon name="file" /><span className="rail-label">Knowledge</span></NavLink>
+            {canAdminister(me) && <NavLink to="/admin" className="rail-link" aria-label="Administration" title="Administration"><Icon name="admin" /><span className="rail-label">Administration</span></NavLink>}
           </nav>
           <div className="app-rail-foot">
-            {canAdminister(me) && <NavLink to="/admin" className="rail-link" aria-label="Administration" title="Administration"><Icon name="admin" /><span className="rail-label">Administration</span></NavLink>}
             <ThemeToggle />
             <button type="button" className="rail-link" aria-label="Keyboard shortcuts" title="Keyboard shortcuts" onClick={() => setDialog('help')}><Icon name="help" /><span className="rail-label">Shortcuts</span></button>
             <button type="button" className="rail-link rail-collapse" aria-expanded={!railNarrow} aria-label={railNarrow ? 'Expand navigation labels' : 'Collapse navigation to icons'} title={railNarrow ? 'Expand' : 'Collapse'} onClick={toggleNarrow}><span aria-hidden="true" className="rail-chevron">{railNarrow ? '»' : '«'}</span><span className="rail-label">Collapse</span></button>
@@ -145,7 +146,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <header className="app-topbar">
           <button type="button" className="topbar-menu" onClick={toggleRail} aria-expanded={!railHidden} aria-label={railHidden ? 'Show navigation' : 'Hide navigation'} title={railHidden ? 'Show navigation' : 'Hide navigation'}><Icon name="density" /></button>
           <Link to="/" className="wordmark">helpdesk<span>.</span></Link>
-          <span className="topbar-context">{location.pathname.startsWith('/admin') ? 'Administration' : location.pathname.startsWith('/dashboard') ? 'Dashboard' : location.pathname.startsWith('/portal') ? 'Knowledge' : 'Tickets'}</span>
+          <span className="topbar-context">{location.pathname.startsWith('/admin') ? 'Administration' : location.pathname.startsWith('/analytics') ? 'Analytics' : location.pathname.startsWith('/dashboard') ? 'Dashboard' : location.pathname.startsWith('/portal') ? 'Knowledge' : 'Tickets'}</span>
           {hasTickets && <GlobalSearch />}
           {live !== 'off' && <span className={`live live-${live}`} role="status"><span className="live-dot" aria-hidden="true" />{LIVE_TEXT[live]}</span>}
           {canCreate && <button type="button" className="primary" onClick={() => setDialog('ticket')}><Icon name="plus" /> New ticket</button>}

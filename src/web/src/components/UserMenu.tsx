@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMe } from '../auth'
+import { ROLE_LABEL } from '../api/schemas'
 
 export default function UserMenu({ onSignOut, onHelp }: { onSignOut: () => void; onHelp: () => void }) {
   const me = useMe()
@@ -49,7 +50,7 @@ export default function UserMenu({ onSignOut, onHelp }: { onSignOut: () => void;
         <span className="avatar" aria-hidden="true">
           {initials || '?'}
         </span>
-        <span className="usermenu-name">{me.displayName}</span>
+        <span className="usermenu-name"><span className="usermenu-who">{me.displayName}</span><span className="usermenu-role">{me.isPlatformAdmin ? 'Platform administrator' : (ROLE_LABEL[me.memberships[0]?.role ?? ''] ?? '')}</span></span>
       </button>
       {open && (
         <div id={panelId} className="popover" role="group" aria-label="Account">
