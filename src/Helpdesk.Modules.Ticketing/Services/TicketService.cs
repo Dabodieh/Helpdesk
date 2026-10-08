@@ -346,6 +346,8 @@ internal sealed class TicketService(
             {
                 await audit.WriteAsync(action, TicketingAudit.TicketObject, ticket.Id, ticket.DepartmentId, previous, next, ct);
             }
+
+            await lifecycle.StageAutomationAsync(ticket, lc, Provenances.User, ct);
         }
 
         await tx.CommitAsync(ct);

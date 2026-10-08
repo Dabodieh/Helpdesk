@@ -79,7 +79,7 @@ internal sealed class TicketIngressService(TicketingDbContext db, TicketingAudit
             changes.Add(new TicketChange(ChangeKind.Status, previous.ToString(), ticket.Status.ToString()));
         }
 
-        await lifecycle.BeforeCommitAsync(ticket, "", changes, cancellationToken);
+        await lifecycle.BeforeCommitAsync(ticket, "", changes, cancellationToken, source == MessageSources.Web || source == MessageSources.Manual ? Provenances.User : Provenances.Email);
         await tx.CommitAsync(cancellationToken);
         await lifecycle.AfterCommitAsync(ticket, changes, source == MessageSources.Web || source == MessageSources.Manual ? Provenances.User : Provenances.Email, cancellationToken);
         return new RequesterMessageResult(message.Id, reopened);

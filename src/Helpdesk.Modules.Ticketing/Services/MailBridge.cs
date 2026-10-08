@@ -212,7 +212,7 @@ internal sealed class InboundTicketSink(
         }
 
         TicketChange[] createdChange = [new TicketChange(ChangeKind.Created)];
-        await lifecycle.BeforeCommitAsync(ticket, requester.EmailNormalised, createdChange, cancellationToken);
+        await lifecycle.BeforeCommitAsync(ticket, requester.EmailNormalised, createdChange, cancellationToken, Provenances.Email);
 
         // The department acknowledgement (if enabled for email) is queued in THIS transaction: a replayed message finds the ticket and never gets here, and a lost race rolls this back.
         var acknowledgement = await autoReplies.QueueForNewTicketAsync(ticket, requester, department.Name, TicketSources.Email, cancellationToken);
@@ -347,7 +347,7 @@ internal sealed class InboundTicketSink(
             changes.Add(new TicketChange(ChangeKind.Status, previous.ToString(), ticket.Status.ToString()));
         }
 
-        await lifecycle.BeforeCommitAsync(ticket, "", changes, cancellationToken);
+        await lifecycle.BeforeCommitAsync(ticket, "", changes, cancellationToken, Provenances.Email);
         await tx.CommitAsync(cancellationToken);
         await events.PublishAsync(request.DepartmentId, ticket.Id, ticket.Reference, TicketEventKinds.Message, null, cancellationToken);
         if (reopened)

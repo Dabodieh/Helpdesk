@@ -415,7 +415,7 @@ internal sealed class PortalRequestService(
                 new { reference = ticket.Reference, status = ticket.Status.ToString(), priority = ticket.Priority.ToString(), teamId = ticket.TeamId, source = TicketSources.Portal, formId = form.Id, ticketTypeId = typeId }, ct);
             await audit.WriteAsync(TicketAuditActions.MessageAdded, TicketingAudit.TicketObject, ticket.Id, form.DepartmentId, null,
                 new { messageId = first.Id, kind = first.Kind.ToString(), authorType = first.AuthorType.ToString() }, ct);
-            await lifecycle.BeforeCommitAsync(ticket, requester.EmailNormalised, createdChange, ct);
+            await lifecycle.BeforeCommitAsync(ticket, requester.EmailNormalised, createdChange, ct, Provenances.Portal);
             acknowledgement = await autoReplies.QueueForNewTicketAsync(ticket, requester, department.Name, TicketSources.Portal, ct);
             await tx.CommitAsync(ct);
         }

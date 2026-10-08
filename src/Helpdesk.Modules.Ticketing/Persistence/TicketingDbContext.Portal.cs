@@ -18,6 +18,8 @@ internal sealed partial class TicketingDbContext
 
     public DbSet<Services.NotificationOutboxItem> NotificationOutbox => Set<Services.NotificationOutboxItem>();
 
+    public DbSet<Automation.AutomationIntent> AutomationIntents => Set<Automation.AutomationIntent>();
+
     public DbSet<RequesterLink> RequesterLinks => Set<RequesterLink>();
 
     public DbSet<RequestForm> RequestForms => Set<RequestForm>();
@@ -98,7 +100,27 @@ internal sealed partial class TicketingDbContext
             e.Property(x => x.MessageId).HasColumnName("message_id");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.ProcessedAt).HasColumnName("processed_at");
+            e.Property(x => x.Attempts).HasColumnName("attempts");
+            e.Property(x => x.LastError).HasColumnName("last_error").HasMaxLength(100);
             e.HasIndex(x => x.CreatedAt).HasFilter("processed_at IS NULL").HasDatabaseName("ix_notification_outbox_pending");
+        });
+
+        modelBuilder.Entity<Automation.AutomationIntent>(e =>
+        {
+            e.ToTable("automation_outbox");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            e.Property(x => x.DepartmentId).HasColumnName("department_id");
+            e.Property(x => x.TicketId).HasColumnName("ticket_id");
+            e.Property(x => x.Trigger).HasColumnName("trigger").HasMaxLength(32);
+            e.Property(x => x.TriggerKey).HasColumnName("trigger_key").HasMaxLength(200);
+            e.Property(x => x.Provenance).HasColumnName("provenance").HasMaxLength(16);
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.ProcessedAt).HasColumnName("processed_at");
+            e.Property(x => x.Attempts).HasColumnName("attempts");
+            e.Property(x => x.LastError).HasColumnName("last_error").HasMaxLength(100);
+            e.HasIndex(x => x.CreatedAt).HasFilter("processed_at IS NULL").HasDatabaseName("ix_automation_outbox_pending");
+            e.HasIndex(x => new { x.TicketId, x.TriggerKey }).HasDatabaseName("ix_automation_outbox_ticket_key");
         });
 
         modelBuilder.Entity<MessageMention>(e =>

@@ -63,6 +63,9 @@ public static class TicketingModule
         services.AddScoped<AutomationEngine>();
         services.AddScoped<TicketLifecycle>();
         services.AddScoped<ISlaMonitor, SlaMonitor>();
+        services.AddScoped<AutomationOutbox>();
+        services.AddScoped<IAutomationOutbox>(sp => sp.GetRequiredService<AutomationOutbox>());
+        services.AddSingleton<SharedKernel.Operations.IOperationalSignal, AutomationOutboxAgeSignal>();
         services.AddScoped<BusinessHoursService>();
         services.AddScoped<SlaPolicyService>();
         services.AddScoped<AutomationAdminService>();

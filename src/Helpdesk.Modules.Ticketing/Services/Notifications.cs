@@ -93,7 +93,9 @@ internal sealed class NotificationRecorder(TicketingDbContext db, IOrganisationD
                 break;
             case TicketEventKinds.Message:
                 // Who wrote the latest public message decides: a requester reply reaches the assignee and followers; an agent reply is only an update for followers.
-                var author = await db.Messages.AsNoTracking().IgnoreDepartmentScope().Where(m => m.TicketId == ticketId && m.Kind == MessageKind.Public)
+                // The message of the event when it is known (BE-015); the latest public message only for older outbox rows that did not record it.
+                var messages = db.Messages.AsNoTracking().IgnoreDepartmentScope().Where(m => m.TicketId == ticketId && m.Kind == MessageKind.Public);
+                var author = await (messageId is { } eventMessage ? messages.Where(m => m.Id == eventMessage) : messages)
                     .OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id).Select(m => (AuthorType?)m.AuthorType).FirstOrDefaultAsync(ct);
                 if (author == AuthorType.Requester)
                 {

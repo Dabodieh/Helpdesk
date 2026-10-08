@@ -38,6 +38,10 @@ internal sealed partial class AutomationEngine(
         }
     }
 
+    /// <summary>Like <see cref="RunAsync"/> but infrastructure failures propagate, so the durable outbox can retry the intent instead of treating it as done.</summary>
+    public Task RunDurableAsync(Guid departmentId, Guid ticketId, string trigger, string triggerKey, AutomationChain chain, CancellationToken ct) =>
+        RunCoreAsync(departmentId, ticketId, trigger, triggerKey, chain, ct);
+
     public async Task RunAsync(Guid departmentId, Guid ticketId, string trigger, string triggerKey, AutomationChain chain, CancellationToken ct)
     {
         try

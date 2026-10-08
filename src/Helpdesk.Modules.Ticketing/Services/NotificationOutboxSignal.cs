@@ -18,7 +18,7 @@ internal sealed class NotificationOutboxAgeSignal(IServiceScopeFactory scopes, T
     {
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<TicketingDbContext>();
-        var oldest = await db.NotificationOutbox.AsNoTracking().IgnoreDepartmentScope().Where(i => i.ProcessedAt == null).MinAsync(i => (DateTimeOffset?)i.CreatedAt, cancellationToken);
+        var oldest = await db.NotificationOutbox.AsNoTracking().Where(i => i.ProcessedAt == null).MinAsync(i => (DateTimeOffset?)i.CreatedAt, cancellationToken);
         return oldest is null ? 0 : Math.Max(0, (clock.GetUtcNow() - oldest.Value).TotalSeconds);
     }
 }

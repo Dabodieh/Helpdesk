@@ -22,10 +22,18 @@ internal static class Provenances
 /// with the ticket) and <see cref="AfterCommitAsync"/> once it committed (automation reacts; SLA changes reach the open workspaces).
 /// Keeping them here means no controller or service decides SLA or automation behaviour on its own.
 /// </summary>
-internal sealed class TicketLifecycle(TicketingDbContext db, SlaEngine sla, AutomationEngine automation, ITicketEvents events, TimeProvider clock)
+internal sealed class TicketLifecycle(TicketingDbContext db, SlaEngine sla, AutomationOutbox outbox, ITicketEvents events, TimeProvider clock)
 {
-    public async Task BeforeCommitAsync(Ticket ticket, string requesterEmailNormalised, IReadOnlyList<TicketChange> changes, CancellationToken ct)
+    /// <summary>The key automation uses for a change; shared by staging and the fast path so both name the same intent (and the engine dedupes on it).</summary>
+    private static string KeyOf(TicketChange change) => $"{change.Kind}:{change.EventId:N}";
+
+    /// <summary>
+    /// Inside the caller's transaction: SLA clocks change atomically with the ticket, and the automation this change triggers is staged as a durable intent (D16),
+    /// so a restart between commit and dispatch cannot skip it. <paramref name="provenance"/> says where the change came from (it starts the loop-protection chain).
+    /// </summary>
+    public async Task BeforeCommitAsync(Ticket ticket, string requesterEmailNormalised, IReadOnlyList<TicketChange> changes, CancellationToken ct, string provenance = Provenances.User)
     {
+        await StageAutomationAsync(ticket, changes, provenance, ct);
         var now = clock.GetUtcNowMicroseconds();
         if (changes.Any(c => c.Kind == ChangeKind.Created))
         {
@@ -36,6 +44,25 @@ internal sealed class TicketLifecycle(TicketingDbContext db, SlaEngine sla, Auto
         await sla.OnChangesAsync(ticket, changes, now, ct);
     }
 
+    /// <summary>Stages the intents without touching SLA state, for paths whose change does not move an SLA clock. Must run inside the caller's transaction.</summary>
+    public async Task StageAutomationAsync(Ticket ticket, IReadOnlyList<TicketChange> changes, string provenance, CancellationToken ct)
+    {
+        var staged = false;
+        foreach (var change in changes)
+        {
+            if (Triggers.For(change.Kind) is { } trigger)
+            {
+                outbox.Stage(ticket.DepartmentId, ticket.Id, trigger, KeyOf(change), provenance);
+                staged = true;
+            }
+        }
+
+        if (staged)
+        {
+            await db.SaveChangesAsync(ct); // inside the caller's transaction
+        }
+    }
+
     public async Task AfterCommitAsync(Ticket ticket, IReadOnlyList<TicketChange> changes, string provenance, CancellationToken ct)
     {
         if (changes.Count == 0)
@@ -43,7 +70,8 @@ internal sealed class TicketLifecycle(TicketingDbContext db, SlaEngine sla, Auto
             return;
         }
 
-        await automation.DispatchAsync(ticket.DepartmentId, ticket.Id, changes, null, provenance, ct);
+        // Fast path: run what was staged. Anything that does not complete (including a restart right here) is picked up by the recurring drain.
+        await outbox.RunStagedAsync(ticket.Id, [.. changes.Select(KeyOf)], ct);
         if (changes.Any(c => c.Kind is ChangeKind.Status or ChangeKind.AgentPublicReply or ChangeKind.Created)
             && await db.TicketSlas.AsNoTracking().IgnoreDepartmentScope().AnyAsync(s => s.TicketId == ticket.Id && s.DepartmentId == ticket.DepartmentId, ct))
         {
@@ -52,7 +80,7 @@ internal sealed class TicketLifecycle(TicketingDbContext db, SlaEngine sla, Auto
     }
 }
 
-internal sealed class SlaMonitor(TicketingDbContext db, SlaEngine sla, AutomationEngine automation, ITicketEvents events, TimeProvider clock) : ISlaMonitor
+internal sealed class SlaMonitor(TicketingDbContext db, SlaEngine sla, AutomationOutbox outbox, ITicketEvents events, TimeProvider clock) : ISlaMonitor
 {
     private const int BatchSize = 200;
 
@@ -107,6 +135,12 @@ internal sealed class SlaMonitor(TicketingDbContext db, SlaEngine sla, Automatio
                 notifications.AddRange(sla.RecordDue(row, now));
             }
 
+            // The follow-up automation is staged with the breach/warning row itself (D16): the monitor marks the event recorded and will not offer it again.
+            foreach (var n in notifications)
+            {
+                outbox.Stage(n.DepartmentId, n.TicketId, TriggerOf(n), KeyOf(n), Provenances.Sla);
+            }
+
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
             count = rows.Count;
@@ -121,11 +155,14 @@ internal sealed class SlaMonitor(TicketingDbContext db, SlaEngine sla, Automatio
             }
 
             await events.PublishAsync(n.DepartmentId, n.TicketId, reference, TicketEventKinds.Sla, null, ct);
-            var trigger = n.Kind == SlaEventKinds.Breached ? Triggers.SlaBreached : Triggers.SlaApproaching;
-            // Deterministic key: a retried monitor run can never repeat the automation of the same warning or breach.
-            await automation.RunAsync(n.DepartmentId, n.TicketId, trigger, $"sla:{n.Clock}:{n.Cycle}:{n.Kind}", AutomationChain.Start(Provenances.Sla), ct);
+            await outbox.RunStagedAsync(n.TicketId, [KeyOf(n)], ct);
         }
 
         return count;
     }
+
+    private static string TriggerOf(SlaNotification n) => n.Kind == SlaEventKinds.Breached ? Triggers.SlaBreached : Triggers.SlaApproaching;
+
+    /// <summary>Deterministic key: a retried run can never repeat the automation of the same warning or breach.</summary>
+    private static string KeyOf(SlaNotification n) => $"sla:{n.Clock}:{n.Cycle}:{n.Kind}";
 }

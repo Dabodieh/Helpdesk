@@ -36,11 +36,17 @@ internal sealed class HangfireMailJobScheduler(IBackgroundJobClient client) : IM
 }
 
 /// <summary>Drains the notification outbox (committed with ticket changes) into notifications; the durable path behind the post-commit fast path.</summary>
-public sealed class NotificationJobs(Helpdesk.Modules.Ticketing.Contracts.INotificationOutbox outbox)
+public sealed class NotificationJobs(Helpdesk.Modules.Ticketing.Contracts.INotificationOutbox outbox, Helpdesk.Modules.Ticketing.Contracts.IAutomationOutbox automation)
 {
     [DisableConcurrentExecution(120)]
     [AutomaticRetry(Attempts = 0)]
-    public Task Drain(CancellationToken cancellationToken) => outbox.DrainAsync(cancellationToken);
+    public async Task Drain(CancellationToken cancellationToken)
+    {
+        await outbox.DrainAsync(cancellationToken);
+
+        // Automation intents that committed with a change but were not run right after it (a restart in between).
+        await automation.DrainAsync(cancellationToken);
+    }
 }
 
 /// <summary>Records SLA warnings and breaches that are due and runs the SLA automation triggers (an indexed selection; no per-ticket jobs).</summary>

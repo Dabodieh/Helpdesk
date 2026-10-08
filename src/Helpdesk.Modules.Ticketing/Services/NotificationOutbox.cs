@@ -36,6 +36,12 @@ internal sealed class NotificationOutboxItem
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset? ProcessedAt { get; set; }
+
+    /// <summary>Failed processing attempts. After <see cref="NotificationOutboxDrainer.MaxAttempts"/> the item is parked (stays unprocessed and visible, no longer retried).</summary>
+    public int Attempts { get; set; }
+
+    /// <summary>Exception type name of the last failure (never a message).</summary>
+    public string? LastError { get; set; }
 }
 
 /// <summary>
@@ -112,7 +118,8 @@ internal sealed class NotificationOutboxInterceptor(IServiceProvider services) :
 
                     break;
                 case Message message when entry.State == EntityState.Added && message.Kind == MessageKind.Public:
-                    Add(message.DepartmentId, message.TicketId, TicketEventKinds.Message);
+                    // The message id is kept so a late drain classifies THIS message (requester reply or agent reply), not whatever is latest by then (BE-015).
+                    Add(message.DepartmentId, message.TicketId, TicketEventKinds.Message, messageId: message.Id);
                     break;
                 case MessageMention mention when entry.State == EntityState.Added:
                     // One intent per mentioned user (a duplicate is impossible: the key is note + user).
@@ -139,9 +146,12 @@ internal sealed partial class NotificationOutboxDrainer(TicketingDbContext db, N
 {
     private const int Batch = 100;
 
+    /// <summary>Failed attempts after which an item is parked: it stays unprocessed and visible (and in the age metric) but no longer blocks or slows newer items (BE-005).</summary>
+    public const int MaxAttempts = 5;
+
     public async Task<int> DrainAsync(CancellationToken cancellationToken)
     {
-        var ids = await db.NotificationOutbox.AsNoTracking().Where(i => i.ProcessedAt == null).OrderBy(i => i.CreatedAt).ThenBy(i => i.Id).Take(Batch).Select(i => i.Id).ToListAsync(cancellationToken);
+        var ids = await db.NotificationOutbox.AsNoTracking().Where(i => i.ProcessedAt == null && i.Attempts < MaxAttempts).OrderBy(i => i.Attempts).ThenBy(i => i.CreatedAt).ThenBy(i => i.Id).Take(Batch).Select(i => i.Id).ToListAsync(cancellationToken);
         var processed = 0;
         foreach (var id in ids)
         {
@@ -162,7 +172,10 @@ internal sealed partial class NotificationOutboxDrainer(TicketingDbContext db, N
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 db.ChangeTracker.Clear();
-                DrainFailed(log, id, ex.GetType().Name);
+                var error = ex.GetType().Name;
+                await db.NotificationOutbox.Where(i => i.Id == id && i.ProcessedAt == null)
+                    .ExecuteUpdateAsync(s => s.SetProperty(i => i.Attempts, i => i.Attempts + 1).SetProperty(i => i.LastError, error), cancellationToken);
+                DrainFailed(log, id, error);
             }
         }
 
