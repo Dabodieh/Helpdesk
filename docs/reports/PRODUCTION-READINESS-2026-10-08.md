@@ -59,3 +59,30 @@ Verified against a throw-away database in the local development PostgreSQL conta
 **Data Protection.** `CLAUDE.md` now records persistence as implemented and keeps the warning that the key ring is not encrypted at rest.
 
 **Remaining blockers, ranked.** High: live Graph tenant validation (D-16). High: install the backup timer, run and record one real restore drill with a named owner, and provide off-host storage. Medium: no malware scanner (D-08), so attachments stay off; retention policy (D-09); single-instance topology; deployment behind a real proxy and TLS not exercised.
+
+## Update 2: backup chain, Graph procedure and drill checklist (verified results)
+
+| Check | Result | Evidence |
+|-------|--------|----------|
+| Object-store backup with AWS CLI (v1.46.1 in a user-level virtual environment, no admin rights) | PASS on an isolated S3-compatible bucket (a throw-away SeaweedFS container, removed afterwards) | upload of 3 objects incl. 3 MB binary and nested keys; copy to a directory and to a second bucket; MD5 of every file identical at the copy; deleting a source object did not delete the backup copy (no `--delete`); wipe of the source followed by restore from the copy gave identical MD5s; unreachable endpoint exits 1; incomplete copy detected by the dry-run check |
+| Object backup against a real production endpoint, SSE option on a real AES256/KMS destination | NOT TESTED | no production endpoint used; SeaweedFS test bucket does not exercise SSE |
+| Database backup encryption | PASS | output starts with `Salted__`; a marker string stored in the database is absent from the file (0 hits); checksum, wrong passphrase and tampering all rejected by `verify-backup.sh`; empty passphrase file refused |
+| Failure alerts and status file | PASS | failing backup exits 1, writes `"status":"failed"` with the reason, runs `BACKUP_ALERT_COMMAND`, leaves no partial file; the freshness probe fails after a failed run and passes after a good one; a live lock makes a second run skip quietly |
+| Script syntax | PASS | `bash -n` on every script in `scripts/ops/` |
+| Hardening in this round | DONE | backup files created with `umask 077`; optional `OBJECT_BACKUP_SSE` for `s3://` destinations |
+| Scheduling configuration (systemd units) | WARN: reviewed, not executed | `OnCalendar=hourly`, `Persistent=true`, `Type=oneshot`; no Linux host or `systemd-analyze` available here. Cron alternative documented |
+| Graph live-tenant validation | NOT RUN: procedure ready | `GRAPH_TENANT_VALIDATION.md` section 0 (send, receive, threading, NDR, acknowledgement, recovery, uncertain send, pass criteria). No Graph configuration, tenant or approved mailbox exists in this environment, so nothing was executed. D-16 stays open |
+| Restore drill | NOT RUN: checklist final | `BACKUP_AND_RESTORE.md`: checklist, evidence required, incident instructions, drill log. No owner is named and no production backup exists to drill against |
+
+Attachment UI: recorded in `docs/plans/BACKLOG.md` that the redesigned UI must hide attachment controls while attachments are disabled; the server needs a read-only "attachments enabled" flag first (endpoint undecided). Until then the controls show and uploads are recorded as blocked.
+
+### Deployment requirements still outstanding (operator actions)
+1. Install `helpdesk-backup.timer`/`.service`, `/etc/helpdesk/backup.env` (passphrase file path, backup directory, `BACKUP_ALERT_COMMAND`, `OBJECT_BACKUP_*` if attachments are ever enabled), an off-host mount for the backup directory, the AWS CLI if the object store is backed up, and a monitor calling `check-backup-freshness.sh`.
+2. Name the drill owner and run and record the first real restore drill.
+3. Run the live Graph validation (section 0) in a test tenant; close D-16 and R-04.
+4. Run the one-off SLA alert backfill after deploying the migrations (`SLA_ALERT_BACKFILL.md`).
+5. Deploy behind the reverse proxy with TLS and check the CSP in a browser; confirm the host starts with `Attachments:Enabled=false`.
+6. Decide the malware scanner (D-08) before enabling attachments; approve retention (D-09).
+
+**Current verdict unchanged: NOT production ready** until items 2 and 3 are done. Everything that could be verified without a production environment or a Microsoft tenant has passed.
+
