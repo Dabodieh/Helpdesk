@@ -341,6 +341,17 @@ internal sealed class MailJobRunner(
             db.ChangeTracker.Clear();
         }
 
+        // An Uncertain message may simply have been looked up before the provider moved the draft to Sent Items: ask once more, read-only (never sends).
+        var uncertain = await db.Messages.AsNoTracking()
+            .Where(m => m.Direction == MessageDirections.Outbound && m.State == MessageStates.Uncertain && m.ProviderDraftId != null && m.UpdatedAt < stuckBefore
+                && (m.Flags == null || !m.Flags.Contains(MessageFlags.ReconcileAttempted)))
+            .Select(m => m.Id).Take(BatchSize).ToListAsync(cancellationToken);
+        foreach (var uncertainId in uncertain)
+        {
+            await sender.ReconcileAsync(uncertainId, cancellationToken, automatic: true);
+            db.ChangeTracker.Clear();
+        }
+
         var due = await db.Messages.AsNoTracking()
             .Where(m => m.Direction == MessageDirections.Outbound && m.State == MessageStates.Queued && m.NextAttemptAt <= now)
             .OrderBy(m => m.NextAttemptAt).Select(m => m.Id).Take(BatchSize).ToListAsync(cancellationToken);

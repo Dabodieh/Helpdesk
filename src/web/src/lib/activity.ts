@@ -113,6 +113,8 @@ export function describeActivity(a: Activity, names: NameLookup): string {
       const state = pick(a.next, 'delivery')
       if (state === 'Sent') return 'sent a reply by email'
       if (state === 'Failed') return 'could not send a reply by email'
+      if (state === 'Bounced') return 'was told a reply by email was not delivered'
+      if (state === 'Uncertain') return 'could not confirm whether a reply by email was sent'
       if (state === 'Pending') return 'queued a reply to be sent by email'
       return 'changed the delivery of a reply'
     }

@@ -103,11 +103,13 @@ function Delivery({ message: m }: { message: Message }) {
         </p>
       )
     case 'Failed':
+    case 'Bounced':
+    case 'Uncertain':
       return (
         <p className="delivery small failed" role="alert">
           <Icon name="nomail" />{' '}
           {m.deliveryError && FAILURE_TEXT[m.deliveryError] ? FAILURE_TEXT[m.deliveryError] : `Email delivery failed${m.deliveryError ? ` (${m.deliveryError})` : ''}.`}{' '}
-          {canRetry && m.deliveryError !== 'outcome_uncertain' && (
+          {canRetry && m.deliveryState !== 'Uncertain' && (
             <button type="button" disabled={retry.isPending} onClick={() => retry.mutate()}>
               Retry sending
             </button>

@@ -148,7 +148,7 @@ internal sealed partial class TicketingDbContext(DbContextOptions<TicketingDbCon
                 t.HasCheckConstraint("ck_messages_kind", "kind IN ('Public','Internal')");
                 t.HasCheckConstraint("ck_messages_author_type", "author_type IN ('Agent','Requester','System')");
                 t.HasCheckConstraint("ck_messages_source", "source IN ('web','manual','email','automation','portal')");
-                t.HasCheckConstraint("ck_messages_delivery_state", "delivery_state IN ('None','NotDelivered','Pending','Sent','Failed')");
+                t.HasCheckConstraint("ck_messages_delivery_state", "delivery_state IN ('None','NotDelivered','Pending','Sent','Failed','Uncertain','Bounced')");
 
                 // Only an agent's public reply has a delivery state; requester mail and notes are always None.
                 t.HasCheckConstraint("ck_messages_delivery_only_agent_public", "delivery_state = 'None' OR (kind = 'Public' AND author_type = 'Agent')");

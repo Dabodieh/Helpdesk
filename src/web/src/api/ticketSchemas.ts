@@ -93,7 +93,7 @@ export const attachmentSchema = z.object({
 })
 export type Attachment = z.infer<typeof attachmentSchema>
 
-export const DELIVERY_STATES = ['None', 'NotDelivered', 'Pending', 'Sent', 'Failed'] as const
+export const DELIVERY_STATES = ['None', 'NotDelivered', 'Pending', 'Sent', 'Failed', 'Uncertain', 'Bounced'] as const
 
 export const messageSchema = z.object({
   id: z.string(),

@@ -34,7 +34,8 @@ internal sealed record FakeSent(
     IReadOnlyList<EmailAddress> Cc,
     string Token,
     DateTimeOffset SentAt,
-    EmailAddress? ReplyTo = null);
+    EmailAddress? ReplyTo = null,
+    bool AutoResponseSuppress = false);
 
 /// <summary>
 /// In-process mailbox simulator behind <see cref="IMailProvider"/>: drives the complete email loop without a tenant (integration
@@ -53,6 +54,7 @@ internal sealed class FakeMailProvider : IMailProvider
     private bool _failNextSendPermanently;
     private int _timeoutNextSends;
     private bool _timeoutNextSendsReach;
+    private int _hiddenSentLookups;
     private int _throttleNextSends;
 
     public string Kind => Contracts.MailProviderKinds.Fake;
@@ -168,6 +170,15 @@ internal sealed class FakeMailProvider : IMailProvider
         {
             _timeoutNextSends = count;
             _timeoutNextSendsReach = reachedProvider;
+        }
+    }
+
+    /// <summary>SIMULATOR ONLY. The next sent-copy lookups find nothing even for a message that was sent (the provider has not moved it to Sent Items yet).</summary>
+    public void HideNextSentCopyLookups(int count)
+    {
+        lock (_gate)
+        {
+            _hiddenSentLookups = count;
         }
     }
 
@@ -352,7 +363,7 @@ internal sealed class FakeMailProvider : IMailProvider
             state.Sent.Add(new FakeSent(
                 mailbox.Address, draftId, draft.InternetMessageId, draft.InReplyTo, draft.References, draft.ConversationId,
                 draft.Content.ReplyToProviderMessageId is null ? draft.Content.Subject : (draft.Content.Subject.StartsWith("Re:", StringComparison.OrdinalIgnoreCase) ? draft.Content.Subject : "Re: " + draft.Content.Subject),
-                draft.Content.BodyHtml, draft.Content.To, draft.Content.Cc, draft.Content.Token, DateTimeOffset.UtcNow, draft.Content.ReplyTo));
+                draft.Content.BodyHtml, draft.Content.To, draft.Content.Cc, draft.Content.Token, DateTimeOffset.UtcNow, draft.Content.ReplyTo, draft.Content.IsAutomatic));
             return timeout ? throw new TransientProviderException("graph_timeout") { Ambiguous = true } : Task.CompletedTask;
         }
     }
@@ -361,6 +372,12 @@ internal sealed class FakeMailProvider : IMailProvider
     {
         lock (_gate)
         {
+            if (_hiddenSentLookups > 0)
+            {
+                _hiddenSentLookups--;
+                return Task.FromResult<SentCopy?>(null);
+            }
+
             var sent = StateOf(mailbox.Address).Sent.FirstOrDefault(s => s.DraftId == draftId);
             return Task.FromResult(sent is null ? null : new SentCopy(sent.DraftId, sent.InternetMessageId));
         }

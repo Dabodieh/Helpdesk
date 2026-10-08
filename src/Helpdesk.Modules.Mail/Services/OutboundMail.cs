@@ -252,7 +252,8 @@ internal sealed class OutboundSender(
                         Parse(message.ToJson),
                         Parse(message.CcJson),
                         message.OutboundToken!,
-                        new EmailAddress(mailbox.Address, null)); // Reply-To is always the helpdesk mailbox, never an agent's own address
+                        new EmailAddress(mailbox.Address, null), // Reply-To is always the helpdesk mailbox, never an agent's own address
+                        MessageFlags.Has(message.Flags, "auto_reply"));
                     var draft = await provider.CreateDraftAsync(mref, content, ct);
 
                     // Persist the draft id (and the id the provider reports) BEFORE sending: a crash after the send must not send twice.
@@ -346,7 +347,7 @@ internal sealed class OutboundSender(
     /// Resolves a message whose send may have reached the provider (a crashed worker left it Sending, or an operator asks): the sent copy proves it was
     /// submitted; without one the message is Uncertain. Never sends. Returns true when the sent copy was found.
     /// </summary>
-    public async Task<bool> ReconcileAsync(Guid outboundId, CancellationToken ct)
+    public async Task<bool> ReconcileAsync(Guid outboundId, CancellationToken ct, bool automatic = false)
     {
         var message = await db.Messages.SingleOrDefaultAsync(
             m => m.Id == outboundId && m.Direction == MessageDirections.Outbound && (m.State == MessageStates.Sending || m.State == MessageStates.Uncertain), ct);
@@ -387,6 +388,12 @@ internal sealed class OutboundSender(
         {
             await ApplyUncertainAsync(message, ct);
         }
+        else if (automatic)
+        {
+            // Still not found: stay Uncertain for an operator, and do not look again by itself.
+            message.Flags = MessageFlags.With(message.Flags, MessageFlags.ReconcileAttempted);
+            await db.SaveChangesAsync(ct);
+        }
 
         await tx.CommitAsync(ct);
         await ReportAsync(message, ct);
@@ -404,6 +411,7 @@ internal sealed class OutboundSender(
     private async Task ApplyUncertainAsync(MailMessage message, CancellationToken ct)
     {
         message.State = MessageStates.Uncertain;
+        message.Flags = MessageFlags.Without(message.Flags, MessageFlags.ReconcileAttempted);
         message.LastError = MailErrorCodes.OutcomeUncertain;
         message.NextAttemptAt = null;
         message.DeliveryReportedAt = null;
@@ -412,7 +420,7 @@ internal sealed class OutboundSender(
         await audit.WriteSystemAsync(MailAuditActions.SendUncertain, MailAudit.MessageObject, message.Id, message.DepartmentId, null, new { attempts = message.Attempts }, ct);
     }
 
-    /// <summary>Tells Ticketing how it ended (Sent/Failed). Safe to repeat; rows still unreported are retried by the dispatcher.</summary>
+    /// <summary>Tells Ticketing how it ended (Sent/Failed/Uncertain/Bounced). Safe to repeat; rows still unreported are retried by the dispatcher.</summary>
     public async Task ReportAsync(MailMessage message, CancellationToken ct)
     {
         if (message.TicketMessageId is not { } ticketMessageId || message.State is not (MessageStates.Sent or MessageStates.Failed or MessageStates.Uncertain))
@@ -423,9 +431,14 @@ internal sealed class OutboundSender(
         try
         {
             // Ticketing only learns "submitted" or "not (confirmed) submitted" plus a safe category. Neither means delivered.
-            await delivery.SetAsync(
-                message.DepartmentId, ticketMessageId, message.State == MessageStates.Sent ? MailDeliveryStates.Sent : MailDeliveryStates.Failed, MailErrors.Category(message.LastError),
-                message.DeliverySeq, ct);
+            var state = message.State switch
+            {
+                MessageStates.Sent => MailDeliveryStates.Sent,
+                MessageStates.Uncertain => MailDeliveryStates.Uncertain,
+                _ when message.LastError == MailErrorCodes.NdrDeliveryFailed => MailDeliveryStates.Bounced,
+                _ => MailDeliveryStates.Failed,
+            };
+            await delivery.SetAsync(message.DepartmentId, ticketMessageId, state, MailErrors.Category(message.LastError), message.DeliverySeq, ct);
             message.DeliveryReportedAt = clock.GetUtcNowMicroseconds();
             await db.SaveChangesAsync(ct);
         }

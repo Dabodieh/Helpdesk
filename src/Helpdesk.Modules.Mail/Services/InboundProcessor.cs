@@ -157,11 +157,11 @@ internal sealed class InboundProcessor(
         {
             var sameId = await db.Messages.AsNoTracking()
                 .Where(m => m.MailboxId == mailbox.Id && m.InternetMessageId == internetId && m.Direction == MessageDirections.Inbound)
-                .Select(m => new { m.Subject, m.FromAddress, m.OccurredAt }).FirstOrDefaultAsync(ct);
+                .Select(m => new { m.Subject, m.FromAddress }).FirstOrDefaultAsync(ct);
             if (sameId is not null)
             {
-                var sameContent = sameId.Subject == message.Subject && sameId.FromAddress == message.FromAddress
-                    && Math.Abs((sameId.OccurredAt - message.OccurredAt).TotalSeconds) < 2;
+                // The same Message-ID, subject and sender is a re-delivery whatever the time gap (MSG-010).
+                var sameContent = sameId.Subject == message.Subject && sameId.FromAddress == message.FromAddress;
                 if (sameContent)
                 {
                     reason = IgnoreReasons.DuplicateInternetMessageId;

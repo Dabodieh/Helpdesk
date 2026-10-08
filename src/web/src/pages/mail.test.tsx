@@ -245,7 +245,7 @@ test('mailbox health shows its status and reasons, and an uncertain send is reso
 })
 
 test('a failed send shows a safe category; an uncertain one offers no retry button', async () => {
-  mockFetch(ticketRoutes([makeMessage({ id: 'c', ...AGENT_REPLY, body: 'maybe sent', deliveryState: 'Failed', deliveryError: 'outcome_uncertain' })]))
+  mockFetch(ticketRoutes([makeMessage({ id: 'c', ...AGENT_REPLY, body: 'maybe sent', deliveryState: 'Uncertain', deliveryError: 'outcome_uncertain' })]))
   await openTicket()
   expect(await screen.findByText(/Send outcome uncertain: it may or may not have been sent/)).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Retry sending' })).not.toBeInTheDocument()

@@ -1,4 +1,4 @@
-#pragma warning disable CA1861 // one-off request payloads
+﻿#pragma warning disable CA1861 // one-off request payloads
 using System.Net;
 using Helpdesk.Host.Tests.Infrastructure;
 using Helpdesk.Host.Tests.Ticketing;
@@ -71,7 +71,7 @@ public sealed class GraphDeliveryConfidenceTests(HelpdeskFixture fixture) : ICla
         // Neither Sent nor a plain failure: uncertain, reported to the ticket with a safe category, and never queued again by itself.
         Assert.Equal(("Uncertain", "outcome_uncertain"), await OutboundAsync(s.TicketId, "Lost in transit"));
         var shown = await TicketMessageAsync(s.D, s.TicketId, "Lost in transit");
-        Assert.Equal("Failed", shown.Delivery);
+        Assert.Equal("Uncertain", shown.Delivery);
         Assert.Equal("outcome_uncertain", shown.Error);
         await fixture.ExecuteAsync("UPDATE mail.messages SET next_attempt_at = now() - interval '1 minute' WHERE ticket_id = @t AND direction = 'Outbound'", TicketKit.P("t", s.TicketId));
         await fixture.DispatchAsync();
@@ -95,6 +95,37 @@ public sealed class GraphDeliveryConfidenceTests(HelpdeskFixture fixture) : ICla
         Assert.Single(fixture.Fake().SentMail(s.Box.Address));
         Assert.Equal("Sent", (await OutboundAsync(s.TicketId, "Lost in transit")).State);
         Assert.Equal(1, await fixture.CountAuditAsync("mail.uncertain_retried", mailId));
+    }
+
+    [Fact]
+    public async Task An_uncertain_send_is_looked_up_once_more_after_a_delay_and_becomes_sent_without_a_second_send_or_stays_uncertain()
+    {
+        var s = await StartAsync();
+        fixture.Fake().TimeoutNextSends(1, reachedProvider: true);
+        fixture.Fake().HideNextSentCopyLookups(1);
+        (await s.D.Agent.PostMessageAsync(s.TicketId, "Public", "Sent copy appears late")).Expect(HttpStatusCode.Created);
+        await fixture.DispatchAsync();
+        Assert.Equal("Uncertain", (await OutboundAsync(s.TicketId, "Sent copy appears late")).State);
+        Assert.Equal("Uncertain", (await TicketMessageAsync(s.D, s.TicketId, "Sent copy appears late")).Delivery);
+
+        // Too soon: not looked at again. After the delay the read-only lookup finds the copy: Sent, and still exactly one provider send.
+        await fixture.DispatchAsync();
+        Assert.Equal("Uncertain", (await OutboundAsync(s.TicketId, "Sent copy appears late")).State);
+        await fixture.ExecuteAsync("UPDATE mail.messages SET updated_at = now() - interval '1 hour' WHERE ticket_id = @t AND direction = 'Outbound'", TicketKit.P("t", s.TicketId));
+        await fixture.DispatchAsync();
+        Assert.Equal("Sent", (await OutboundAsync(s.TicketId, "Sent copy appears late")).State);
+        Assert.Equal("Sent", (await TicketMessageAsync(s.D, s.TicketId, "Sent copy appears late")).Delivery);
+        Assert.False(Assert.Single(fixture.Fake().SentMail(s.Box.Address)).AutoResponseSuppress); // an agent reply is not marked automatic
+
+        // A message the provider never received stays Uncertain after its single automatic lookup, and nothing is sent.
+        fixture.Fake().TimeoutNextSends(1, reachedProvider: false);
+        (await s.D.Agent.PostMessageAsync(s.TicketId, "Public", "Never arrived")).Expect(HttpStatusCode.Created);
+        await fixture.DispatchAsync();
+        await fixture.ExecuteAsync("UPDATE mail.messages SET updated_at = now() - interval '1 hour' WHERE ticket_id = @t AND direction = 'Outbound' AND body_text = 'Never arrived'", TicketKit.P("t", s.TicketId));
+        await fixture.DispatchAsync();
+        Assert.Equal("Uncertain", (await OutboundAsync(s.TicketId, "Never arrived")).State);
+        Assert.Equal(1, await fixture.CountAsync("SELECT count(*) FROM mail.messages WHERE ticket_id = @t AND body_text = 'Never arrived' AND flags LIKE '%reconcile_attempted%'", TicketKit.P("t", s.TicketId)));
+        Assert.Single(fixture.Fake().SentMail(s.Box.Address));
     }
 
     [Fact]
@@ -132,7 +163,7 @@ public sealed class GraphDeliveryConfidenceTests(HelpdeskFixture fixture) : ICla
 
         Assert.Equal(("Failed", "ndr_delivery_failed"), await OutboundAsync(s.TicketId, "Will bounce"));
         var shown = await TicketMessageAsync(s.D, s.TicketId, "Will bounce");
-        Assert.Equal("Failed", shown.Delivery);
+        Assert.Equal("Bounced", shown.Delivery);
         Assert.Equal("delivery_failed", shown.Error);
         Assert.Equal(ticketsBefore, (await s.D.Agent.TicketsAsync(s.D, "Confidence")).Count);
         Assert.Equal(messagesBefore, (await s.D.Agent.MessagesAsync(s.TicketId)).Count); // not a requester message

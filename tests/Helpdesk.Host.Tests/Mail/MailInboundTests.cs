@@ -241,6 +241,10 @@ public sealed class MailInboundTests(HelpdeskFixture fixture) : IClassFixture<He
         await fixture.ReceiveAsync(box, MailKit.Mail(sender, subject) with { InternetMessageId = internetId, ReceivedAt = at });
         Assert.Single(await d.Agent.TicketsAsync(d, subject));
 
+        // A late re-delivery of the same message (any time gap) is still the same message.
+        await fixture.ReceiveAsync(box, MailKit.Mail(sender, subject) with { InternetMessageId = internetId, ReceivedAt = at.AddHours(3) });
+        Assert.Single(await d.Agent.TicketsAsync(d, subject));
+
         var other = $"Different {Unique.Id()}";
         await fixture.ReceiveAsync(box, MailKit.Mail(sender, other) with { InternetMessageId = internetId, ReceivedAt = at.AddMinutes(5) });
         Assert.Single(await d.Agent.TicketsAsync(d, other));

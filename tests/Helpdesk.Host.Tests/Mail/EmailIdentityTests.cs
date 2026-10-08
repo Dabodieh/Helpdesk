@@ -285,6 +285,7 @@ public sealed class EmailIdentityTests(HelpdeskFixture fixture) : IClassFixture<
         Assert.Equal($"We've received your request — {reference}", ack.Subject);
         Assert.Equal(s.Requester, Assert.Single(ack.To).Address);
         Assert.Equal(itBox2.Address, ack.ReplyTo?.Address);
+        Assert.True(ack.AutoResponseSuppress); // marked automatic so a peer auto-responder does not answer it (MSG-006)
         Assert.Contains("Thanks for contacting IT Support.", ack.BodyHtml, StringComparison.Ordinal);
         Assert.Contains($"Hi Jane Smith,", ack.BodyHtml, StringComparison.Ordinal);
         Assert.DoesNotContain("Agent sign-off", ack.BodyHtml, StringComparison.Ordinal);

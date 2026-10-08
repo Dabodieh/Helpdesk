@@ -18,7 +18,7 @@ public sealed class QueuePreferencesTests(HelpdeskFixture fixture) : IClassFixtu
             .GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetGuid())];
 
     private Task<int> SetMessageAsync(Guid ticketId, string error) =>
-        fixture.ExecuteAsync("UPDATE ticketing.messages SET delivery_state = 'Failed', delivery_error = @e WHERE ticket_id = @t AND kind = 'Public' AND author_type = 'Agent'",
+        fixture.ExecuteAsync("UPDATE ticketing.messages SET delivery_state = CASE WHEN @e = 'outcome_uncertain' THEN 'Uncertain' ELSE 'Failed' END, delivery_error = @e WHERE ticket_id = @t AND kind = 'Public' AND author_type = 'Agent'",
             new NpgsqlParameter("e", error), new NpgsqlParameter("t", ticketId));
 
     [Fact]

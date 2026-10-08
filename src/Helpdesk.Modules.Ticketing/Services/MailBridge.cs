@@ -415,6 +415,8 @@ internal sealed class DeliveryStateSink(TicketingDbContext db, TicketingAudit au
             MailDeliveryStates.Pending => DeliveryState.Pending,
             MailDeliveryStates.Sent => DeliveryState.Sent,
             MailDeliveryStates.Failed => DeliveryState.Failed,
+            MailDeliveryStates.Uncertain => DeliveryState.Uncertain,
+            MailDeliveryStates.Bounced => DeliveryState.Bounced,
             _ => throw new ArgumentOutOfRangeException(nameof(state)),
         };
 
@@ -429,7 +431,7 @@ internal sealed class DeliveryStateSink(TicketingDbContext db, TicketingAudit au
         }
 
         var previous = message.DeliveryState;
-        var error = target == DeliveryState.Failed ? (failureCode is { Length: > 200 } ? failureCode[..200] : failureCode) : null;
+        var error = target is DeliveryState.Failed or DeliveryState.Uncertain or DeliveryState.Bounced ? (failureCode is { Length: > 200 } ? failureCode[..200] : failureCode) : null;
 
         // The ordering check is part of the write itself, so two concurrent reports cannot both pass it.
         var applied = await db.Messages.IgnoreDepartmentScope().Where(m => m.Id == ticketMessageId && m.DepartmentId == departmentId && m.DeliveryReportSequence < sequence)

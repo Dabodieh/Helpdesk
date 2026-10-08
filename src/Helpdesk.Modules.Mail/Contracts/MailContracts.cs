@@ -14,6 +14,12 @@ public static class MailDeliveryStates
     public const string Pending = "Pending";
     public const string Sent = "Sent";
     public const string Failed = "Failed";
+
+    /// <summary>The provider call left it unknown whether the message was accepted. Never retried automatically.</summary>
+    public const string Uncertain = "Uncertain";
+
+    /// <summary>A delivery-status report confirmed the message was NOT delivered (it did reach the provider).</summary>
+    public const string Bounced = "Bounced";
 }
 
 public sealed record MailParticipant(string Address, string? Name);

@@ -36,6 +36,12 @@ internal static class MessageFlags
 
     public static bool Has(string? flags, string flag) => flags is not null && flags.Split(',').Contains(flag, StringComparer.Ordinal);
 
+    /// <summary>Set once the dispatcher has automatically looked for the sent copy of an Uncertain message (one read-only attempt, MSG-008).</summary>
+    public const string ReconcileAttempted = "reconcile_attempted";
+
+    public static string? Without(string? flags, string flag) =>
+        flags is null ? null : string.Join(',', flags.Split(',', StringSplitOptions.RemoveEmptyEntries).Where(f => f != flag)) is { Length: > 0 } rest ? rest : null;
+
     public static string With(string? flags, string flag) => Has(flags, flag) ? flags! : string.IsNullOrEmpty(flags) ? flag : flags + "," + flag;
 }
 

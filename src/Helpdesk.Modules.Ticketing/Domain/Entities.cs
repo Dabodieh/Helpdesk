@@ -32,7 +32,7 @@ internal enum AuthorType
 
 /// <summary>
 /// Delivery of an agent's PUBLIC reply. None: not applicable (notes, requester mail). NotDelivered: recorded but no mailbox could send it.
-/// Pending/Sent/Failed: tracked through the mail outbox. Never "Sent" unless the provider accepted the message.
+/// Pending/Sent/Failed/Uncertain/Bounced: tracked through the mail outbox (Failed: not submitted; Uncertain: submission outcome unknown; Bounced: a delivery report confirmed non-delivery). Never "Sent" unless the provider accepted the message.
 /// </summary>
 /// <summary>Reasons stored in <c>delivery_error</c> of a NotDelivered public reply (nothing was queued): the ticket has no usable stored mailbox.</summary>
 internal static class DeliveryErrors
@@ -48,6 +48,8 @@ internal enum DeliveryState
     Pending,
     Sent,
     Failed,
+    Uncertain,
+    Bounced,
 }
 
 internal static class TicketSources

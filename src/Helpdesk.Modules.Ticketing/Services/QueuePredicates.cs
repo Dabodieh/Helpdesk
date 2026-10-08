@@ -31,7 +31,7 @@ internal static class QueuePredicates
 
     /// <summary>An agent reply whose email did not go out: a confirmed failure, or (uncertain) a send whose outcome is unknown.</summary>
     public static Expression<Func<Ticket, bool>> SendProblem(TicketingDbContext db, bool uncertain) =>
-        t => db.Messages.Any(m => m.TicketId == t.Id && m.DeliveryState == DeliveryState.Failed && (m.DeliveryError == "outcome_uncertain") == uncertain);
+        t => db.Messages.Any(m => m.TicketId == t.Id && (uncertain ? m.DeliveryState == DeliveryState.Uncertain : m.DeliveryState == DeliveryState.Failed || m.DeliveryState == DeliveryState.Bounced));
 
     /// <summary>A deadline within <see cref="DueSoonWindow"/> that has not passed.</summary>
     public static Expression<Func<Ticket, bool>> SlaDueSoon(TicketingDbContext db, DateTimeOffset now)

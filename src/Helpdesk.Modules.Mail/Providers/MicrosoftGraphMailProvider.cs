@@ -262,7 +262,7 @@ internal sealed class MicrosoftGraphMailProvider : IMailProvider
                 ["body"] = new JsonObject { ["contentType"] = "HTML", ["content"] = content.BodyHtml },
                 ["toRecipients"] = Recipients(content.To),
                 ["ccRecipients"] = Recipients(content.Cc),
-                ["internetMessageHeaders"] = new JsonArray(new JsonObject { ["name"] = "x-helpdesk-token", ["value"] = content.Token }),
+                ["internetMessageHeaders"] = Headers(content),
             };
             if (content.ReplyTo is { } replyToAddress)
             {
@@ -394,6 +394,17 @@ internal sealed class MicrosoftGraphMailProvider : IMailProvider
     }
 
     private static string Escape(string value) => Uri.EscapeDataString(value);
+
+    private static JsonArray Headers(OutboundContent content)
+    {
+        var headers = new JsonArray(new JsonObject { ["name"] = "x-helpdesk-token", ["value"] = content.Token });
+        if (content.IsAutomatic)
+        {
+            headers.Add(new JsonObject { ["name"] = "x-auto-response-suppress", ["value"] = "All" });
+        }
+
+        return headers;
+    }
 
     private static JsonArray Recipients(IReadOnlyList<EmailAddress> addresses) =>
         new([.. addresses.Select(a => (JsonNode)new JsonObject

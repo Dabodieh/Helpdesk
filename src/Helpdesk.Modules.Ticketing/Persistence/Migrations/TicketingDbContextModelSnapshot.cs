@@ -612,7 +612,7 @@ namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_messages_delivery_only_agent_public", "delivery_state = 'None' OR (kind = 'Public' AND author_type = 'Agent')");
 
-                            t.HasCheckConstraint("ck_messages_delivery_state", "delivery_state IN ('None','NotDelivered','Pending','Sent','Failed')");
+                            t.HasCheckConstraint("ck_messages_delivery_state", "delivery_state IN ('None','NotDelivered','Pending','Sent','Failed','Uncertain','Bounced')");
 
                             t.HasCheckConstraint("ck_messages_internal_never_requester_or_delivered", "kind <> 'Internal' OR (author_type <> 'Requester' AND delivery_state = 'None')");
 

@@ -520,7 +520,7 @@ internal sealed class TicketService(
         var message = await db.Messages.SingleOrDefaultAsync(
             m => m.Id == messageId && m.TicketId == key.Id && m.DepartmentId == key.DepartmentId && m.Kind == MessageKind.Public && m.AuthorType == AuthorType.Agent, ct)
             ?? throw new NotFoundException();
-        if (message.DeliveryState != DeliveryState.Failed)
+        if (message.DeliveryState is not (DeliveryState.Failed or DeliveryState.Bounced))
         {
             throw new ConflictException("Only a failed delivery can be retried.", ProblemCodes.InvalidState);
         }
@@ -531,7 +531,7 @@ internal sealed class TicketService(
             s => s.SetProperty(m => m.DeliveryState, DeliveryState.Pending).SetProperty(m => m.DeliveryError, (string?)null), ct);
         await audit.WriteAsync(
             TicketAuditActions.MessageDeliveryChanged, TicketingAudit.TicketObject, key.Id, key.DepartmentId,
-            new { messageId, delivery = nameof(DeliveryState.Failed) }, new { messageId, delivery = nameof(DeliveryState.Pending), reason = "retry" }, ct);
+            new { messageId, delivery = message.DeliveryState.ToString() }, new { messageId, delivery = nameof(DeliveryState.Pending), reason = "retry" }, ct);
         await tx.CommitAsync(ct);
         await outbox.NotifyQueuedAsync(outboundId, ct);
         await events.PublishAsync(key.DepartmentId, key.Id, route, TicketEventKinds.Delivery, current.UserId, ct);
