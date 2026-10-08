@@ -47,7 +47,7 @@ function CreateMailbox({ departmentId, onClose }: { departmentId: string; onClos
     if (address.trim() && displayName.trim()) create.mutate()
   }
   return (
-    <Dialog title="Add mailbox" onClose={onClose}>
+    <Dialog title="Add mailbox" variant="drawer" onClose={onClose}>
     <form className="dialog-form" onSubmit={submit} aria-label="New mailbox">
       <Field label="Mailbox address" error={server.address} hint="The shared mailbox in Microsoft 365 that receives this department's email.">
         {(p) => <input {...p} data-autofocus type="email" value={address} maxLength={320} required onChange={(e) => setAddress(e.target.value)} />}
@@ -84,14 +84,13 @@ function MailboxRow({ departmentId, mailbox: m }: { departmentId: string; mailbo
   return (
     <>
       <tr>
-        <td>
-          {m.address} {m.isDefault && <span className="badge">Default</span>}
+        <td className="mailbox-identity">
+          <strong>{m.displayName}</strong> {m.isDefault && <span className="badge">Default</span>}
+          <span className="mailbox-address">{m.address}</span>
         </td>
-        <td>{m.displayName}</td>
         <td>
           <ActiveBadge active={m.isActive} />
-        </td>
-        <td>
+
           {m.health ? (
             <>
               <StatusBadge tone={HEALTH_TONE[m.health.status] ?? 'off'}>{HEALTH_LABEL[m.health.status] ?? m.health.status}</StatusBadge>
@@ -101,11 +100,10 @@ function MailboxRow({ departmentId, mailbox: m }: { departmentId: string; mailbo
           ) : null}
         </td>
         <td>
-          {m.subscription.state}
-          {m.subscription.expiresAt ? <span className="muted small"> until {formatDateTime(m.subscription.expiresAt)}</span> : null}
-        </td>
-        <td>
-          {m.lastSyncAt ? formatDateTime(m.lastSyncAt) : 'Never'}
+          <span className="mailbox-sync">{m.lastSyncAt ? formatDateTime(m.lastSyncAt) : 'Never synced'}</span>
+          <details className="mailbox-subscription"><summary>Subscription: {m.subscription.state}</summary>
+            {m.subscription.expiresAt ? <span className="muted small">Expires {formatDateTime(m.subscription.expiresAt)}</span> : <span className="muted small">No expiry recorded</span>}
+          </details>
           {m.lastSyncError && <span className="field-error small"> ({m.lastSyncError})</span>}
         </td>
         <td>{m.attentionCount > 0 ? <strong>{m.attentionCount} failed</strong> : 0}</td>
@@ -142,10 +140,12 @@ function MailboxRow({ departmentId, mailbox: m }: { departmentId: string; mailbo
       </tr>
       {(editing || patch.isError) && (
         <tr>
-          <td colSpan={8}>
+          <td colSpan={5}>
             {editing && (
+              <Dialog title="Edit mailbox" variant="drawer" onClose={() => setEditing(false)}>
+              <p className="mailbox-drawer-address">{m.address}</p>
               <form
-                className="form inline"
+                className="dialog-form"
                 aria-label={`Edit ${m.address}`}
                 onSubmit={(e) => {
                   e.preventDefault()
@@ -155,12 +155,13 @@ function MailboxRow({ departmentId, mailbox: m }: { departmentId: string; mailbo
                 <Field label="Display name (the From name of replies)" error={server.displayName} hint="Replies always leave from this mailbox address, whichever agent sends them.">
                   {(p) => <input {...p} value={name} maxLength={200} required onChange={(e) => setName(e.target.value)} />}
                 </Field>
-                <button type="submit" className="primary" disabled={patch.isPending}>
-                  Save
-                </button>
+                <div className="sender-preview"><span className="muted small">Sender preview</span><strong>{name.trim() || m.displayName}</strong><span>{m.address}</span></div>
+                <ErrorNotice error={patch.error} />
+                <div className="dialog-actions"><button type="button" onClick={() => setEditing(false)}>Cancel</button><button type="submit" className="primary" disabled={patch.isPending}>Save</button></div>
               </form>
+              </Dialog>
             )}
-            <ErrorNotice error={patch.error} />
+            {!editing && <ErrorNotice error={patch.error} />}
           </td>
         </tr>
       )}
@@ -235,7 +236,7 @@ function Attention({ departmentId }: { departmentId: string }) {
   if (q.data.items.length === 0) return <p className="empty">No failed or ignored mail.</p>
   return (
     <>
-      <table className="grid">
+      <table className="grid mailboxes-table">
         <caption className="sr-only">Mail needing attention</caption>
         <thead>
           <tr>
@@ -301,7 +302,7 @@ export default function MailboxesSection({ department }: { department: Departmen
   const q = useQuery({ queryKey: ['mailboxes', department.id], queryFn: () => listMailboxes(department.id), enabled: allowed })
   if (!allowed) return null
   return (
-    <>
+    <div className="mailboxes-page">
       <section aria-labelledby="mailboxes-h">
         <div className="section-head">
           <h2 id="mailboxes-h">Mailboxes</h2>
@@ -312,22 +313,20 @@ export default function MailboxesSection({ department }: { department: Departmen
           )}
         </div>
         <p className="muted">
-          Email sent to these shared mailboxes becomes tickets of this department. A ticket keeps the mailbox it arrived at (or was created with) as its sender for good; replies are sent from it with that address as Reply-To, whichever agent or team handles the ticket.
+          Connect shared mailboxes, manage sender identity and monitor mail health for this department.
         </p>
+        {q.data && <div className="mail-summary" aria-label="Mailbox summary"><div><strong>{q.data.filter(m => m.isActive).length}</strong><span>Active mailboxes</span></div><div><strong>{q.data.filter(m => m.health?.status === 'Attention' || m.health?.status === 'Failed').length}</strong><span>Need attention</span></div><div><span>Default sender</span><strong className="mail-summary-default">{q.data.find(m => m.isDefault && m.isActive)?.address ?? 'No active default'}</strong></div></div>}
         {q.isPending && <Loading label="Loading mailboxes" />}
         {q.isError && <ErrorNotice error={q.error} onRetry={() => void q.refetch()} />}
         {q.isSuccess && q.data.length === 0 && <p className="empty">No mailbox configured yet: replies are recorded but not emailed.</p>}
         {q.isSuccess && q.data.length > 0 && (
           <div className="table-scroll">
-          <table className="grid">
+          <table className="grid mailboxes-table">
             <caption className="sr-only">Mailboxes of {department.name}</caption>
             <thead>
               <tr>
-                <th scope="col">Address</th>
-                <th scope="col">Sender name</th>
-                <th scope="col">Status</th>
-                <th scope="col">Health</th>
-                <th scope="col">Webhook subscription</th>
+                <th scope="col">Mailbox / sender</th>
+                <th scope="col">Status & health</th>
                 <th scope="col">Last sync</th>
                 <th scope="col">Mail needing attention</th>
                 <th scope="col">
@@ -345,12 +344,13 @@ export default function MailboxesSection({ department }: { department: Departmen
         )}
         {adding && <CreateMailbox departmentId={department.id} onClose={() => setAdding(false)} />}
       </section>
-      <AutoReplySection department={department} />
+      <p className="mail-help muted small">Each ticket keeps its stored mailbox for From and Reply-To. Changing the default affects new tickets only. An unavailable mailbox never falls back to a different sender.</p>
       <section aria-labelledby="attention-h">
         <h2 id="attention-h">Mail needing attention</h2>
         <p className="muted">Messages that could not be processed or sent, and mail that was ignored on purpose (automatic replies, mailing lists, loops).</p>
         <Attention departmentId={department.id} />
       </section>
-    </>
+      <AutoReplySection department={department} />
+    </div>
   )
 }

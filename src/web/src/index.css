@@ -3468,3 +3468,34 @@ table.compact th {
 @media(max-width:700px) { .admin-layout,.department-page { grid-template-columns:155px minmax(0,1fr); } .admin-filters { flex-wrap:wrap; } .areas { grid-template-columns:1fr; } .department-page .tablist { flex-direction:column; flex-wrap:nowrap; } .department-page .tab-group { display:block; } }
 .app-rail button.rail-link:hover:not(:disabled), .app-rail .usermenu-trigger:hover:not(:disabled) { background:#ffffff15; color:var(--rail-active); }
 .department-page > .tabs-vertical > .tab-navigation { position:sticky; top:0; height:calc(100dvh - 60px); overflow-y:auto; }
+
+/* Graphite mailbox operations */
+.mailboxes-page > section > .section-head { margin-bottom:8px; }
+.mailboxes-page h2 { font-size:20px; margin-top:0; }
+.mail-summary { display:flex; gap:36px; padding:20px 0; margin:5px 0 19px; border-bottom:1px solid var(--border); }
+.mail-summary > div { display:flex; align-items:center; gap:12px; }
+.mail-summary strong { font-size:24px; font-weight:700; }
+.mail-summary span { font-size:12px; color:var(--muted); }
+.mail-summary > div:last-child { margin-left:auto; display:flex; flex-direction:column; align-items:flex-end; gap:3px; }
+.mail-summary .mail-summary-default { font-size:13px; overflow-wrap:anywhere; }
+.mailboxes-table { margin:0; font-size:13px; }
+.mailboxes-table th { text-transform:uppercase; font-size:10px; letter-spacing:.5px; color:var(--muted); padding:12px; background:var(--bg); }
+.mailboxes-table td { padding:16px 12px; vertical-align:top; }
+.mailboxes-table .mailbox-identity { min-width:180px; overflow-wrap:anywhere; }
+.mailbox-address { display:block; color:var(--muted); margin-top:7px; font-size:12px; }
+.mailboxes-table .status { margin:0 4px 5px 0; }
+.mailboxes-table .row-actions { display:table-cell; width:115px; }
+.mailboxes-table .row-actions > button { display:flex; width:100%; justify-content:center; margin-bottom:6px; font-size:12px; }
+.mailboxes-table td:nth-child(2) { max-width:250px; }
+.mailbox-sync { display:block; font-size:12px; white-space:nowrap; }
+.mailbox-subscription { margin-top:8px; font-size:11px; color:var(--muted); }
+.mailbox-subscription summary { cursor:pointer; }
+.mail-help { line-height:1.7; margin:15px 0 26px; }
+.mailboxes-page > section + section { border-top:1px solid var(--border); margin-top:28px; padding-top:24px; }
+.mailboxes-page #attention-h { margin-top:22px; }
+.mailbox-drawer-address { margin:20px 24px 0; color:var(--muted); overflow-wrap:anywhere; }
+.sender-preview { border:1px solid var(--border); border-radius:7px; padding:16px; margin:18px 0; display:flex; flex-direction:column; gap:7px; }
+.sender-preview strong { font-size:16px; }
+.sender-preview span:last-child { font-size:13px; color:var(--muted); }
+.mailboxes-page .grid { table-layout:auto; }
+@media(max-width:1400px) { .mail-summary { gap:22px; } .mailboxes-table td,.mailboxes-table th { padding-left:10px; padding-right:10px; } }
