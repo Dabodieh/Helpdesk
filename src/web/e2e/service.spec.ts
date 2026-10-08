@@ -10,7 +10,7 @@ async function noSeriousViolations(page: Page, label: string) {
   expect(serious.map((v) => `${label}: ${v.id} (${v.nodes.length}) ${v.help}`)).toEqual([])
 }
 
-test('administrator configures hours, a policy and a routing rule; a new ticket gets its SLA and team; dry run explains', async ({ page }) => {
+test('administrator configures hours, a policy and a routing rule; a new ticket gets its SLA and assignee; dry run explains', async ({ page }) => {
   const data = await seed()
   // Make the seeded lead a department administrator (as platform admin) so one signed-in person can configure and read tickets.
   const lead = await Api.signIn(data.actor)
@@ -45,7 +45,7 @@ test('administrator configures hours, a policy and a routing rule; a new ticket 
   await expect(page.getByRole('cell', { name: 'Standard support', exact: true })).toBeVisible()
   await expect(page.getByText(/First response 1h/)).toBeVisible()
 
-  // Automation rule: network tickets go to the team
+  // Automation rule: network tickets go to the department's lead
   await page.getByRole('tab', { name: 'Automations' }).click()
   await page.getByRole('button', { name: 'New rule' }).click()
   const rule = page.getByRole('dialog')
@@ -53,14 +53,14 @@ test('administrator configures hours, a policy and a routing rule; a new ticket 
   await rule.getByRole('button', { name: 'Add condition' }).click()
   await rule.getByLabel('Condition 1 field').selectOption('subjectContains')
   await rule.getByLabel('Condition 1 value').fill('network')
-  await rule.getByLabel('Action 1 type').selectOption('assignTeam')
-  await rule.getByLabel('Action 1 value').selectOption({ label: data.teamName })
+  await rule.getByLabel('Action 1 type').selectOption('assignAgent')
+  await rule.getByLabel('Action 1 value').selectOption({ label: data.actor.name })
   await noSeriousViolations(page, 'rule editor dialog')
   await rule.getByRole('button', { name: 'Save rule' }).click()
   await expect(page.getByText('Network routing', { exact: true })).toBeVisible()
-  await expect(page.getByText(new RegExp(`Assign team: ${data.teamName}`))).toBeVisible()
+  await expect(page.getByText(new RegExp(`Assign agent: ${data.actor.name}`))).toBeVisible()
 
-  // A new ticket: SLA applied, team assigned by the rule.
+  // A new ticket: SLA applied, assignee set by the rule.
   const agent = await Api.signIn(data.actor)
   const subject = `Network outage ${Date.now().toString(36)}`
   const created = await agent.send<{ reference: string }>('POST', `/api/departments/${data.departmentId}/tickets`, {
@@ -75,7 +75,7 @@ test('administrator configures hours, a policy and a routing rule; a new ticket 
   await expect(row.getByText(/On track|Due soon/).first()).toBeAttached()
   await row.getByRole('link', { name: subject }).click()
   const ticket = page.getByRole('region', { name: 'Ticket', exact: true })
-  await expect(ticket.getByRole('combobox', { name: 'Team', exact: true })).not.toHaveValue('')
+  await expect(ticket.getByRole('combobox', { name: 'Assignee', exact: true })).not.toHaveValue('')
   await expect(ticket.getByText('Service level').first()).toBeVisible()
   await ticket.getByRole('button', { name: 'Details' }).click()
   const details = page.getByRole('dialog')

@@ -38,7 +38,7 @@ for (const scheme of ['light', 'dark'] as const) {
     await page.keyboard.press('Escape')
 
     await page.goto(`/admin/departments/${data.departmentId}`)
-    await page.getByRole('tab', { name: 'Teams' }).waitFor()
+    await page.getByRole('tab', { name: 'Members' }).waitFor()
     await shot('department-admin')
     await context.close()
   })

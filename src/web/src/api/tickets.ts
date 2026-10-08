@@ -24,14 +24,12 @@ export type TicketFilters = {
   statuses: Status[]
   priorities: Priority[]
   departmentId?: string
-  teamId?: string
   assigneeUserId?: string
   unassigned?: boolean
   q?: string
   sla?: SlaFilter
   typeId?: string
   send?: SendFilter
-  noTeam?: boolean
   sort: Sort
 }
 
@@ -41,14 +39,12 @@ export function ticketListPath(f: TicketFilters, cursor: string | null, limit = 
   for (const s of f.statuses) p.append('status', s)
   for (const s of f.priorities) p.append('priority', s)
   if (f.departmentId) p.set('departmentId', f.departmentId)
-  if (f.teamId) p.set('teamId', f.teamId)
   if (f.assigneeUserId) p.set('assigneeUserId', f.assigneeUserId)
   if (f.unassigned) p.set('unassigned', 'true')
   if (f.q) p.set('q', f.q)
   if (f.sla) p.set('sla', f.sla)
   if (f.typeId) p.set('typeId', f.typeId)
   if (f.send) p.set('send', f.send)
-  if (f.noTeam) p.set('noTeam', 'true')
   p.set('sort', f.sort)
   if (cursor) p.set('cursor', cursor)
   p.set('limit', String(limit))
@@ -75,7 +71,7 @@ export const assignTicketMailbox = (ticket: string, version: string, mailboxId: 
 
 export const setAssignment = (
   ticket: string,
-  body: { version: string; teamId: string | null; assigneeUserId: string | null },
+  body: { version: string; assigneeUserId: string | null },
 ) => api('PUT', `${tk(ticket)}/assignment`, { body, schema: ticketDetailSchema })
 
 const cursorPath = (base: string, cursor: string | null, limit: number) => {
@@ -115,7 +111,6 @@ export type NewTicket = {
   description: string
   requester: { email: string; displayName?: string } | { requesterId: string }
   priority?: Priority
-  teamId?: string
   assigneeUserId?: string
   mailboxId?: string
   ticketTypeId?: string
@@ -138,7 +133,6 @@ export const lookupRequesters = (departmentId: string, q: string) =>
 export type BulkChange = {
   status?: string
   priority?: string
-  team?: { id: string | null }
   assignee?: { id: string | null }
 }
 

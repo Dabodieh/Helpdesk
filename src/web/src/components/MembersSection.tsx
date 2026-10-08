@@ -20,7 +20,6 @@ function MemberRow({ departmentId, member, canManage }: { departmentId: string; 
     mutationFn: () => removeMember(departmentId, member.userId),
     onSuccess: async () => {
       await refresh()
-      await qc.invalidateQueries({ queryKey: ['teams', departmentId] })
     },
   })
   const error = change.error ?? remove.error

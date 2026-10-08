@@ -128,7 +128,6 @@ export const requestFormSchema = z.object({
   isActive: z.boolean(),
   visibleToRequesters: z.boolean(),
   order: z.number(),
-  defaultTeamId: z.string().nullish(),
   defaultPriority: z.string().nullish(),
   ticketTypeId: z.string().nullish(),
   fields: z.array(formFieldLinkSchema),
@@ -143,8 +142,6 @@ export type FormInput = {
   description?: string
   isActive?: boolean
   visibleToRequesters?: boolean
-  defaultTeamId?: string | null
-  clearDefaultTeam?: boolean
   defaultPriority?: string | null
   clearDefaultPriority?: boolean
   ticketTypeId?: string | null

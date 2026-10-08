@@ -89,7 +89,6 @@ export const AGENT_PERMS = [
   'tickets.notes.read',
   'tickets.update',
   'tickets.assign.self',
-  'tickets.assign.team',
 ]
 export const membership = (permissions: string[], role = 'Agent') => ({
   departmentId: 'd1',
@@ -112,7 +111,6 @@ export function makeTicket(over: Partial<TicketListItem> = {}): TicketListItem {
     status: 'Open',
     priority: 'Normal',
     requester: { id: 'r1', displayName: 'Rita Requester', email: 'rita@example.test' },
-    team: null,
     assignee: null,
     createdAt: '2026-10-01T09:00:00Z',
     updatedAt: '2026-10-01T10:00:00Z',
@@ -156,9 +154,8 @@ export const page = <T,>(items: T[], nextCursor: string | null = null) => ({ ite
 /** Routes every workspace screen needs; spread first, override per test. */
 export const workspaceRoutes = (me: Me = agentMe()) => ({
   'GET /api/me': () => me,
-  'GET /api/tickets/queue-counts': () => ({ my: 3, team: 1, unassigned: 4, all: 9 }),
+  'GET /api/tickets/queue-counts': () => ({ my: 3, unassigned: 4, all: 9 }),
   'GET /api/tickets': () => page([makeTicket()]),
-  'GET /api/departments/d1/teams': () => [],
   'GET /api/departments/d1/members': () => [],
   ...csrfHandler,
 })

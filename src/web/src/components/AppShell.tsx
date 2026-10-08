@@ -21,7 +21,6 @@ import ThemeToggle from './ThemeToggle'
 
 const QUEUE_NAV = [
   { to: '/queue/my', label: 'My Queue', icon: 'inbox', count: 'my' },
-  { to: '/queue/team', label: 'Team Queue', icon: 'team', count: 'team' },
   { to: '/queue/unassigned', label: 'Unassigned', icon: 'unassigned', count: 'unassigned' },
   { to: '/queue/all', label: 'All Tickets', icon: 'all', count: 'all' },
   { to: '/queue/following', label: 'Following', icon: 'star', count: 'following' },

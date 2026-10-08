@@ -5,7 +5,7 @@ export const STATUSES = ['Open', 'Pending', 'Resolved', 'Closed'] as const
 export const PRIORITIES = ['Low', 'Normal', 'High', 'Urgent'] as const
 export type Status = (typeof STATUSES)[number]
 export type Priority = (typeof PRIORITIES)[number]
-export const QUEUES = ['my', 'team', 'unassigned', 'all', 'following'] as const
+export const QUEUES = ['my', 'unassigned', 'all', 'following'] as const
 export type Queue = (typeof QUEUES)[number]
 export const SORTS = ['updated_desc', 'updated_asc', 'created_desc', 'created_asc', 'priority_desc', 'sla_due_asc'] as const
 export const SLA_FILTERS = ['breached', 'approaching', 'duesoon', 'paused', 'awaitingresponse', 'slafirstresponse'] as const
@@ -17,7 +17,6 @@ export type Sort = (typeof SORTS)[number]
 const statusSchema = z.enum(STATUSES)
 const prioritySchema = z.enum(PRIORITIES)
 const refSchema = z.object({ id: z.string(), displayName: z.string() })
-const nameRefSchema = z.object({ id: z.string(), name: z.string() })
 
 export const matchSchema = z.object({ field: z.string(), snippet: z.string().nullish() })
 
@@ -30,7 +29,6 @@ export const ticketListItemSchema = z.object({
   status: statusSchema,
   priority: prioritySchema,
   requester: z.object({ id: z.string(), displayName: z.string(), email: z.string() }),
-  team: nameRefSchema.nullable(),
   assignee: refSchema.nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -138,7 +136,6 @@ export const pageSchema = <T extends z.ZodType>(item: T) =>
 
 export const queueCountsSchema = z.object({
   my: z.number(),
-  team: z.number(),
   unassigned: z.number(),
   all: z.number(),
   slaBreached: z.number().default(0),

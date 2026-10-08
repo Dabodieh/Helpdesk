@@ -46,13 +46,12 @@ export type Seed = {
   actor: TestUser
   colleague: TestUser
   departmentId: string
-  teamName: string
   first: { reference: string; subject: string; description: string }
   second: { reference: string; subject: string }
 }
 
 /**
- * Creates a fresh department (unique key), a team, two members (actor = TeamLead so assignment is allowed,
+ * Creates a fresh department (unique key), two members (actor = TeamLead so assignment is allowed,
  * colleague = Agent) and two tickets assigned to the actor, all through the real API.
  * Needs the bootstrap platform admin `dev-admin` (see docs/DEVELOPMENT.md).
  */
@@ -61,7 +60,6 @@ export async function seed(): Promise<Seed> {
   const key = `E${run.toUpperCase().slice(-6)}`
   const actor: TestUser = { subject: `e2e-lead-${run}`, name: `E2E Lead ${run}`, email: `lead-${run}@example.test` }
   const colleague: TestUser = { subject: `e2e-agent-${run}`, name: `E2E Colleague ${run}`, email: `agent-${run}@example.test` }
-  const teamName = `E2E Team ${run}`
 
   // Users are provisioned on first sign-in; read their ids from /api/me.
   const [leadApi, agentApi] = [await Api.signIn(actor), await Api.signIn(colleague)]
@@ -71,7 +69,6 @@ export async function seed(): Promise<Seed> {
 
   const admin = await Api.signIn({ subject: 'dev-admin', name: 'Dev Admin', email: 'dev@example.test' })
   const dept = await admin.send<{ id: string }>('POST', '/api/departments', { key, name: `E2E ${run}` })
-  await admin.send('POST', `/api/departments/${dept.id}/teams`, { name: teamName })
   await admin.send('PUT', `/api/departments/${dept.id}/members/${leadId}`, { role: 'TeamLead' })
   await admin.send('PUT', `/api/departments/${dept.id}/members/${agentId}`, { role: 'Agent' })
   await admin.dispose()
@@ -97,7 +94,6 @@ export async function seed(): Promise<Seed> {
     actor,
     colleague,
     departmentId: dept.id,
-    teamName,
     first: { ...first, reference: t1.reference },
     second: { ...second, reference: t2.reference },
   }

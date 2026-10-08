@@ -6,7 +6,7 @@ export type EditValues = { name: string; description: string; isActive: boolean;
 export type EditBody = { version: string; name?: string; description?: string; isActive?: boolean }
 
 /**
- * Edit form for a department or team. Sends only changed fields plus the `version` it was loaded with.
+ * Edit form for a department. Sends only changed fields plus the `version` it was loaded with.
  * A 409 version conflict asks the user to reload the latest data (which also resets the form).
  */
 export default function EditForm({

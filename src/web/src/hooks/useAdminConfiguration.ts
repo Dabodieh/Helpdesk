@@ -1,5 +1,5 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
-import { listMembers, listTeams } from '../api/organisation'
+import { listMembers } from '../api/organisation'
 import { listMailboxes } from '../api/mail'
 import { getAutoReply } from '../api/emailIdentity'
 import { listBusinessHours, listSlaPolicies } from '../api/sla'
@@ -28,7 +28,6 @@ export function useAdminConfiguration(id: string) {
   const me = useMe()
   const can = (p: string) => !!id && canInDepartment(me, p, id)
   const members = useQuery({ queryKey: ['members', id], queryFn: () => listMembers(id), enabled: can('department.read') })
-  const teams = useQuery({ queryKey: ['teams', id], queryFn: () => listTeams(id), enabled: can('department.read') })
   const identities = useQuery({ queryKey: ['requester-identities', id, 'summary'], queryFn: () => listIdentityCases(id), enabled: can('department.members.manage') })
   const mailboxes = useQuery({ queryKey: ['mailboxes', id], queryFn: () => listMailboxes(id), enabled: can('department.mailboxes.manage') })
   const ack = useQuery({ queryKey: ['auto-reply', id], queryFn: () => getAutoReply(id), enabled: can('department.mailboxes.manage') })
@@ -44,7 +43,6 @@ export function useAdminConfiguration(id: string) {
   const topics = useQuery({ queryKey: ['help-topics', id], queryFn: () => listHelpTopics(id), enabled: can('department.forms.manage') })
   const states: Record<string, ConfigurationState> = {
     members: state(members, data => ({ ...count(data.length, 'member'), ...(data.length ? {} : { tone: 'warn', warning: 'Add members so people can work in this department.' }) })),
-    teams: state(teams, data => count(data.filter(t => t.isActive).length, 'active team')),
     requesters: state(identities, data => ({ label: `${data.length}${data.length === IDENTITY_PAGE ? '+' : ''} unlinked requesters`, tone: data.some(r => r.needsAttention) ? 'warn' : 'off' })),
     mailboxes: state(mailboxes, data => {
       const active = data.filter(m => m.isActive)

@@ -23,7 +23,6 @@ export default function NewTicketDialog({ onClose, onCreated }: { onClose: () =>
   const [subject, setSubject] = useState('')
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState<Priority>('Normal')
-  const [teamId, setTeamId] = useState('')
   const [assignee, setAssignee] = useState('')
   const [touched, setTouched] = useState(false)
   const [mailboxId, setMailboxId] = useState('')
@@ -56,7 +55,6 @@ export default function NewTicketDialog({ onClose, onCreated }: { onClose: () =>
         ...(chosenType ? { ticketTypeId: chosenType } : {}),
         requester: chosen ? { requesterId: chosen.id } : { email: email.trim(), displayName: name.trim() || undefined },
         priority,
-        teamId: teamId || undefined,
         assigneeUserId: assignee || undefined,
         mailboxId: mailboxId || undefined,
       }),
@@ -92,7 +90,6 @@ export default function NewTicketDialog({ onClose, onCreated }: { onClose: () =>
                 onChange={(e) => {
                   setDepartmentId(e.target.value)
                   setChosen(null)
-                  setTeamId('')
                   setAssignee('')
                   setMailboxId('')
                 }}
@@ -191,22 +188,6 @@ export default function NewTicketDialog({ onClose, onCreated }: { onClose: () =>
                       {t.name}
                     </option>
                   ))}
-                </select>
-              )}
-            </Field>
-          )}
-          {canAssignAny && (
-            <Field label="Team">
-              {(p) => (
-                <select {...p} value={teamId} onChange={(e) => setTeamId(e.target.value)}>
-                  <option value="">No team</option>
-                  {dir.teams
-                    .filter((t) => t.isActive)
-                    .map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
-                      </option>
-                    ))}
                 </select>
               )}
             </Field>

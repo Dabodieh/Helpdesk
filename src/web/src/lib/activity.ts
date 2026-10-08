@@ -1,7 +1,7 @@
 import type { Activity } from '../api/ticketSchemas'
 
 /** Names for ids that appear in activity values. Unknown ids degrade to a neutral phrase, never a raw id. */
-export type NameLookup = { users: Map<string, string>; teams: Map<string, string> }
+export type NameLookup = { users: Map<string, string> }
 
 type Obj = Record<string, unknown> | null | undefined
 
@@ -39,7 +39,6 @@ export function actorName(a: Activity) {
 /** A human sentence fragment that follows the actor name, e.g. "changed status from Open to Pending". */
 export function describeActivity(a: Activity, names: NameLookup): string {
   const who = (id: string | null) => (id ? (names.users.get(id) ?? 'another agent') : 'nobody')
-  const team = (id: string | null) => (id ? (names.teams.get(id) ?? 'another team') : 'no team')
   switch (a.action) {
     case 'ticket.created': {
       const status = pick(a.next, 'status')
@@ -58,7 +57,8 @@ export function describeActivity(a: Activity, names: NameLookup): string {
     case 'ticket.priority_changed':
       return `changed priority from ${pick(a.previous, 'priority') ?? 'unknown'} to ${pick(a.next, 'priority') ?? 'unknown'}`
     case 'ticket.team_changed':
-      return `changed the team from ${team(pick(a.previous, 'teamId', 'team'))} to ${team(pick(a.next, 'teamId', 'team'))}`
+      // Recorded before Teams were removed (a Department is the team). Shown as history, never produced any more.
+      return 'changed the team (a former setting: Departments are the workgroups now)'
     case 'ticket.assignee_changed': {
       const from = pick(a.previous, 'assigneeUserId', 'assignee')
       const to = pick(a.next, 'assigneeUserId', 'assignee')

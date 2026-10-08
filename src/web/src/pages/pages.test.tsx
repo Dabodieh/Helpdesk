@@ -13,7 +13,7 @@ const adminMe = makeMe({
       departmentKey: 'IT',
       departmentName: 'IT Support',
       role: 'DepartmentAdmin',
-      permissions: ['department.read', 'department.manage', 'department.members.manage', 'teams.manage'],
+      permissions: ['department.read', 'department.manage', 'department.members.manage'],
     },
   ],
 })
@@ -22,12 +22,11 @@ const agentMe = makeMe({
     { departmentId: 'd1', departmentKey: 'IT', departmentName: 'IT Support', role: 'Agent', permissions: ['department.read'] },
   ],
 })
-const MEMBERS = [{ userId: 'u1', displayName: 'Test User', email: 'u@example.test', role: 'DepartmentAdmin', teamIds: [] }]
+const MEMBERS = [{ userId: 'u1', displayName: 'Test User', email: 'u@example.test', role: 'DepartmentAdmin' }]
 
 const deptRoutes = (me = adminMe) => ({
   'GET /api/me': () => me,
   'GET /api/departments/d1': () => DEPT,
-  'GET /api/departments/d1/teams': () => [],
   'GET /api/departments/d1/members': () => MEMBERS,
   ...csrfHandler,
 })
@@ -53,7 +52,6 @@ test('create department: valid input posts key and name', async () => {
     'GET /api/departments': () => [],
     'POST /api/departments': () => json({ ...DEPT, id: 'd9', key: 'FAC', name: 'Facilities' }, 201),
     'GET /api/departments/d9': () => ({ ...DEPT, id: 'd9', key: 'FAC', name: 'Facilities' }),
-    'GET /api/departments/d9/teams': () => [],
     'GET /api/departments/d9/members': () => [],
     ...csrfHandler,
   })
@@ -82,7 +80,6 @@ test('permission-aware controls: an Agent sees read-only details and no manageme
   expect((await screen.findAllByText('Test User')).length).toBeGreaterThan(0)
   expect(screen.queryByRole('heading', { name: 'Add member' })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /Remove/ })).not.toBeInTheDocument()
-  expect(screen.queryByRole('form', { name: 'New team' })).not.toBeInTheDocument()
 })
 
 test('department admin can edit details but the Active toggle stays disabled without the platform permission', async () => {
@@ -131,7 +128,6 @@ test('member add flow: lookup requires 3 characters, then adds with the chosen r
       displayName: 'Alice Smith',
       email: 'alice@example.test',
       role: 'TeamLead',
-      teamIds: [],
     }),
   })
   renderApp('/admin/departments/d1')
@@ -149,22 +145,6 @@ test('member add flow: lookup requires 3 characters, then adds with the chosen r
   const put = calls.find((c) => c.method === 'PUT')!
   expect(put.body).toEqual({ role: 'TeamLead' })
   expect(put.headers['X-CSRF-TOKEN']).toBe('tok')
-})
-
-test('team members: only department members that are not yet in the team are selectable', async () => {
-  mockFetch({
-    ...deptRoutes(),
-    'GET /api/departments/d1/teams/t1': () => ({ id: 't1', name: 'Tier 1', isActive: true, memberCount: 1, version: 'a' }),
-    'GET /api/departments/d1/teams/t1/members': () => [{ userId: 'u1', displayName: 'Test User', email: null }],
-    'GET /api/departments/d1/members': () => [
-      ...MEMBERS,
-      { userId: 'u3', displayName: 'Bob Jones', email: 'b@example.test', role: 'Agent', teamIds: [] },
-    ],
-  })
-  renderApp('/admin/departments/d1/teams/t1')
-  const select = await screen.findByLabelText('Add department member')
-  await waitFor(() => expect(within(select).getByRole('option', { name: 'Bob Jones' })).toBeInTheDocument())
-  expect(within(select).queryByRole('option', { name: 'Test User' })).not.toBeInTheDocument()
 })
 
 test('department shell: grouped section navigation, a setup overview, and sections are deep-linkable', async () => {

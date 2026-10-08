@@ -26,12 +26,12 @@ export const dashboardSchema = z.object({
       status: z.string(),
       priority: z.string(),
       createdAt: z.string(),
-      team: z.string().nullish(),
       assignee: z.string().nullish(),
       slaOverdue: z.boolean(),
     }),
   ),
-  teams: z.array(z.object({ teamId: z.string().nullish(), name: z.string(), total: z.number(), unassigned: z.number(), overdue: z.number() })),
+  /** Current open backlog per assignee (userId null = unassigned). A workload snapshot, never a ranking. */
+  agents: z.array(z.object({ userId: z.string().nullish(), name: z.string(), total: z.number(), overdue: z.number() })),
   sends: z.object({ failedTickets: z.number(), uncertainTickets: z.number() }),
   mailboxes: z.array(mailboxHealthSchema).nullish(),
 })

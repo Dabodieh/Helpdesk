@@ -49,7 +49,7 @@ test('a requester submits a request through a form, sees it in My requests, and 
     name: 'Laptop routing',
     trigger: 'TicketCreated',
     conditions: [{ field: 'subjectContains', operator: 'contains', values: ['laptop'] }],
-    actions: [{ type: 'assignTeam', value: (await admin.get<{ id: string; name: string }[]>(`${base}/teams`))[0]!.id }],
+    actions: [{ type: 'assignAgent', value: (await admin.get<{ id: string }>('/api/me')).id }],
   })
 
   const emma = employee()
@@ -86,10 +86,10 @@ test('a requester submits a request through a form, sees it in My requests, and 
   await noSeriousViolations(page, 'my requests')
 
   // Agent side: a normal ticket with SLA, routing and the form values.
-  const ticket = await admin.get<{ team: { id: string } | null; priority: string; source: string; type: { displayName: string } | null; fields: { label: string; value: string }[] }>(`/api/tickets/${reference}`)
+  const ticket = await admin.get<{ assignee: { id: string } | null; priority: string; source: string; type: { displayName: string } | null; fields: { label: string; value: string }[] }>(`/api/tickets/${reference}`)
   expect(ticket.source).toBe('portal')
   expect(ticket.type?.displayName).toBe(`Hardware request ${formToken}`)
-  expect(ticket.team).not.toBeNull()
+  expect(ticket.assignee).not.toBeNull()
   expect(ticket.priority).toBe('High')
   expect(ticket.fields.map((f) => `${f.label}=${f.value}`)).toEqual(expect.arrayContaining(['Asset tag=A-1042', 'Colour=Silver']))
   expect((await admin.get<{ policyName: string }>(`/api/tickets/${reference}/sla`)).policyName).toBe('Portal SLA')

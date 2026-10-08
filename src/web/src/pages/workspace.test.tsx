@@ -39,19 +39,18 @@ test('permission-aware controls: a viewer sees values only, no composer and no e
   await openTicket()
   expect(pane().queryByRole('combobox', { name: 'Status' })).not.toBeInTheDocument()
   expect(pane().queryByRole('combobox', { name: 'Priority' })).not.toBeInTheDocument()
-  expect(pane().queryByRole('combobox', { name: 'Team' })).not.toBeInTheDocument()
   expect(pane().queryByRole('combobox', { name: 'Assignee' })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /Edit subject/ })).not.toBeInTheDocument()
   expect(screen.getByText(/You can read this ticket but not reply/)).toBeInTheDocument()
   expect(screen.queryByRole('textbox', { name: /reply|note/i })).not.toBeInTheDocument()
 })
 
-test('permission-aware controls: an agent edits status, priority and team (D21), the assignee stays limited to themself', async () => {
+test('permission-aware controls: an agent edits status and priority, the assignee stays limited to themself', async () => {
   mockFetch(ticketRoutes(agentMe()))
   await openTicket()
   expect(pane().getByRole('combobox', { name: 'Status' })).toBeEnabled()
   expect(pane().getByRole('combobox', { name: 'Priority' })).toBeEnabled()
-  expect(pane().getByRole('combobox', { name: 'Team' })).toBeEnabled() // routing is open to agents (tickets.assign.team)
+  expect(pane().queryByRole('combobox', { name: 'Team' })).not.toBeInTheDocument() // Departments are the workgroups: there is no team
   // unassigned ticket: assign.self allows taking it
   const assignee = pane().getByRole('combobox', { name: 'Assignee' })
   expect(within(assignee).getByRole('option', { name: /\(me\)/ })).toBeInTheDocument()
@@ -93,13 +92,12 @@ test('status and priority changes are PATCHed with the loaded version', async ()
   await waitFor(() => expect(calls.filter((c) => c.method === 'PATCH').at(-1)?.body).toEqual({ version: 'v2', priority: 'Urgent' }))
 })
 
-test('a team lead replaces team and assignee through PUT assignment with version', async () => {
+test('a team lead sets the assignee through PUT assignment with version', async () => {
   const calls = mockFetch({
     ...ticketRoutes(leadMe()),
-    'GET /api/departments/d1/teams': () => [{ id: 'tm1', name: 'Tier 1', isActive: true, version: 'a' }],
     'GET /api/departments/d1/members': () => [
-      { userId: 'u9', displayName: 'Other Agent', email: null, role: 'Agent', teamIds: [] },
-      { userId: 'u8', displayName: 'View Only', email: null, role: 'Viewer', teamIds: [] },
+      { userId: 'u9', displayName: 'Other Agent', email: null, role: 'Agent' },
+      { userId: 'u8', displayName: 'View Only', email: null, role: 'Viewer' },
     ],
     'PUT /api/tickets/t1/assignment': (c) => makeDetail({ ...(c.body as object), version: 'v2' }),
   })
@@ -109,10 +107,8 @@ test('a team lead replaces team and assignee through PUT assignment with version
   expect(within(assignee).queryByRole('option', { name: 'View Only' })).not.toBeInTheDocument()
   fireEvent.change(assignee, { target: { value: 'u9' } })
   await waitFor(() =>
-    expect(calls.find((c) => c.method === 'PUT')?.body).toEqual({ version: 'v1', teamId: null, assigneeUserId: 'u9' }),
+    expect(calls.find((c) => c.method === 'PUT')?.body).toEqual({ version: 'v1', assigneeUserId: 'u9' }),
   )
-  const team = pane().getByRole('combobox', { name: 'Team' })
-  await waitFor(() => expect(within(team).getByRole('option', { name: 'Tier 1' })).toBeInTheDocument())
 })
 
 test('composer: internal mode shows the banner and submits kind Internal', async () => {

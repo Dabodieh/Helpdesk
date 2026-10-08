@@ -2,14 +2,13 @@ import { z } from 'zod'
 import { api } from './http'
 
 /** Optional queue columns a user can show and order (Ref and Subject are always shown). */
-export const QUEUE_COLUMNS = ['requester', 'status', 'priority', 'sla', 'team', 'assignee', 'updated'] as const
+export const QUEUE_COLUMNS = ['requester', 'status', 'priority', 'sla', 'assignee', 'updated'] as const
 export type QueueColumn = (typeof QUEUE_COLUMNS)[number]
 export const COLUMN_LABELS: Record<QueueColumn, string> = {
   requester: 'Requester',
   status: 'Status',
   priority: 'Priority',
   sla: 'SLA',
-  team: 'Team',
   assignee: 'Assignee',
   updated: 'Updated',
 }

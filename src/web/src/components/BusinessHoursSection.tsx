@@ -231,7 +231,7 @@ export default function BusinessHoursSection({ department }: { department: Depar
           New business hours
         </button>
       </div>
-      <p className="muted">When the team works. SLA policies count only working time; holidays and special days are exceptions.</p>
+      <p className="muted">When the department works. SLA policies count only working time; holidays and special days are exceptions.</p>
       {q.isPending && <Loading label="Loading business hours" />}
       {q.isError && <ErrorNotice error={q.error} onRetry={() => void q.refetch()} />}
       {q.isSuccess && q.data.length === 0 && <p className="empty">No business hours yet. Policies without a calendar run round the clock.</p>}

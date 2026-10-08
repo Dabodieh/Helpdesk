@@ -248,7 +248,7 @@ export default function AutomationsSection({ department }: { department: Departm
     onSettled: () => qc.invalidateQueries({ queryKey: ['automations', department.id] }),
   })
   const nameOf = (kind: string, value: string) =>
-    value === 'none' ? 'none' : kind === 'team' ? (dir.names.teams.get(value) ?? value) : kind === 'assignee' ? (dir.names.users.get(value) ?? value) : value
+    value === 'none' ? 'none' : kind === 'assignee' ? (dir.names.users.get(value) ?? value) : value
 
   const rules = q.data ?? []
   const move = (trigger: string, index: number, delta: -1 | 1) => {

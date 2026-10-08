@@ -3,7 +3,6 @@ import { useState, type FormEvent } from 'react'
 import { fieldErrors } from '../api/errors'
 import { createSlaPolicy, listBusinessHours, listSlaPolicies, reorderSlaPolicies, updateSlaPolicy, type Condition, type SlaPolicy } from '../api/sla'
 import type { Department } from '../api/schemas'
-import { useDirectory } from '../hooks/useDirectory'
 import { formatMinutes } from '../lib/sla'
 import { ActiveBadge, ErrorNotice, Field, Loading } from './common'
 import Dialog from './Dialog'
@@ -134,7 +133,6 @@ function Editor({ department, existing, onClose }: { department: Department; exi
 export default function SlaPoliciesSection({ department }: { department: Department }) {
   const qc = useQueryClient()
   const q = useQuery({ queryKey: ['sla-policies', department.id], queryFn: () => listSlaPolicies(department.id) })
-  const dir = useDirectory(department.id)
   const [editing, setEditing] = useState<SlaPolicy | 'new' | null>(null)
   const reorder = useMutation({
     mutationFn: (ids: string[]) => reorderSlaPolicies(department.id, ids),
@@ -147,7 +145,7 @@ export default function SlaPoliciesSection({ department }: { department: Departm
     ;[ids[index], ids[j]] = [ids[j]!, ids[index]!]
     reorder.mutate(ids)
   }
-  const nameOf = (kind: string, value: string) => (value === 'none' ? 'none' : kind === 'team' ? (dir.names.teams.get(value) ?? value) : value)
+  const nameOf = (_kind: string, value: string) => (value === 'none' ? 'none' : value)
 
   return (
     <section aria-labelledby="sla-h">

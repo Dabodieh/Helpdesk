@@ -80,7 +80,7 @@ test('a merged ticket shows no follow control', async () => {
 test('the Following queue is in the navigation and asks the server for the following queue', async () => {
   const calls = mockFetch({
     ...workspaceRoutes(),
-    'GET /api/tickets/queue-counts': () => ({ my: 3, team: 1, unassigned: 4, all: 9, following: 2 }),
+    'GET /api/tickets/queue-counts': () => ({ my: 3, unassigned: 4, all: 9, following: 2 }),
     'GET /api/tickets': () => page([makeTicket({ id: 't7', reference: 'IT-7', subject: 'Followed one' })]),
   })
   renderApp('/queue/following')

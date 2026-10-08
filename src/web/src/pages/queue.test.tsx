@@ -142,10 +142,10 @@ test('landing: an agent lands on the dashboard of their department', async () =>
 })
 
 test('landing: a default queue the agent chose themselves still wins over the dashboard', async () => {
-  const calls = mockFetch({ ...workspaceRoutes(), 'GET /api/me/queue-preferences': () => ({ columns: null, defaultQueue: 'team', defaultViewId: null }) })
+  const calls = mockFetch({ ...workspaceRoutes(), 'GET /api/me/queue-preferences': () => ({ columns: null, defaultQueue: 'unassigned', defaultViewId: null }) })
   renderApp('/')
-  expect(await screen.findByRole('heading', { name: 'Team Queue' })).toBeInTheDocument()
-  expect(query(listCalls(calls)[0]!).get('queue')).toBe('team')
+  expect(await screen.findByRole('heading', { name: 'Unassigned' })).toBeInTheDocument()
+  expect(query(listCalls(calls)[0]!).get('queue')).toBe('unassigned')
 })
 
 test('landing: a platform admin without ticket access goes to Administration with an explanation and no queue entries', async () => {
@@ -154,7 +154,7 @@ test('landing: a platform admin without ticket access goes to Administration wit
     'GET /api/departments': () => [],
   })
   renderApp('/')
-  expect(await screen.findByRole('heading', { name: 'Departments' })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: 'Administration', level: 1 })).toBeInTheDocument()
   expect(screen.getByText(/You have no access to tickets/)).toBeInTheDocument()
   expect(screen.getByRole('link', { name: /Administration/ })).toBeInTheDocument()
   expect(screen.queryByRole('link', { name: /My Queue/ })).not.toBeInTheDocument()

@@ -46,7 +46,6 @@ export default function CoreProperties({ ticket: t, routeRef, onProblem }: { tic
   const canUpdate = canTicket(me, 'tickets.update', t.departmentId) && !merged
   const canAssignAny = canTicket(me, 'tickets.assign.any', t.departmentId) && !merged
   const canAssignSelf = canTicket(me, 'tickets.assign.self', t.departmentId) && !merged
-  const canRoute = canAssignAny || (canTicket(me, 'tickets.assign.team', t.departmentId) && !merged)
 
   const onSuccess = (res: TicketDetail) => {
     onProblem(null)
@@ -58,7 +57,7 @@ export default function CoreProperties({ ticket: t, routeRef, onProblem }: { tic
     onError: onProblem,
   })
   const assign = useMutation({
-    mutationFn: (b: { teamId: string | null; assigneeUserId: string | null }) => setAssignment(t.id, { ...b, version: t.version }),
+    mutationFn: (b: { assigneeUserId: string | null }) => setAssignment(t.id, { ...b, version: t.version }),
     onSuccess,
     onError: onProblem,
   })
@@ -81,7 +80,6 @@ export default function CoreProperties({ ticket: t, routeRef, onProblem }: { tic
   const assigneeOptions: { id: string; name: string }[] = canAssignAny ? eligible.map((m) => ({ id: m.userId, name: m.displayName })) : [{ id: me.id, name: `${me.displayName} (me)` }]
   if (t.assignee && !assigneeOptions.some((o) => o.id === t.assignee!.id)) assigneeOptions.push({ id: t.assignee.id, name: t.assignee.displayName })
   const assigneeLocked = !(canAssignAny || (canAssignSelf && (!t.assignee || t.assignee.id === me.id)))
-  const teamOptions = dir.teams.filter((x) => x.isActive || x.id === t.team?.id)
   const types = (props.data?.types ?? []).filter((x) => x.isActive || x.id === props.data?.type?.id)
 
   return (
@@ -124,22 +122,9 @@ export default function CoreProperties({ ticket: t, routeRef, onProblem }: { tic
           <ReadOnly label="Type">{props.data ? (props.data.type?.displayName ?? <span className="muted">No type</span>) : <span className="skeleton inline" aria-hidden="true" />}</ReadOnly>
         </>
       )}
-      {canRoute ? (
-        <Control label="Team" value={t.team?.id ?? ''} disabled={busy} onChange={(v) => assign.mutate({ teamId: v || null, assigneeUserId: t.assignee?.id ?? null })}>
-          <option value="">No team</option>
-          {teamOptions.map((x) => (
-            <option key={x.id} value={x.id}>
-              {x.name}
-            </option>
-          ))}
-          {t.team && !teamOptions.some((x) => x.id === t.team!.id) && <option value={t.team.id}>{t.team.name}</option>}
-        </Control>
-      ) : (
-        <ReadOnly label="Team">{t.team?.name ?? <span className="muted">No team</span>}</ReadOnly>
-      )}
       <TicketMailbox ticket={t} routeRef={routeRef} />
       {!assigneeLocked ? (
-        <Control label="Assignee" value={t.assignee?.id ?? ''} disabled={busy} onChange={(v) => assign.mutate({ teamId: t.team?.id ?? null, assigneeUserId: v || null })}>
+        <Control label="Assignee" value={t.assignee?.id ?? ''} disabled={busy} onChange={(v) => assign.mutate({ assigneeUserId: v || null })}>
           {(canAssignAny || t.assignee?.id === me.id || !t.assignee) && <option value="">Unassigned</option>}
           {assigneeOptions.map((o) => (
             <option key={o.id} value={o.id}>

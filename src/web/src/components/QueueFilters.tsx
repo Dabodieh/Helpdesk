@@ -27,7 +27,7 @@ export default function QueueFilters({
   const departments = me.memberships.filter((m) => m.permissions.includes('tickets.read'))
   const deptParam = params.get('dept') ?? ''
   const scopeDept = deptParam || (departments.length === 1 ? departments[0]!.departmentId : undefined)
-  const { teams, members } = useDirectory(scopeDept)
+  const { members } = useDirectory(scopeDept)
   const types = useQuery({ queryKey: ['queue-types', scopeDept], queryFn: () => listQueueTypes(scopeDept!), enabled: !!scopeDept, staleTime: 60_000, retry: false })
 
   // The search box edits local text; the URL (and so the query) follows after a short pause.
@@ -64,7 +64,6 @@ export default function QueueFilters({
     setParams((p) => withParam(p, 'status', ordered.join(',')), { replace: true })
   }
   const set = (key: string, value: string) => setParams((p) => withParam(p, key, value || null), { replace: true })
-  const needsDept = departments.length > 1 && !scopeDept
 
   return (
     <div className="filters" role="search" aria-label="Filter tickets">
@@ -103,7 +102,7 @@ export default function QueueFilters({
           </select>
         </label></div>
       <details className="queue-filter-details">
-        <summary>Filters{['priority', 'sla', 'dept', 'team', 'type', 'send', 'assignee'].filter(k => params.get(k)).length > 0 ? ` · ${['priority', 'sla', 'dept', 'team', 'type', 'send', 'assignee'].filter(k => params.get(k)).length} active` : ''}</summary>
+        <summary>Filters{['priority', 'sla', 'dept', 'type', 'send', 'assignee'].filter(k => params.get(k)).length > 0 ? ` · ${['priority', 'sla', 'dept', 'type', 'send', 'assignee'].filter(k => params.get(k)).length} active` : ''}</summary>
       <div className="filters-row selects">
         <label className="fsel">
           <span>Priority</span>
@@ -133,7 +132,7 @@ export default function QueueFilters({
             <select
               value={deptParam}
               onChange={(e) =>
-                setParams((p) => withParam(withParam(withParam(withParam(p, 'dept', e.target.value || null), 'team', null), 'assignee', null), 'type', null), { replace: true })
+                setParams((p) => withParam(withParam(withParam(p, 'dept', e.target.value || null), 'assignee', null), 'type', null), { replace: true })
               }
             >
               <option value="">All</option>
@@ -145,23 +144,6 @@ export default function QueueFilters({
             </select>
           </label>
         )}
-        <label className="fsel">
-          <span>Team</span>
-          <select
-            value={params.get('team') ?? ''}
-            disabled={needsDept}
-            title={needsDept ? 'Choose a department first' : undefined}
-            onChange={(e) => set('team', e.target.value)}
-          >
-            <option value="">Any</option>
-            <option value="none">No team</option>
-            {teams.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-        </label>
         {scopeDept && (types.data?.length ?? 0) > 0 && (
           <label className="fsel">
             <span>Type</span>

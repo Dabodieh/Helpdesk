@@ -4,7 +4,6 @@ import { api } from './http'
 export const viewFilterSchema = z.object({
   queue: z.string().nullish(),
   departmentId: z.string().nullish(),
-  teamId: z.string().nullish(),
   assigneeUserId: z.string().nullish(),
   unassigned: z.boolean().nullish(),
   status: z.array(z.string()).nullish(),
@@ -14,7 +13,6 @@ export const viewFilterSchema = z.object({
   sla: z.string().nullish(),
   typeId: z.string().nullish(),
   send: z.string().nullish(),
-  noTeam: z.boolean().nullish(),
 })
 export type ViewFilter = z.infer<typeof viewFilterSchema>
 

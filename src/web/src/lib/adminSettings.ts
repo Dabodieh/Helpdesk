@@ -2,7 +2,7 @@ import { canInDepartment, canTicket } from '../api/permissions'
 import type { Me } from '../api/schemas'
 
 export const ADMIN_CATEGORIES = [
-  { id: 'people', title: 'Organisation & access', description: 'The people and teams behind your service desk.', icon: 'team' },
+  { id: 'people', title: 'Organisation & access', description: 'The people behind your service desk.', icon: 'team' },
   { id: 'tickets', title: 'Ticket management', description: 'Structure requests and route work to the right people.', icon: 'ticket' },
   { id: 'communication', title: 'Channels & communication', description: 'Connect your inboxes and keep requesters informed.', icon: 'mail' },
   { id: 'service', title: 'Service management', description: 'Set service targets and automate routine work.', icon: 'clock' },
@@ -14,7 +14,6 @@ export type AdminCategory = (typeof ADMIN_CATEGORIES)[number]['id']
 export type AdminSetting = { id: string; title: string; description: string; icon: string; category: AdminCategory; permission: string; section: string; tab?: string; keywords?: string; content?: boolean }
 export const ADMIN_SETTINGS: AdminSetting[] = [
   { id: 'members', title: 'Members & roles', description: 'Manage department membership and access.', icon: 'person', category: 'people', permission: 'department.read', section: 'members', keywords: 'users agents permissions invitations' },
-  { id: 'teams', title: 'Teams', description: 'Organise the groups that handle your tickets.', icon: 'team', category: 'people', permission: 'department.read', section: 'teams', keywords: 'assignment routing' },
   { id: 'requesters', title: 'Requester identities', description: 'Review unlinked requesters and account matches.', icon: 'identity', category: 'people', permission: 'department.members.manage', section: 'requesters', keywords: 'users identity access' },
   { id: 'types', title: 'Ticket types', description: 'Define the kinds of work your department handles.', icon: 'ticket', category: 'tickets', permission: 'department.forms.manage', section: 'ticketing', tab: 'types' },
   { id: 'fields', title: 'Ticket fields', description: 'Capture the information agents need to resolve work.', icon: 'fields', category: 'tickets', permission: 'department.forms.manage', section: 'ticketing', tab: 'fields', keywords: 'custom properties' },
@@ -28,7 +27,7 @@ export const ADMIN_SETTINGS: AdminSetting[] = [
   { id: 'knowledge', title: 'Knowledge', description: 'Manage articles, categories and publishing.', icon: 'book', category: 'selfservice', permission: 'department.knowledge.manage', section: 'knowledge', keywords: 'self service answers help' },
   { id: 'macros', title: 'Macros', description: 'Bundle repeatable ticket actions for agents.', icon: 'bolt', category: 'productivity', permission: 'department.canned.manage', section: 'macros' },
   { id: 'responses', title: 'Canned responses', description: 'Maintain reusable replies shared by the department.', icon: 'chat', category: 'productivity', permission: 'department.canned.manage', section: 'responses', keywords: 'templates communication email reply shared' },
-  { id: 'dashboard', title: 'Operational dashboard', description: 'View backlog, SLA risks and team workload.', icon: 'chart', category: 'reporting', permission: 'tickets.read', section: 'dashboard', content: true, keywords: 'report analytics performance' },
+  { id: 'dashboard', title: 'Operational dashboard', description: 'View backlog, SLA risks and workload by assignee.', icon: 'chart', category: 'reporting', permission: 'tickets.read', section: 'dashboard', content: true, keywords: 'report analytics performance' },
 ]
 export const allowedSettings = (me: Me, departmentId: string) => ADMIN_SETTINGS.filter(s => s.content ? canTicket(me, s.permission, departmentId) : canInDepartment(me, s.permission, departmentId))
 export function settingHref(setting: AdminSetting, departmentId: string) {

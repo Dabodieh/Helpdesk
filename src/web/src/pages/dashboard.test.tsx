@@ -14,10 +14,10 @@ const DASH = {
     { key: 'lt1d', label: 'Under 1 day', count: 3 },
     { key: 'gt14d', label: 'Over 2 weeks', count: 1 },
   ],
-  oldest: [{ reference: 'IT-7', subject: 'Printer jam', status: 'Open', priority: 'High', createdAt: '2026-01-01T09:00:00Z', team: 'Network', assignee: null, slaOverdue: true }],
-  teams: [
-    { teamId: 'tm1', name: 'Network', total: 4, unassigned: 2, overdue: 1 },
-    { teamId: null, name: 'No team', total: 2, unassigned: 1, overdue: 1 },
+  oldest: [{ reference: 'IT-7', subject: 'Printer jam', status: 'Open', priority: 'High', createdAt: '2026-01-01T09:00:00Z', assignee: null, slaOverdue: true }],
+  agents: [
+    { userId: 'u1', name: 'Ann Agent', total: 4, overdue: 1 },
+    { userId: null, name: 'Unassigned', total: 2, overdue: 1 },
   ],
   sends: { failedTickets: 0, uncertainTickets: 1 },
   mailboxes: [{ mailboxId: 'mb1', address: 'desk@helpdesk.test', displayName: 'Desk', status: 'Attention', reasons: ['outbound_uncertain'], outboundFailed: 0, outboundUncertain: 1 }],
@@ -61,8 +61,8 @@ test('the dashboard shows the headline figures as cards and every figure links i
   expect(within(cards).getByText('0 failed · 1 uncertain')).toBeInTheDocument()
   // the cards carry the same numbers as the server sent: nothing is derived or invented
   expect(within(within(cards).getByRole('link', { name: /SLA overdue/ })).getByText('2')).toBeInTheDocument()
-  expect(screen.getByRole('link', { name: 'Network' })).toHaveAttribute('href', '/queue/all?dept=d1&team=tm1')
-  expect(screen.getByRole('link', { name: '2 unassigned' })).toHaveAttribute('href', '/queue/all?dept=d1&team=tm1&assignee=none')
+  expect(screen.getByRole('link', { name: 'Ann Agent' })).toHaveAttribute('href', '/queue/all?dept=d1&assignee=u1')
+  expect(screen.getByRole('link', { name: 'Unassigned' })).toHaveAttribute('href', '/queue/all?dept=d1&assignee=none')
   expect(screen.getByRole('list', { name: 'Backlog age' })).toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'IT-7' })).toHaveAttribute('href', '/tickets/IT-7')
   const health = screen.getByRole('list', { name: 'Service health' })

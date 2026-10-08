@@ -1,4 +1,4 @@
-// Seeds a LOCAL development API with a realistic helpdesk: departments, teams, agents, requesters, tickets and conversations.
+// Seeds a LOCAL development API with a realistic helpdesk: departments, agents, requesters, tickets and conversations.
 // Uses dev sign-in only (the API must run in Development/Testing with Authentication:DevSignIn:Enabled).
 // Usage: node scripts/dev-seed.mjs [apiBase=http://localhost:5080]
 const base = process.argv[2] ?? 'http://localhost:5080'
@@ -51,20 +51,10 @@ async function department(key, name) {
 const it = await department('IT', 'IT Support')
 await department('HR', 'Human Resources')
 
-async function team(name) {
-  const teams = await admin.ok('GET', `/api/departments/${it.id}/teams`)
-  return teams.find((t) => t.name === name) ?? (await admin.ok('POST', `/api/departments/${it.id}/teams`, { name }))
-}
-const serviceDesk = await team('Service Desk')
-const network = await team('Network & Infrastructure')
-
 const roles = { 'dev-admin': 'DepartmentAdmin', alice: 'Agent', bob: 'Agent', carol: 'TeamLead' }
 const users = { 'dev-admin': admin, alice: people.alice, bob: people.bob, carol: people.carol }
 for (const [subject, role] of Object.entries(roles)) {
   await admin.ok('PUT', `/api/departments/${it.id}/members/${users[subject].me.id}`, { role })
-}
-for (const [s, t] of [['alice', serviceDesk], ['bob', serviceDesk], ['carol', network], ['alice', network]]) {
-  await admin.ok('PUT', `/api/departments/${it.id}/teams/${t.id}/members/${users[s].me.id}`)
 }
 
 // Email: a mailbox for IT (the in-process simulator in Development) and a few inbound emails, once.
@@ -122,7 +112,6 @@ for (let i = 0; i < catalogue.length; i++) {
   const [displayName, email] = requesters[i % requesters.length]
   const t = await admin.ok('POST', `/api/departments/${it.id}/tickets`, {
     subject, description, priority, requester: { email, displayName },
-    ...(i % 3 === 0 ? { teamId: network.id } : i % 3 === 1 ? { teamId: serviceDesk.id } : {}),
     ...(i % 4 !== 3 ? { assigneeUserId: agentsRotation[i % 3].me.id } : {}),
   })
   created.push(t)

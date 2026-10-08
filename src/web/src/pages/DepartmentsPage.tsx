@@ -93,7 +93,7 @@ export default function DepartmentsPage() {
         <p className="notice info" role="note">
           You have no access to tickets: ticket queues need a department membership with ticket permissions.
           {me.isPlatformAdmin
-            ? ' As a platform administrator you manage departments, teams and members here, but department content stays private.'
+            ? ' As a platform administrator you manage departments and members here, but department content stays private.'
             : ''}
         </p>
       )}

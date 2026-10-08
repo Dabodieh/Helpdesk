@@ -23,9 +23,7 @@ test('agent signs in, works a ticket and moves to the next one with the keyboard
   await ticket.getByRole('combobox', { name: 'Status', exact: true }).selectOption('Pending')
   await expect(ticket.getByRole('combobox', { name: 'Status', exact: true })).toHaveValue('Pending')
 
-  // Assignment: team, then colleague (the ticket leaves My Queue; Pending keeps it in the default status filter).
-  await ticket.getByRole('combobox', { name: 'Team', exact: true }).selectOption({ label: data.teamName })
-  await expect(ticket.getByRole('combobox', { name: 'Team', exact: true })).toHaveValue(/.+/)
+  // Assignment: to a colleague (the ticket leaves My Queue; Pending keeps it in the default status filter).
   await ticket.getByRole('combobox', { name: 'Assignee', exact: true }).selectOption({ label: data.colleague.name })
   await expect(ticket.getByRole('combobox', { name: 'Assignee', exact: true })).not.toHaveValue('')
 

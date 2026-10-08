@@ -18,7 +18,6 @@ function useChoices(departmentId: string) {
   return {
     status: STATUSES.map((s) => ({ value: s, label: s })),
     priority: PRIORITIES.map((p) => ({ value: p, label: p })),
-    team: [{ value: 'none', label: 'No team' }, ...dir.teams.map((t) => ({ value: t.id, label: t.name }))],
     assignee: [{ value: 'none', label: 'Unassigned' }, ...dir.members.map((m) => ({ value: m.userId, label: m.displayName }))],
     mailbox: [{ value: 'none', label: 'No mailbox (created in the web)' }, ...(mailboxes.data ?? []).map((m) => ({ value: m.id, label: m.address }))],
     slaFirstResponse: SLA_STATE_OPTIONS.map((s) => ({ value: s, label: s })),

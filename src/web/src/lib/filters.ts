@@ -37,8 +37,6 @@ export function parseFilters(queue: Queue, params: URLSearchParams, mode: Mode, 
     statuses: statuses.length ? statuses : ACTIVE_STATUSES,
     priorities: list<Priority>(params.get('priority'), PRIORITIES),
     departmentId: params.get('dept') || undefined,
-    teamId: params.get('team') && params.get('team') !== 'none' ? params.get('team')! : undefined,
-    noTeam: params.get('team') === 'none' ? true : undefined,
     typeId: params.get('type') || undefined,
     send: SEND_FILTERS.find((v) => v === params.get('send')),
     assigneeUserId: assignee && assignee !== 'none' ? (assignee === 'me' ? meId : assignee) : undefined,
@@ -51,7 +49,7 @@ export function parseFilters(queue: Queue, params: URLSearchParams, mode: Mode, 
 
 /** Is any filter different from the defaults for this mode? (drives "Reset filters") */
 export function hasCustomFilters(params: URLSearchParams) {
-  return ['status', 'priority', 'dept', 'team', 'assignee', 'q', 'sla', 'send', 'type', 'sort', 'view'].some((k) => params.has(k))
+  return ['status', 'priority', 'dept', 'assignee', 'q', 'sla', 'send', 'type', 'sort', 'view'].some((k) => params.has(k))
 }
 
 /** Set or clear one URL parameter. */
@@ -64,7 +62,6 @@ export function withParam(params: URLSearchParams, key: string, value: string | 
 
 export const QUEUE_TITLES: Record<Queue, string> = {
   my: 'My Queue',
-  team: 'Team Queue',
   unassigned: 'Unassigned',
   all: 'All Tickets',
   following: 'Following',
@@ -75,7 +72,6 @@ export function toViewFilter(f: TicketFilters): ViewFilter {
   return {
     queue: f.queue,
     departmentId: f.departmentId ?? null,
-    teamId: f.teamId ?? null,
     assigneeUserId: f.assigneeUserId ?? null,
     unassigned: f.unassigned ?? null,
     status: f.statuses,
@@ -84,7 +80,6 @@ export function toViewFilter(f: TicketFilters): ViewFilter {
     sla: f.sla ?? null,
     typeId: f.typeId ?? null,
     send: f.send ?? null,
-    noTeam: f.noTeam ?? null,
     sort: f.sort,
   }
 }
@@ -97,8 +92,6 @@ export function viewLocation(v: { id: string; filter: ViewFilter }): string {
   p.set('status', (f.status ?? []).join(','))
   if (f.priority?.length) p.set('priority', f.priority.join(','))
   if (f.departmentId) p.set('dept', f.departmentId)
-  if (f.noTeam) p.set('team', 'none')
-  else if (f.teamId) p.set('team', f.teamId)
   if (f.typeId) p.set('type', f.typeId)
   if (f.send) p.set('send', f.send)
   if (f.unassigned) p.set('assignee', 'none')
@@ -114,11 +107,10 @@ export function viewLocation(v: { id: string; filter: ViewFilter }): string {
 export function describeFilter(v: { filter: ViewFilter }): string {
   const f = v.filter
   const bits: string[] = []
-  if (f.queue && f.queue !== 'all') bits.push(f.queue === 'my' ? 'Assigned to me' : f.queue === 'team' ? 'My teams' : f.queue === 'following' ? 'Following' : 'Unassigned')
+  if (f.queue && f.queue !== 'all') bits.push(f.queue === 'my' ? 'Assigned to me' : f.queue === 'following' ? 'Following' : 'Unassigned')
   if (f.status?.length) bits.push(f.status.join(' + '))
   if (f.priority?.length) bits.push(`${f.priority.join(' / ')} priority`)
   if (f.unassigned) bits.push('Unassigned')
-  if (f.noTeam) bits.push('No team')
   if (f.send) bits.push(f.send === 'failed' ? 'Reply not sent' : 'Send uncertain')
   if (f.sla === 'awaitingresponse') bits.push('Awaiting first response')
   if (f.sla === 'slafirstresponse') bits.push('SLA first response pending')

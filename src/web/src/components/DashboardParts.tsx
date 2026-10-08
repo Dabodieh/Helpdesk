@@ -153,49 +153,43 @@ export function BacklogAge({ ageing }: { ageing: Dashboard['ageing'] }) {
   )
 }
 
-// ---------- team workload ----------
+// ---------- agent workload ----------
 
-/** One bar per team: assigned work in the neutral tone, unassigned work in the warning tone on the same bar; overdue work is a counted badge. Counts, never people. */
-export function TeamWorkload({ teams, dept }: { teams: Dashboard['teams']; dept: string }) {
-  if (teams.length === 0) return <p className="empty small">Nothing in the backlog.</p>
-  const max = Math.max(1, ...teams.map((t) => t.total))
+/**
+ * Who currently holds the Department's open backlog: assigned work in the neutral tone, the unassigned queue in the warning tone; overdue work is a counted badge.
+ * A snapshot of where work sits, listed alphabetically on purpose (never ordered or scored by volume).
+ */
+export function AgentWorkload({ agents, dept }: { agents: Dashboard['agents']; dept: string }) {
+  if (agents.length === 0) return <p className="empty small">Nothing in the backlog.</p>
+  const max = Math.max(1, ...agents.map((a) => a.total))
   return (
     <>
-      <p className="team-legend" aria-hidden="true">
+      <p className="workload-legend" aria-hidden="true">
         <span><span className="swatch swatch-received" />Assigned</span>
         <span><span className="swatch swatch-unassigned" />Unassigned</span>
       </p>
-      <ul className="team-bars" aria-label="Backlog by team">
-      {teams.map((t) => {
-        const assigned = t.total - t.unassigned
-        return (
-          <li key={t.teamId ?? 'none'}>
-            <div className="team-head">
-              {t.teamId ? (
-                <Link to={queueUrl(dept, { team: t.teamId })} className="team-name">
-                  {t.name}
+      <ul className="workload-bars" aria-label="Backlog by assignee">
+        {agents.map((a) => {
+          const unassigned = !a.userId
+          return (
+            <li key={a.userId ?? 'none'}>
+              <div className="workload-head">
+                <Link to={queueUrl(dept, { assignee: a.userId ?? 'none' })} className="workload-name">
+                  {a.name}
                 </Link>
-              ) : (
-                <span className="team-name">{t.name}</span>
+                <span className="workload-total">{a.total}</span>
+              </div>
+              <div className="workload-track" aria-hidden="true">
+                <span className={unassigned ? 'workload-unassigned' : 'workload-assigned'} style={{ width: `${(a.total / max) * 100}%` }} />
+              </div>
+              {a.overdue > 0 && (
+                <p className="workload-meta small muted">
+                  <span className="workload-overdue">{a.overdue} SLA overdue</span>
+                </p>
               )}
-              <span className="team-total">{t.total}</span>
-            </div>
-            <div className="team-track" aria-hidden="true">
-              <span className="team-assigned" style={{ width: `${(assigned / max) * 100}%` }} />
-              <span className="team-unassigned" style={{ width: `${(t.unassigned / max) * 100}%` }} />
-            </div>
-            <p className="team-meta small muted">
-              {assigned} assigned · {t.teamId && t.unassigned > 0 ? <Link to={queueUrl(dept, { team: t.teamId, assignee: 'none' })}>{t.unassigned} unassigned</Link> : `${t.unassigned} unassigned`}
-              {t.overdue > 0 && (
-                <>
-                  {' · '}
-                  <span className="team-overdue">{t.overdue} SLA overdue</span>
-                </>
-              )}
-            </p>
-          </li>
-        )
-      })}
+            </li>
+          )
+        })}
       </ul>
     </>
   )
@@ -270,7 +264,6 @@ export function OldestTable({ oldest }: { oldest: Dashboard['oldest'] }) {
             <th scope="col">Priority</th>
             <th scope="col">Opened</th>
             <th scope="col">Assignee</th>
-            <th scope="col">Team</th>
           </tr>
         </thead>
         <tbody>
@@ -288,7 +281,6 @@ export function OldestTable({ oldest }: { oldest: Dashboard['oldest'] }) {
               <td>{o.priority}</td>
               <td title={formatDateTime(o.createdAt)}>{timeAgo(o.createdAt)}</td>
               <td>{o.assignee ?? <span className="muted">Unassigned</span>}</td>
-              <td>{o.team ?? <span className="muted">No team</span>}</td>
             </tr>
           ))}
         </tbody>

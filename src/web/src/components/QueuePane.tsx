@@ -187,8 +187,6 @@ export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
         return sortHeader('col-prio', 'Priority', sort === 'priority_desc', sort === 'priority_desc' ? 'descending' : 'none', '↓', () => setSort(sort === 'priority_desc' ? DEFAULT_SORT : 'priority_desc'))
       case 'sla':
         return sortHeader('col-sla', 'SLA', sort === 'sla_due_asc', sort === 'sla_due_asc' ? 'ascending' : 'none', '↑', () => setSort(sort === 'sla_due_asc' ? DEFAULT_SORT : 'sla_due_asc'))
-      case 'team':
-        return <th scope="col" className="col-team">Team</th>
       case 'assignee':
         return <th scope="col" className="col-assignee">Assignee</th>
       case 'updated':
@@ -241,8 +239,6 @@ export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
             <SlaBadge sla={t.sla} />
           </td>
         )
-      case 'team':
-        return <td className="col-team">{t.team?.name ?? <span className="muted">None</span>}</td>
       case 'assignee':
         return <td className="col-assignee">{t.assignee?.displayName ?? <span className="muted">Unassigned</span>}</td>
       case 'updated':
@@ -364,7 +360,7 @@ export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
                         <Highlight text={t.subject} term={t.match?.field === 'subject' ? filters.q : undefined} />
                       </Link>
                       <span className="subline">
-                        {t.requester.displayName} · {t.team?.name ?? 'No team'} · {t.assignee?.displayName ?? 'Unassigned'}
+                        {t.requester.displayName} · {t.assignee?.displayName ?? 'Unassigned'}
                       </span>
                       {t.match && t.match.field !== 'subject' && (
                         <span className="match">

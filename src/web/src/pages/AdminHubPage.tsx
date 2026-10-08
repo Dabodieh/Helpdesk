@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { listDepartments } from '../api/organisation'
-import { canInDepartment } from '../api/permissions'
+import { canInDepartment, hasAnyPermission } from '../api/permissions'
 import { useMe } from '../auth'
 import { DepartmentSelect, SettingsCatalog, SettingsSearch } from '../components/AdminSettings'
 import { ActiveBadge, ErrorNotice, Loading, PageHeader } from '../components/common'
@@ -30,6 +30,7 @@ export default function AdminHubPage() {
         {ADMIN_CATEGORIES.filter(c => settings.some(s => s.category === c.id)).map(c => <Link key={c.id} className={category === c.id ? 'active' : undefined} to={categoryLink(c.id)}><Icon name={c.icon} size={14} />{c.title}</Link>)}
         <Link className={category === 'platform' ? 'active' : undefined} to={categoryLink('platform')}><Icon name="server" size={14} />Platform &amp; operations</Link>
       </nav>
+      {!hasAnyPermission(me, 'tickets.read') && <p className="notice info" role="note">You have no access to tickets: ticket queues need a department membership with ticket permissions.</p>}
       <div className="hub-search-row"><SettingsSearch value={search} onChange={value => change('q', value)} /><DepartmentSelect departments={departments} value={department?.id ?? ''} disabled={list.isPending || list.isError} onChange={id => change('department', id)} /></div>
       {list.isPending && <Loading label="Loading authorised departments" />}
       {list.isError && <ErrorNotice error={list.error} onRetry={() => void list.refetch()} />}

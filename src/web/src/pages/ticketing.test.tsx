@@ -65,14 +65,13 @@ test('the department page offers a Ticketing area with types, fields and forms f
     ...csrfHandler,
     'GET /api/me': () => admin,
     [`GET /api/departments/${DEPT.id}`]: () => DEPT,
-    [`GET /api/departments/${DEPT.id}/teams`]: () => [],
     [`GET /api/departments/${DEPT.id}/members`]: () => [],
     [`GET /api/departments/${DEPT.id}/ticket-types`]: () => [],
     [`GET /api/departments/${DEPT.id}/ticket-fields`]: () => [],
     [`GET /api/departments/${DEPT.id}/request-forms`]: () => [],
   })
   renderApp(`/admin/departments/${DEPT.id}`)
-  fireEvent.click(await screen.findByRole('tab', { name: 'Ticketing' }))
+  fireEvent.click(await screen.findByRole('tab', { name: 'Ticket settings' }))
   expect(await screen.findByRole('tab', { name: 'Ticket types' })).toBeInTheDocument()
   expect(screen.getByRole('tab', { name: 'Ticket fields' })).toBeInTheDocument()
   expect(screen.getByRole('tab', { name: 'Request forms' })).toBeInTheDocument()
@@ -85,7 +84,6 @@ test('a new request form starts restricted; the administrator picks people and t
     ...csrfHandler,
     'GET /api/me': () => admin,
     [`GET /api/departments/${DEPT.id}`]: () => DEPT,
-    [`GET /api/departments/${DEPT.id}/teams`]: () => [],
     [`GET /api/departments/${DEPT.id}/members`]: () => [],
     [`GET /api/departments/${DEPT.id}/ticket-types`]: () => [],
     [`GET /api/departments/${DEPT.id}/ticket-fields`]: () => [],
@@ -94,7 +92,7 @@ test('a new request form starts restricted; the administrator picks people and t
     [`POST /api/departments/${DEPT.id}/request-forms`]: () => ({}),
   })
   renderApp(`/admin/departments/${DEPT.id}`)
-  fireEvent.click(await screen.findByRole('tab', { name: 'Ticketing' }))
+  fireEvent.click(await screen.findByRole('tab', { name: 'Ticket settings' }))
   fireEvent.click(await screen.findByRole('tab', { name: 'Request forms' }))
   fireEvent.click(await screen.findByRole('button', { name: 'New request form' }))
   const dialog = await screen.findByRole('dialog')

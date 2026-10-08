@@ -38,7 +38,6 @@ test('administration: create a topic by choosing an existing form, and reorder t
   const calls = mockFetch({
     'GET /api/me': () => admin,
     [`GET /api/departments/${DEPT.id}`]: () => DEPT,
-    [`GET /api/departments/${DEPT.id}/teams`]: () => [],
     [`GET /api/departments/${DEPT.id}/members`]: () => [],
     [`GET /api/departments/${DEPT.id}/ticket-types`]: () => [],
     [`GET /api/departments/${DEPT.id}/ticket-fields`]: () => [],

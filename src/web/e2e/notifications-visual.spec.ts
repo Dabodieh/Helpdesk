@@ -13,7 +13,7 @@ test('notification centre', async ({ browser }) => {
   const tickets = await lead.get<{ items: { id: string; version: string }[] }>(`/api/tickets?queue=all&departmentId=${data.departmentId}`)
   for (const t of tickets.items.slice(0, 2)) {
     const full = await lead.get<{ version: string }>(`/api/tickets/${t.id}`)
-    await lead.send('PUT', `/api/tickets/${t.id}/assignment`, { version: full.version, teamId: null, assigneeUserId: colleagueId })
+    await lead.send('PUT', `/api/tickets/${t.id}/assignment`, { version: full.version, assigneeUserId: colleagueId })
   }
   const context = await browser.newContext({ colorScheme: 'light', viewport: { width: 1300, height: 760 } })
   const page = await context.newPage()

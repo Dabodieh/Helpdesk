@@ -6,7 +6,7 @@ import { csrfHandler, DEPT, json, makeMe, membership, mockFetch, renderApp } fro
 
 afterEach(() => vi.unstubAllGlobals())
 
-const ADMIN_PERMS = ['department.read', 'department.manage', 'teams.manage', 'department.sla.manage', 'department.automation.manage']
+const ADMIN_PERMS = ['department.read', 'department.manage', 'department.sla.manage', 'department.automation.manage']
 const adminMe = makeMe({ memberships: [membership(ADMIN_PERMS, 'DepartmentAdmin')] })
 const plainAdminMe = makeMe({ memberships: [membership(['department.read', 'department.manage'], 'DepartmentAdmin')] })
 
@@ -46,7 +46,7 @@ const RULE = {
   order: 10,
   stopProcessing: false,
   conditions: [{ field: 'subjectContains', operator: 'contains', values: ['network'] }],
-  actions: [{ type: 'assignTeam', value: 'tm1', text: null }],
+  actions: [{ type: 'assignAgent', value: 'u9', text: null }],
   updatedAt: '2026-01-01T00:00:00Z',
   version: 'v1',
 }
@@ -54,8 +54,7 @@ const RULE = {
 const routes = (me = adminMe) => ({
   'GET /api/me': () => me,
   'GET /api/departments/d1': () => DEPT,
-  'GET /api/departments/d1/teams': () => [{ id: 'tm1', name: 'Network & Infrastructure', isActive: true, version: 'v' }],
-  'GET /api/departments/d1/members': () => [],
+  'GET /api/departments/d1/members': () => [{ userId: 'u9', displayName: 'Network Agent', email: null, role: 'Agent' }],
   'GET /api/departments/d1/mailboxes': () => [],
   'GET /api/departments/d1/business-hours': () => [CALENDAR],
   'GET /api/departments/d1/sla-policies': () => [POLICY],
@@ -93,7 +92,7 @@ test('department administrators with the SLA and automation permissions get the 
 test('without those permissions the areas are not offered', async () => {
   mockFetch(routes(plainAdminMe))
   renderApp('/admin/departments/d1')
-  await screen.findByRole('tab', { name: 'Teams' })
+  await screen.findByRole('tab', { name: 'Members' })
   expect(screen.queryByRole('tab', { name: 'Business hours' })).not.toBeInTheDocument()
   expect(screen.queryByRole('tab', { name: 'SLA policies' })).not.toBeInTheDocument()
   expect(screen.queryByRole('tab', { name: 'Automations' })).not.toBeInTheDocument()
@@ -156,7 +155,7 @@ test('automation rules read in plain language with names, and "Test against tick
             matched: true,
             stopsProcessing: false,
             conditions: [{ field: 'subjectContains', operator: 'contains', values: ['network'], actual: null, result: true }],
-            actions: [{ index: 0, type: 'assignTeam', value: 'tm1', result: 'WouldChange', detail: 'Team would change' }],
+            actions: [{ index: 0, type: 'assignAgent', value: 'u9', result: 'WouldChange', detail: 'Assignee would change' }],
             note: null,
           },
         ],
@@ -165,7 +164,7 @@ test('automation rules read in plain language with names, and "Test against tick
   renderApp('/admin/departments/d1')
   fireEvent.click(await screen.findByRole('tab', { name: 'Automations' }))
   expect(await (await screen.findAllByText('Network routing'))[0]).toBeInTheDocument()
-  expect(await screen.findByText(/Assign team: Network & Infrastructure/)).toBeInTheDocument()
+  expect(await screen.findByText(/Assign agent: Network Agent/)).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Test' }))
   const dialog = await screen.findByRole('dialog')
   fireEvent.change(within(dialog).getByLabelText('Ticket reference'), { target: { value: 'IT-7' } })
@@ -184,7 +183,7 @@ test('rule editor offers only structured controls and server field errors are sh
   mockFetch({
     ...routes(),
     'POST /api/departments/d1/automations': () =>
-      new Response(JSON.stringify({ status: 400, title: 'Validation failed', errors: { 'actions[0]': ['The team does not belong to this department.'] } }), {
+      new Response(JSON.stringify({ status: 400, title: 'Validation failed', errors: { 'actions[0]': ['The assignee is not a member of this department.'] } }), {
         status: 400,
         headers: { 'content-type': 'application/problem+json' },
       }),
@@ -196,5 +195,5 @@ test('rule editor offers only structured controls and server field errors are sh
   expect(within(dialog).queryByRole('textbox', { name: /json/i })).not.toBeInTheDocument()
   fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Bad' } })
   fireEvent.click(within(dialog).getByRole('button', { name: 'Save rule' }))
-  expect(await within(dialog).findByText('The team does not belong to this department.')).toBeInTheDocument()
+  expect(await within(dialog).findByText('The assignee is not a member of this department.')).toBeInTheDocument()
 })

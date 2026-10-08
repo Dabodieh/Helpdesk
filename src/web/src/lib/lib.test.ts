@@ -7,7 +7,6 @@ import { shouldIgnoreShortcut } from './shortcuts'
 
 const names: NameLookup = {
   users: new Map([['u2', 'Bea Agent']]),
-  teams: new Map([['tm1', 'Tier 1']]),
 }
 const act = (over: Partial<Activity>): Activity => ({
   id: 'a',
@@ -32,8 +31,9 @@ test('activity sentences are human text built from action/previous/next', () => 
   expect(describeActivity(act({ action: 'ticket.subject_changed', previous: { subject: 'Old' }, next: { subject: 'New' } }), names)).toBe(
     'changed the subject from "Old" to "New"',
   )
+  // Recorded before Teams were removed: still readable in the history of older tickets.
   expect(describeActivity(act({ action: 'ticket.team_changed', previous: { teamId: null }, next: { teamId: 'tm1' } }), names)).toBe(
-    'changed the team from no team to Tier 1',
+    'changed the team (a former setting: Departments are the workgroups now)',
   )
   expect(describeActivity(act({ action: 'ticket.assignee_changed', previous: { assigneeUserId: null }, next: { assigneeUserId: 'u2' } }), names)).toBe(
     'assigned the ticket to Bea Agent',

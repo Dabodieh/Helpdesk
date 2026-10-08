@@ -68,7 +68,6 @@ test('a department configures its own acknowledgement: toggles, templates, previ
   mockFetch({
     'GET /api/me': () => adminMe,
     'GET /api/departments/d1': () => DEPT,
-    'GET /api/departments/d1/teams': () => [],
     'GET /api/departments/d1/members': () => [],
     'GET /api/departments/d1/mailboxes': () => [],
     'GET /api/departments/d1/mail/attention': () => page([]),

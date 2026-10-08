@@ -73,14 +73,13 @@ test('admins build a macro with structured controls only and the server action e
   const calls = mockFetch({
     'GET /api/me': () => adminMe,
     'GET /api/departments/d1': () => DEPT,
-    'GET /api/departments/d1/teams': () => [{ id: 'tm1', name: 'Service Desk', isActive: true, version: 'v' }],
-    'GET /api/departments/d1/members': () => [],
+    'GET /api/departments/d1/members': () => [{ userId: 'u9', displayName: 'Other Agent', email: null, role: 'Agent' }],
     'GET /api/departments/d1/macros': () => [{ id: 'm1', departmentId: 'd1', name: 'Existing', description: null, isActive: true, order: 10, actions: [{ type: 'setPriority', value: 'High' }], summary: ['Priority → High'], version: 'v1' }],
     'GET /api/departments/d1/ticket-types': () => [],
     'GET /api/departments/d1/ticket-fields': () => [],
     'GET /api/canned-responses?departmentId=d1': () => [],
     'POST /api/departments/d1/macros': () =>
-      new Response(JSON.stringify({ status: 400, title: 'Validation failed', errors: { 'actions[0]': ['The team does not belong to this department.'] } }), {
+      new Response(JSON.stringify({ status: 400, title: 'Validation failed', errors: { 'actions[0]': ['The assignee is not a member of this department.'] } }), {
         status: 400,
         headers: { 'content-type': 'application/problem+json' },
       }),
@@ -97,12 +96,12 @@ test('admins build a macro with structured controls only and the server action e
   const dialog = await screen.findByRole('dialog', { name: 'New macro' })
   expect(within(dialog).queryByRole('textbox', { name: /json/i })).not.toBeInTheDocument()
   fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Route it' } })
-  fireEvent.change(within(dialog).getByRole('combobox', { name: /Add action/ }), { target: { value: 'setTeam' } })
-  await within(dialog).findByRole('option', { name: 'Service Desk' })
-  fireEvent.change(within(dialog).getByLabelText('Team'), { target: { value: 'tm1' } })
+  fireEvent.change(within(dialog).getByRole('combobox', { name: /Add action/ }), { target: { value: 'setAssignee' } })
+  await within(dialog).findByRole('option', { name: 'Other Agent' })
+  fireEvent.change(within(dialog).getByLabelText('Assignee'), { target: { value: 'u9' } })
   fireEvent.click(within(dialog).getByRole('button', { name: 'Save macro' }))
-  expect(await within(dialog).findByText('The team does not belong to this department.')).toBeInTheDocument()
-  expect(calls.find((c) => c.method === 'POST' && c.path.endsWith('/macros'))!.body).toMatchObject({ name: 'Route it', isActive: true, actions: [{ type: 'setTeam', value: 'tm1' }] })
+  expect(await within(dialog).findByText('The assignee is not a member of this department.')).toBeInTheDocument()
+  expect(calls.find((c) => c.method === 'POST' && c.path.endsWith('/macros'))!.body).toMatchObject({ name: 'Route it', isActive: true, actions: [{ type: 'setAssignee', value: 'u9' }] })
 })
 
 test('without update access to the ticket there is no macro entry point', async () => {

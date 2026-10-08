@@ -37,16 +37,6 @@ export const departmentSchema = z.object({
 })
 export type Department = z.infer<typeof departmentSchema>
 
-export const teamSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  description: z.string().nullable().optional(),
-  isActive: z.boolean(),
-  memberCount: z.number().optional(),
-  version: z.string(),
-})
-export type Team = z.infer<typeof teamSchema>
-
 export const userRefSchema = z.object({
   id: z.string(),
   displayName: z.string(),
@@ -54,16 +44,15 @@ export const userRefSchema = z.object({
 })
 export type UserRef = z.infer<typeof userRefSchema>
 
-export const teamMemberSchema = z.object({
+export const memberBaseSchema = z.object({
   userId: z.string(),
   displayName: z.string(),
   email: z.string().nullable().optional(),
 })
-export type TeamMember = z.infer<typeof teamMemberSchema>
+export type MemberBase = z.infer<typeof memberBaseSchema>
 
-export const memberSchema = teamMemberSchema.extend({
+export const memberSchema = memberBaseSchema.extend({
   role: z.string(),
-  teamIds: z.array(z.string()).default([]),
 })
 export type Member = z.infer<typeof memberSchema>
 

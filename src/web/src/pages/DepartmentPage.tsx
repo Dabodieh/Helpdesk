@@ -21,7 +21,6 @@ import MailboxesSection from '../components/MailboxesSection'
 import MembersSection from '../components/MembersSection'
 import RequesterIdentitiesSection from '../components/RequesterIdentitiesSection'
 import SlaPoliciesSection from '../components/SlaPoliciesSection'
-import TeamsSection from '../components/TeamsSection'
 
 /** Section selection lives in the URL (?section=...), so a section can be bookmarked; the route itself is unchanged. */
 const SECTION = 'section'
@@ -111,7 +110,6 @@ export default function DepartmentPage() {
         param={SECTION}
         tabs={[
           { id: 'overview', label: 'Overview', group: 'Department', content: <DepartmentOverview department={d} search={filter} /> },
-          { id: 'teams', label: 'Teams', group: 'People & access', content: <TeamsSection department={d} /> },
           { id: 'members', label: 'Members', group: 'People & access', content: <MembersSection department={d} /> },
           {
             id: 'requesters',

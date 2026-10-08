@@ -6,7 +6,7 @@ import { canTicket } from '../api/permissions'
 import { listTickets } from '../api/tickets'
 import type { SlaFilter } from '../api/ticketSchemas'
 import { useMe } from '../auth'
-import { ActivityChart, AttentionList, BacklogAge, KpiCard, OldestTable, Panel, ServiceHealth, TeamWorkload, queueUrl, type AttentionRow } from '../components/DashboardParts'
+import { ActivityChart, AttentionList, BacklogAge, KpiCard, OldestTable, Panel, ServiceHealth, AgentWorkload, queueUrl, type AttentionRow } from '../components/DashboardParts'
 import { ErrorNotice, Loading, PageHeader, StatusBadge } from '../components/common'
 import { Icon } from '../components/icons'
 
@@ -84,8 +84,8 @@ function Content({ d }: { d: Dashboard }) {
 
       <div className="dash-grid">
         <ActivityPanel departmentId={id} />
-        <Panel title="Team workload" id="teams-h" className="span-5" action={{ to: queueUrl(id), label: 'All tickets' }}>
-          <TeamWorkload teams={d.teams} dept={id} />
+        <Panel title="Workload by assignee" id="agents-h" className="span-5" action={{ to: queueUrl(id), label: 'All tickets' }}>
+          <AgentWorkload agents={d.agents} dept={id} />
         </Panel>
 
         <Panel title="Backlog age" id="age-h" className="span-4">

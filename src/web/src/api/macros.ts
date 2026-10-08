@@ -5,7 +5,6 @@ import { ticketDetailSchema } from './ticketSchemas'
 export const MACRO_ACTION_TYPES = [
   'setStatus',
   'setPriority',
-  'setTeam',
   'setAssignee',
   'clearAssignee',
   'assignToMe',
@@ -19,7 +18,6 @@ export type MacroActionType = (typeof MACRO_ACTION_TYPES)[number]
 export const MACRO_ACTION_LABEL: Record<MacroActionType, string> = {
   setStatus: 'Status',
   setPriority: 'Priority',
-  setTeam: 'Team',
   setAssignee: 'Assignee',
   clearAssignee: 'Clear assignee',
   assignToMe: 'Assign to me',

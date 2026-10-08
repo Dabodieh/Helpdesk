@@ -112,10 +112,10 @@ test('accessibility: queue, ticket workspace, dialogs and administration have no
   await page.keyboard.press('Escape')
 
   await page.goto(`/admin/departments/${data.departmentId}`)
-  await expect(page.getByRole('tab', { name: 'Teams' })).toBeVisible()
+  await expect(page.getByRole('tab', { name: 'Members' })).toBeVisible()
   await expectNoSeriousViolations(page, 'department overview')
-  await page.getByRole('tab', { name: 'Teams' }).click()
-  await expectNoSeriousViolations(page, 'department teams')
+  await page.getByRole('tab', { name: 'Members' }).click()
+  await expectNoSeriousViolations(page, 'department members')
 
   // Administration dialogs (platform admin).
   await page.goto(devLoginPath({ subject: 'dev-admin', name: 'Dev Admin', email: 'dev@example.test' }, '/admin'))

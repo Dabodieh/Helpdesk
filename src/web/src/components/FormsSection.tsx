@@ -5,7 +5,6 @@ import { lookupUsers } from '../api/organisation'
 import type { Department } from '../api/schemas'
 import { createForm, listForms, listTicketFields, listTicketTypes, reorderForms, setFormFields, updateForm, type FieldLinkInput, type RequestForm } from '../api/ticketing'
 import { PRIORITIES } from '../api/ticketSchemas'
-import { useDirectory } from '../hooks/useDirectory'
 import { ActiveBadge, ErrorNotice, Field, Loading } from './common'
 import Dialog from './Dialog'
 
@@ -80,13 +79,11 @@ function AudiencePicker({ people, onChange }: { people: Person[]; onChange: (p: 
 
 function FormDialog({ department, existing, onClose }: { department: Department; existing?: RequestForm; onClose: () => void }) {
   const qc = useQueryClient()
-  const dir = useDirectory(department.id)
   const types = useQuery({ queryKey: ['ticket-types', department.id], queryFn: () => listTicketTypes(department.id) })
   const [name, setName] = useState(existing?.name ?? '')
   const [description, setDescription] = useState(existing?.description ?? '')
   const [active, setActive] = useState(existing?.isActive ?? true)
   const [visible, setVisible] = useState(existing?.visibleToRequesters ?? true)
-  const [team, setTeam] = useState(existing?.defaultTeamId ?? '')
   const [priority, setPriority] = useState(existing?.defaultPriority ?? '')
   const [typeId, setTypeId] = useState(existing?.ticketTypeId ?? '')
   // A new form starts restricted: whoever creates it must deliberately choose who may use it.
@@ -99,8 +96,6 @@ function FormDialog({ department, existing, onClose }: { department: Department;
         description: description.trim(),
         isActive: active,
         visibleToRequesters: visible,
-        defaultTeamId: team || null,
-        clearDefaultTeam: !team,
         defaultPriority: priority || null,
         clearDefaultPriority: !priority,
         ticketTypeId: typeId || null,
@@ -143,18 +138,6 @@ function FormDialog({ department, existing, onClose }: { department: Department;
             </select>
           )}
         </Field>
-        <Field label="Default team" hint="Tickets from this form start with this team (routing rules can change it)." error={server.defaultteamid}>
-          {(p) => (
-            <select {...p} value={team} onChange={(e) => setTeam(e.target.value)}>
-              <option value="">No team</option>
-              {dir.teams.filter((t) => t.isActive).map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-          )}
-        </Field>
         <Field label="Default priority" error={server.defaultpriority}>
           {(p) => (
             <select {...p} value={priority} onChange={(e) => setPriority(e.target.value)}>
@@ -183,7 +166,7 @@ function FormDialog({ department, existing, onClose }: { department: Department;
         <label className="check">
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Active
         </label>
-        <p className="muted small">Requesters never choose the team, priority or department: the form decides.</p>
+        <p className="muted small">Requesters never choose the assignee, priority or department: the form decides.</p>
         <ErrorNotice error={save.error} />
         <div className="dialog-actions">
           <button type="button" onClick={onClose}>

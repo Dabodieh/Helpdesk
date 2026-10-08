@@ -1,11 +1,10 @@
 import type { RuleAction } from '../api/automation'
 import type { Condition } from '../api/sla'
 
-export const POLICY_FIELDS = ['priority', 'team', 'mailbox', 'subjectContains', 'requesterEmail', 'requesterDomain'] as const
+export const POLICY_FIELDS = ['priority', 'mailbox', 'subjectContains', 'requesterEmail', 'requesterDomain'] as const
 export const RULE_FIELDS = [
   'status',
   'priority',
-  'team',
   'assignee',
   'mailbox',
   'subjectContains',
@@ -18,7 +17,6 @@ export const RULE_FIELDS = [
 export const FIELD_LABEL: Record<string, string> = {
   status: 'Status',
   priority: 'Priority',
-  team: 'Team',
   assignee: 'Assignee',
   mailbox: 'Mailbox',
   subjectContains: 'Subject contains',
@@ -31,7 +29,6 @@ export const FIELD_LABEL: Record<string, string> = {
 export const ACTION_LABEL: Record<string, string> = {
   setStatus: 'Set status',
   setPriority: 'Set priority',
-  assignTeam: 'Assign team',
   assignAgent: 'Assign agent',
   addInternalNote: 'Add internal note',
 }
@@ -47,7 +44,7 @@ export const SKIP_LABEL: Record<string, string> = {
 export const OUTCOME_LABEL: Record<string, string> = { Done: 'Done', NoChange: 'No change needed', Failed: 'Failed', Pending: 'Not run' }
 
 export function typeKey(type: string) {
-  return type === 'setStatus' ? 'status' : type === 'setPriority' ? 'priority' : type === 'assignTeam' ? 'team' : 'assignee'
+  return type === 'setStatus' ? 'status' : type === 'setPriority' ? 'priority' : 'assignee'
 }
 
 /** Plain-language one-line summary of conditions and actions for list rows. */

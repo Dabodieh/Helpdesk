@@ -3758,7 +3758,7 @@ table.compact th {
 .chart-axis { fill: var(--muted); font-size: 10.5px; font-family: var(--sans); }
 .chart g:hover rect { opacity: 0.8; }
 
-.age-bars, .team-bars, .attn-list, .health-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.age-bars, .workload-bars, .attn-list, .health-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .age-bars li { display: grid; grid-template-columns: 92px 1fr 64px; align-items: center; gap: 10px; font-size: 13px; }
 .age-track { height: 10px; background: var(--surface-2); border-radius: 6px; overflow: hidden; }
 .age-fill { display: block; height: 100%; border-radius: 6px; min-width: 2px; background: var(--st-open); }
@@ -3766,18 +3766,18 @@ table.compact th {
 .age-bad { background: var(--danger); }
 .age-count { text-align: right; font-weight: 650; }
 
-.team-bars { gap: 14px; }
-.team-legend { display: flex; gap: 16px; margin: -4px 0 0; font-size: 12px; color: var(--muted); }
-.team-legend span { display: inline-flex; align-items: center; }
-.team-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 13.5px; }
-.team-name { font-weight: 650; color: var(--text); text-decoration: none; }
-a.team-name:hover { text-decoration: underline; color: var(--accent); }
-.team-total { font-weight: 740; font-size: 16px; }
-.team-track { display: flex; height: 10px; background: var(--surface-2); border-radius: 6px; overflow: hidden; margin: 5px 0 4px; }
-.team-assigned { background: var(--st-open); }
-.team-unassigned { background: var(--warn); }
-.team-meta { margin: 0; }
-.team-overdue { color: var(--danger); font-weight: 650; }
+.workload-bars { gap: 14px; }
+.workload-legend { display: flex; gap: 16px; margin: -4px 0 0; font-size: 12px; color: var(--muted); }
+.workload-legend span { display: inline-flex; align-items: center; }
+.workload-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 13.5px; }
+.workload-name { font-weight: 650; color: var(--text); text-decoration: none; }
+a.workload-name:hover { text-decoration: underline; color: var(--accent); }
+.workload-total { font-weight: 740; font-size: 16px; }
+.workload-track { display: flex; height: 10px; background: var(--surface-2); border-radius: 6px; overflow: hidden; margin: 5px 0 4px; }
+.workload-assigned { background: var(--st-open); }
+.workload-unassigned { background: var(--warn); }
+.workload-meta { margin: 0; }
+.workload-overdue { color: var(--danger); font-weight: 650; }
 
 .attn-list { gap: 0; }
 .attn-list li { padding: 10px 0; border-top: 1px solid var(--border); display: grid; gap: 4px; }

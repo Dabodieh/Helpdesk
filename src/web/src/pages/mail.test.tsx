@@ -126,7 +126,7 @@ test('the ticket workspace hides sender addresses and keeps the people in copy',
 })
 
 test('activity: email creation and delivery changes read as sentences', () => {
-  const names = { users: new Map<string, string>(), teams: new Map<string, string>() }
+  const names = { users: new Map<string, string>() }
   const base = { id: 'a', occurredAt: '2026-10-01T10:00:00Z', actor: null, previous: null }
   expect(describeActivity({ ...base, action: 'ticket.created', next: { status: 'Open', priority: 'Normal', source: 'email' } }, names)).toBe(
     'created the ticket from an email (Open, Normal)',
@@ -158,7 +158,6 @@ const deptRoutes = (me = adminMe) => ({
   'GET /api/me': () => me,
   'GET /api/departments': () => [DEPT],
   'GET /api/departments/d1': () => DEPT,
-  'GET /api/departments/d1/teams': () => [],
   'GET /api/departments/d1/members': () => [],
   'GET /api/departments/d1/mailboxes': () => [MAILBOX],
   'GET /api/departments/d1/auto-reply': () => ({ departmentId: 'd1', configured: false, enabled: false, forEmail: true, forPortal: false, subject: 'Subject {{ticket.reference}}', body: 'Body', placeholders: ['ticket.reference'], version: '' }),

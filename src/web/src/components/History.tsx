@@ -20,11 +20,10 @@ export default function History({ ticket }: { ticket: TicketDetail }) {
   })
 
   const names = useMemo(() => {
-    const n = { users: new Map(dir.names.users), teams: new Map(dir.names.teams) }
+    const n = { users: new Map(dir.names.users) }
     if (ticket.assignee) n.users.set(ticket.assignee.id, ticket.assignee.displayName)
-    if (ticket.team) n.teams.set(ticket.team.id, ticket.team.name)
     return n
-  }, [dir.names, ticket.assignee, ticket.team])
+  }, [dir.names, ticket.assignee])
 
   const events = useMemo(() => {
     const seen = new Map<string, Activity>()

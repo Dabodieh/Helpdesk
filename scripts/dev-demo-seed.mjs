@@ -4,7 +4,7 @@
 //
 //   node scripts/dev-demo-seed.mjs [apiBase=http://localhost:5080] [webBase=http://localhost:5173]
 //
-// Safe to rerun: the department, teams, members, SLA setup, mailbox, forms and knowledge are looked up before they are created, and the tickets are only
+// Safe to rerun: the department, members, SLA setup, mailbox, forms and knowledge are looked up before they are created, and the tickets are only
 // created when the department has none. To start over: docker exec -i helpdesk-postgres-1 psql -U helpdesk -d helpdesk < scripts/dev-demo-reset.sql
 import { execFileSync } from 'node:child_process'
 
@@ -61,19 +61,12 @@ const req1 = await new Session('demo-requester1', 'Priya Shah').signIn()
 const req2 = await new Session('demo-requester2', 'Marcus Webb').signIn()
 const legacy = await new Session('demo-legacy', 'Dana Whitfield').signIn()
 
-// ---- department, teams, memberships ----
+// ---- department, memberships ----
 const all = await platform.ok('GET', '/api/departments')
 const dept = all.find((d) => d.key === 'DEMO') ?? (await platform.ok('POST', '/api/departments', { key: 'DEMO', name: 'IT Support (Demo)', description: 'DEV/DEMO DATA: safe to delete (scripts/dev-demo-reset.sql).' }))
 const D = `/api/departments/${dept.id}`
 for (const [s, role] of [[admin, 'DepartmentAdmin'], [lead, 'TeamLead'], [agent1, 'Agent'], [agent2, 'Agent']]) {
   await platform.ok('PUT', `${D}/members/${s.me.id}`, { role })
-}
-const teams = await platform.ok('GET', `${D}/teams`)
-const team = async (name) => teams.find((t) => t.name === name) ?? (await platform.ok('POST', `${D}/teams`, { name }))
-const desk = await team('Demo Service Desk')
-const network = await team('Demo Network')
-for (const [s, t] of [[agent1, desk], [agent2, desk], [lead, desk], [lead, network], [agent2, network]]) {
-  await platform.ok('PUT', `${D}/teams/${t.id}/members/${s.me.id}`)
 }
 
 // ---- service levels (must exist before tickets): Urgent is overdue a minute after seeding, High is due soon for ~3h, the rest are comfortable ----
@@ -128,9 +121,9 @@ if (any.items.length > 0) {
   await portal(req2, 'Cannot open the shared finance drive', 'Access denied since this morning.')
 
   // Core scenarios.
-  const normal = await ticket(lead, 'Outlook keeps asking for my password', 'Prompts every few minutes since the weekend. Webmail works.', 'Normal', { email: 'priya.shah@contoso.test', displayName: 'Priya Shah (contoso)' }, { teamId: desk.id, assigneeUserId: agent1.me.id })
-  const overdue = await ticket(lead, 'Server room temperature alert', 'Rack 4 reports 31C and the aircon shows an error light.', 'Urgent', { email: 'facilities@contoso.test', displayName: 'Facilities Desk' }, { teamId: network.id, assigneeUserId: agent2.me.id })
-  const dueSoon = await ticket(lead, 'VPN drops every ten minutes', 'Home broadband, Windows 11. Started this morning.', 'High', { email: 'tom.hargreaves@contoso.test', displayName: 'Tom Hargreaves' }, { teamId: desk.id, assigneeUserId: agent2.me.id })
+  const normal = await ticket(lead, 'Outlook keeps asking for my password', 'Prompts every few minutes since the weekend. Webmail works.', 'Normal', { email: 'priya.shah@contoso.test', displayName: 'Priya Shah (contoso)' }, { assigneeUserId: agent1.me.id })
+  const overdue = await ticket(lead, 'Server room temperature alert', 'Rack 4 reports 31C and the aircon shows an error light.', 'Urgent', { email: 'facilities@contoso.test', displayName: 'Facilities Desk' }, { assigneeUserId: agent2.me.id })
+  const dueSoon = await ticket(lead, 'VPN drops every ten minutes', 'Home broadband, Windows 11. Started this morning.', 'High', { email: 'tom.hargreaves@contoso.test', displayName: 'Tom Hargreaves' }, { assigneeUserId: agent2.me.id })
   const unassigned = await ticket(lead, 'Request: install Visio on my laptop', 'Needed for the network diagrams project.', 'Low', { email: 'aisha.khan@contoso.test', displayName: 'Aisha Khan' })
   const duplicate = await ticket(lead, 'Duplicate: Outlook password prompts', 'Same issue as my colleague: Outlook keeps asking for a password.', 'Normal', { email: 'liam.oconnor@contoso.test', displayName: 'Liam O\'Connor' }, { teamId: desk.id })
 
@@ -152,7 +145,7 @@ if (any.items.length > 0) {
   const find = async (subject) => (await admin.ok('GET', `/api/tickets?queue=all&departmentId=${dept.id}&status=Open&status=Pending&q=${encodeURIComponent(`${TAG} ${subject}`)}&limit=5`)).items[0]
   const assign = async (s, ref, who) => {
     const t = await s.ok('GET', `/api/tickets/${ref.id}`)
-    await s.ok('PUT', `/api/tickets/${ref.id}/assignment`, { version: t.version, teamId: desk.id, assigneeUserId: who.me.id })
+    await s.ok('PUT', `/api/tickets/${ref.id}/assignment`, { version: t.version, assigneeUserId: who.me.id })
   }
   await inbound('ravi.menon@contoso.test', 'Ravi Menon', 'Shared drive access request', 'Hello, please give me access to the Finance-Reports share. Thanks, Ravi')
   const reply = await find('Shared drive access request')

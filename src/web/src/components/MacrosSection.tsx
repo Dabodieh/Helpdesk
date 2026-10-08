@@ -97,18 +97,6 @@ function ActionRow({
         </select>
       )
       break
-    case 'setTeam':
-      control = (
-        <select aria-label="Team" value={action.value ?? ''} onChange={(e) => set({ value: e.target.value })}>
-          <option value="">Choose…</option>
-          {dir.teams.filter((t) => t.isActive).map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </select>
-      )
-      break
     case 'setAssignee':
       control = (
         <select aria-label="Assignee" value={action.value ?? ''} onChange={(e) => set({ value: e.target.value })}>

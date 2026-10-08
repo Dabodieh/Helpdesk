@@ -20,11 +20,9 @@ export default function BulkBar({ tickets, onClear }: { tickets: TicketListItem[
   const canUpdate = departmentIds.every((d) => canTicket(me, 'tickets.update', d))
   const canAssignAny = departmentIds.every((d) => canTicket(me, 'tickets.assign.any', d))
   const canAssignSelf = departmentIds.every((d) => canTicket(me, 'tickets.assign.self', d))
-  const canRoute = canAssignAny || departmentIds.every((d) => canTicket(me, 'tickets.assign.team', d))
 
   const [status, setStatus] = useState('')
   const [priority, setPriority] = useState('')
-  const [team, setTeam] = useState('')
   const [assignee, setAssignee] = useState('')
   const [summary, setSummary] = useState<BulkResult | null>(null)
   const [confirmSilent, setConfirmSilent] = useState(false) // D24: resolving or closing sends the requesters nothing
@@ -32,8 +30,7 @@ export default function BulkBar({ tickets, onClear }: { tickets: TicketListItem[
   const change: BulkChange = {}
   if (status) change.status = status
   if (priority) change.priority = priority
-  // Team and assignee choices only apply within ONE department: once the selection spans several, a stale choice is not sent (UX-009).
-  if (team && !needDept) change.team = { id: team === 'none' ? null : team }
+  // The assignee choice only applies within ONE department: once the selection spans several, a stale choice is not sent (UX-009).
   if (assignee && (!needDept || assignee === 'me')) change.assignee = { id: assignee === 'none' ? null : assignee === 'me' ? me.id : assignee }
   const anything = Object.keys(change).length > 0
 
@@ -48,7 +45,6 @@ export default function BulkBar({ tickets, onClear }: { tickets: TicketListItem[
       setSummary(result)
       setStatus('')
       setPriority('')
-      setTeam('')
       setAssignee('')
       await Promise.all([qc.invalidateQueries({ queryKey: ['tickets'] }), qc.invalidateQueries({ queryKey: ['ticket'] })])
     },
@@ -76,25 +72,6 @@ export default function BulkBar({ tickets, onClear }: { tickets: TicketListItem[
           {PRIORITIES.map((p) => (
             <option key={p}>{p}</option>
           ))}
-        </select>
-      </label>
-      <label className="fsel">
-        <span>Team</span>
-        <select
-          value={team}
-          disabled={!canRoute || needDept}
-          title={needDept ? 'Select tickets from one department to assign a team' : !canRoute ? 'You cannot assign teams here' : undefined}
-          onChange={(e) => setTeam(e.target.value)}
-        >
-          <option value="">No change</option>
-          <option value="none">No team</option>
-          {dir.teams
-            .filter((t) => t.isActive)
-            .map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
         </select>
       </label>
       <label className="fsel">

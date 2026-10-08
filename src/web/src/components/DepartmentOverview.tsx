@@ -15,7 +15,7 @@ export default function DepartmentOverview({ department: d, search = '' }: { dep
   return <section className="department-control-centre" aria-label="Department control centre">
     {!search && <>
       <div className="department-snapshot" aria-label="Configuration snapshot">
-        {[{ id: 'members', label: 'People', icon: 'person' }, { id: 'teams', label: 'Assignment groups', icon: 'team' }, { id: 'mailboxes', label: 'Email channel', icon: 'mail' }].filter(item => settings.some(s => s.id === item.id)).map(item => <Link key={item.id} to={settingHref(settings.find(s => s.id === item.id)!, d.id)}>
+        {[{ id: 'members', label: 'People', icon: 'person' }, { id: 'mailboxes', label: 'Email channel', icon: 'mail' }].filter(item => settings.some(s => s.id === item.id)).map(item => <Link key={item.id} to={settingHref(settings.find(s => s.id === item.id)!, d.id)}>
           <Icon name={item.icon} size={22} /><div><span>{item.label}</span><strong>{states[item.id]?.label ?? 'Loading status…'}</strong></div><span aria-hidden="true">↗</span>
         </Link>)}
       </div>
