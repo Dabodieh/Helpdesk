@@ -279,8 +279,8 @@ public sealed class TicketIsolationMatrixTests(HelpdeskFixture fixture) : IClass
         else
         {
             counts.Expect(HttpStatusCode.OK);
-            var openA = await fixture.ScalarAsync<long>("SELECT count(*) FROM ticketing.tickets WHERE department_id = @d AND status = 'Open'", TicketKit.P("d", w.A.Id));
-            var openB = await fixture.ScalarAsync<long>("SELECT count(*) FROM ticketing.tickets WHERE department_id = @d AND status = 'Open'", TicketKit.P("d", w.B.Id));
+            var openA = await fixture.ScalarAsync<long>("SELECT count(*) FROM ticketing.tickets WHERE department_id = @d AND status IN ('Open','Pending') AND merged_into_ticket_id IS NULL", TicketKit.P("d", w.A.Id));
+            var openB = await fixture.ScalarAsync<long>("SELECT count(*) FROM ticketing.tickets WHERE department_id = @d AND status IN ('Open','Pending') AND merged_into_ticket_id IS NULL", TicketKit.P("d", w.B.Id));
             var expectedAll = ownOnly.Count == 0 ? 0 : ownOnly == idsA ? openA : openB; // exact: any foreign ticket would change the number
             Assert.Equal(expectedAll, counts.Json.GetProperty("all").GetInt64());
             Assert.True(counts.Json.GetProperty("unassigned").GetInt64() <= expectedAll);
