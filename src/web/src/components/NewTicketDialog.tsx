@@ -125,18 +125,21 @@ export default function NewTicketDialog({ onClose, onCreated }: { onClose: () =>
           </div>
         ) : (
           <>
-            <Field label="Requester email" error={(touched && problems.requester) || server['requester.email'] || server.requester}>
+            <Field label="Requester email or name" error={(touched && problems.requester) || server['requester.email'] || server.requester}>
               {(p) => (
                 <input
                   {...p}
                   type="email"
                   data-autofocus
                   autoComplete="off"
+                  placeholder="Start typing a name or email address"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
               )}
             </Field>
+            {term.length < 2 && <p className="muted small">Earlier requesters appear as you type their name or email. Pick one to link the ticket to that person.</p>}
+            {lookup.isSuccess && lookup.data.length === 0 && <p className="muted small">No earlier requester matches. A new one is created from the email address you enter.</p>}
             {lookup.data && lookup.data.length > 0 && (
               <ul className="plain suggestions" aria-label="Matching requesters">
                 {lookup.data.map((r) => (

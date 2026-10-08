@@ -299,7 +299,7 @@ test('new ticket: requester email, subject, description and priority are posted;
   renderApp('/queue/my')
   fireEvent.click(await screen.findByRole('button', { name: 'New ticket' }))
   const dialog = await screen.findByRole('dialog', { name: 'New ticket' })
-  fireEvent.change(within(dialog).getByLabelText('Requester email'), { target: { value: 'new@example.test' } })
+  fireEvent.change(within(dialog).getByLabelText('Requester email or name'), { target: { value: 'new@example.test' } })
   fireEvent.change(within(dialog).getByLabelText('Subject'), { target: { value: 'Brand new' } })
   fireEvent.change(within(dialog).getByLabelText('Description'), { target: { value: 'It broke' } })
   fireEvent.change(within(dialog).getByLabelText('Priority'), { target: { value: 'High' } })
@@ -388,4 +388,18 @@ test('presence: others on the ticket are listed quietly, the draft survives new 
   expect(await screen.findByText(/new activity since you started writing/)).toBeInTheDocument()
   expect((screen.getByRole('textbox', { name: 'Public reply' }) as HTMLTextAreaElement).value).toBe('Working on it')
   expect(screen.getByRole('button', { name: 'Post public reply' })).toBeEnabled() // never blocks sending
+})
+
+test('new ticket: typing the start of a name finds an earlier requester and picking it links the ticket to them', async () => {
+  mockFetch({
+    ...workspaceRoutes(agentMe()),
+    'GET /api/departments/d1/requesters/lookup?q=dan': () => json([{ id: 'r1', displayName: 'Dana Whitfield', email: 'dana.whitfield@contoso.test' }]),
+  })
+  renderApp('/queue/my')
+  fireEvent.click(await screen.findByRole('button', { name: /New ticket/ }))
+  const dialog = await screen.findByRole('dialog')
+  fireEvent.change(within(dialog).getByLabelText(/Requester email or name/), { target: { value: 'dan' } })
+  fireEvent.click(await within(dialog).findByRole('button', { name: /Dana Whitfield/ }))
+  expect(await within(dialog).findByText(/dana.whitfield@contoso.test/)).toBeInTheDocument()
+  expect(within(dialog).getByRole('button', { name: 'Change requester' })).toBeInTheDocument()
 })
