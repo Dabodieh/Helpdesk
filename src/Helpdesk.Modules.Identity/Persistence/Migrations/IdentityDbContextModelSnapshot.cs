@@ -44,6 +44,67 @@ namespace Helpdesk.Modules.Identity.Persistence.Migrations
                     b.ToTable("data_protection_keys", "identity");
                 });
 
+            modelBuilder.Entity("Helpdesk.Modules.Identity.Domain.EntraSettings", b =>
+                {
+                    b.Property<short>("Id")
+                        .HasColumnType("smallint")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ApplicationObjectId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("application_object_id");
+
+                    b.Property<string>("BootstrapAdminSubject")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("bootstrap_admin_subject");
+
+                    b.Property<string>("ClientId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("client_id");
+
+                    b.Property<string>("ClientSecretProtected")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("client_secret_protected");
+
+                    b.Property<DateTimeOffset>("ConfiguredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("configured_at");
+
+                    b.Property<Guid>("ConfiguredBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("configured_by");
+
+                    b.Property<string>("RedirectOrigins")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("redirect_origins");
+
+                    b.Property<DateTimeOffset>("SecretExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("secret_expires_at");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("entra_settings", "identity", t =>
+                        {
+                            t.HasCheckConstraint("ck_entra_settings_single_row", "id = 1");
+                        });
+                });
+
             modelBuilder.Entity("Helpdesk.Modules.Identity.Domain.ExternalIdentity", b =>
                 {
                     b.Property<Guid>("Id")

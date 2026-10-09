@@ -15,6 +15,8 @@ internal sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> opti
 
     public DbSet<DataProtectionKeyRow> DataProtectionKeys => Set<DataProtectionKeyRow>();
 
+    public DbSet<EntraSettings> EntraSettings => Set<EntraSettings>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema(Schema);
@@ -26,6 +28,22 @@ internal sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> opti
             e.Property(x => x.FriendlyName).HasColumnName("friendly_name").HasMaxLength(200);
             e.Property(x => x.Xml).HasColumnName("xml");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
+        });
+
+        modelBuilder.Entity<EntraSettings>(e =>
+        {
+            e.ToTable("entra_settings", t => t.HasCheckConstraint("ck_entra_settings_single_row", "id = 1"));
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            e.Property(x => x.TenantId).HasColumnName("tenant_id").HasMaxLength(64);
+            e.Property(x => x.ClientId).HasColumnName("client_id").HasMaxLength(64);
+            e.Property(x => x.ClientSecretProtected).HasColumnName("client_secret_protected");
+            e.Property(x => x.SecretExpiresAt).HasColumnName("secret_expires_at");
+            e.Property(x => x.ApplicationObjectId).HasColumnName("application_object_id").HasMaxLength(64);
+            e.Property(x => x.RedirectOrigins).HasColumnName("redirect_origins").HasMaxLength(2000);
+            e.Property(x => x.BootstrapAdminSubject).HasColumnName("bootstrap_admin_subject").HasMaxLength(200);
+            e.Property(x => x.ConfiguredBy).HasColumnName("configured_by");
+            e.Property(x => x.ConfiguredAt).HasColumnName("configured_at");
         });
 
         modelBuilder.Entity<User>(e =>

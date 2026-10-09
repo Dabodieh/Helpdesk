@@ -26,9 +26,9 @@ internal static class AuthEndpoints
             .AllowAnonymous()
             .WithTags("Auth");
 
-        app.MapGet("/api/auth/login", (string? returnUrl, IOptions<HelpdeskAuthenticationOptions> opts) =>
+        app.MapGet("/api/auth/login", (string? returnUrl, EntraSettingsStore entra) =>
             {
-                if (!opts.Value.Entra.IsConfigured)
+                if (!entra.Current.IsConfigured)
                 {
                     return Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Entra sign-in is not configured");
                 }
@@ -37,6 +37,11 @@ internal static class AuthEndpoints
                     new AuthenticationProperties { RedirectUri = ReturnUrl.Sanitize(returnUrl) },
                     [AuthSchemes.Entra]);
             })
+            .AllowAnonymous()
+            .WithTags("Auth");
+
+        // Whether staff can sign in with Microsoft yet (the sign-in page says setup is needed when not). Reveals nothing else.
+        app.MapGet("/api/auth/providers", (EntraSettingsStore entra) => TypedResults.Ok(new { entra = entra.Current.IsConfigured }))
             .AllowAnonymous()
             .WithTags("Auth");
 

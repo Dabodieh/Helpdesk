@@ -54,12 +54,6 @@ public sealed class AuthConfigurationTests(HelpdeskFixture fixture) : IClassFixt
         Throws(Variant("Staging", b => b.UseSetting("Authentication:DevSignIn:Enabled", "true")), "DevSignIn");
     }
 
-    [Fact]
-    public void Startup_fails_when_neither_entra_nor_dev_sign_in_is_configured()
-    {
-        Throws(Variant("Production", b => b.UseSetting("Authentication:DevSignIn:Enabled", "false")), "Authentication:Entra must be configured");
-    }
-
     [Theory]
     [InlineData("Authentication:Entra:TenantId", "not-a-guid", "TenantId")]
     [InlineData("Authentication:Entra:ClientId", "not-a-guid", "ClientId")]

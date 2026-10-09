@@ -14,7 +14,8 @@ internal sealed class UserProvisioner(
     IdentityDbContext db,
     IAuditWriter audit,
     TimeProvider clock,
-    IOptions<HelpdeskAuthenticationOptions> options) : IUserProvisioner
+    IOptions<HelpdeskAuthenticationOptions> options,
+    Authentication.EntraSettingsStore entra) : IUserProvisioner
 {
     private const int MaxName = 200;
     private const int MaxEmail = 320;
@@ -79,7 +80,7 @@ internal sealed class UserProvisioner(
         }
 
         var bootstrapped = false;
-        if (IsBootstrapSubject(claims.Subject) && !user.IsPlatformAdmin
+        if (IsBootstrapSubject(claims.Provider, claims.Subject) && !user.IsPlatformAdmin
             && (isNew || !await db.Users.AnyAsync(u => u.IsPlatformAdmin && u.IsActive, ct)))
         {
             user.IsPlatformAdmin = true;
@@ -107,8 +108,9 @@ internal sealed class UserProvisioner(
         return new ProvisionedUser(user.Id, user.DisplayName, user.Email, user.IsActive, user.IsPlatformAdmin, isNew);
     }
 
-    private bool IsBootstrapSubject(string subject) =>
-        options.Value.BootstrapPlatformAdminSubjects.Any(s => string.Equals(s.Trim(), subject, StringComparison.OrdinalIgnoreCase));
+    private bool IsBootstrapSubject(string provider, string subject) =>
+        options.Value.BootstrapPlatformAdminSubjects.Any(s => string.Equals(s.Trim(), subject, StringComparison.OrdinalIgnoreCase))
+        || (provider == ExternalIdentityProviders.Entra && entra.Current.BootstrapAdminSubject is { Length: > 0 } wizardAdmin && string.Equals(wizardAdmin, subject, StringComparison.OrdinalIgnoreCase));
 
     private static string Truncate(string value, int max) => value.Length <= max ? value : value[..max];
 }

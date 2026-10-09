@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 
 namespace Helpdesk.Modules.Identity.Authentication;
@@ -18,7 +19,6 @@ internal static class AuthenticationSetup
 
     public static void Configure(IServiceCollection services, IConfiguration configuration, IHostEnvironment environment)
     {
-        var entra = configuration.GetSection(HelpdeskAuthenticationOptions.Section).GetSection("Entra").Get<EntraOptions>() ?? new EntraOptions();
         var relaxedCookie = environment.IsDevelopment() || environment.IsEnvironment("Testing");
 
         var auth = services.AddAuthentication(o =>
@@ -57,11 +57,11 @@ internal static class AuthenticationSetup
             };
         });
 
-        if (entra.IsConfigured)
-        {
-            // Registered only when configured; options validation (HelpdeskAuthenticationOptionsValidator) fails startup on partial config.
-            auth.AddOpenIdConnect(AuthSchemes.Entra, o => ConfigureEntra(o, entra));
-        }
+        // Always registered: the sign-in settings can come from server settings or from the setup wizard (database) and may change while the app runs.
+        // EntraOpenIdConnectConfigurer builds the options from them, and /api/auth/login refuses to challenge while nothing is configured.
+        auth.AddOpenIdConnect(AuthSchemes.Entra, _ => { });
+        services.AddSingleton<EntraSettingsStore>();
+        services.AddSingleton<IConfigureOptions<OpenIdConnectOptions>, EntraOpenIdConnectConfigurer>();
 
         services.AddAntiforgery(o =>
         {
@@ -72,66 +72,5 @@ internal static class AuthenticationSetup
             o.Cookie.SecurePolicy = relaxedCookie ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
             o.SuppressXFrameOptionsHeader = false;
         });
-    }
-
-    private static void ConfigureEntra(OpenIdConnectOptions o, EntraOptions entra)
-    {
-        var tenant = entra.TenantId ?? "";
-        var authority = $"https://login.microsoftonline.com/{tenant}/v2.0";
-
-        o.SignInScheme = AuthSchemes.Cookie;
-        o.Authority = authority;
-        o.ClientId = entra.ClientId;
-        o.ClientSecret = entra.ClientSecret;
-        o.ResponseType = "code";
-        o.ResponseMode = "query";
-        o.UsePkce = true;
-        o.SaveTokens = false;
-        o.GetClaimsFromUserInfoEndpoint = false;
-        o.MapInboundClaims = false;
-        o.CallbackPath = "/api/auth/signin-oidc";
-        o.SignedOutCallbackPath = "/api/auth/signout-callback-oidc";
-        o.Scope.Clear();
-        o.Scope.Add("openid");
-        o.Scope.Add("profile");
-        o.Scope.Add("email");
-        // State and nonce protection stay at their (enabled) defaults. Single tenant: issuer is pinned, tid is checked below.
-        o.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidIssuer = authority,
-            ValidateAudience = true,
-            NameClaimType = "name",
-        };
-        o.Events = new OpenIdConnectEvents
-        {
-            OnTokenValidated = async ctx =>
-            {
-                if (ctx.Principal is null
-                    || !EntraClaimsReader.TryRead(ctx.Principal, tenant, out var identity, out _))
-                {
-                    ctx.Fail("denied");
-                    return;
-                }
-
-                var provisioner = ctx.HttpContext.RequestServices.GetRequiredService<IUserProvisioner>();
-                var user = await provisioner.ProvisionAsync(identity!, ctx.HttpContext.RequestAborted);
-                if (!user.IsActive)
-                {
-                    ctx.Fail("inactive");
-                    return;
-                }
-
-                ctx.Principal = HelpdeskPrincipal.Create(user, identity!.Provider);
-            },
-            OnRemoteFailure = ctx =>
-            {
-                // Never surface exception details to the browser.
-                var reason = ctx.Failure?.Message == "inactive" ? "inactive" : "failed";
-                ctx.Response.Redirect($"/?authError={reason}");
-                ctx.HandleResponse();
-                return Task.CompletedTask;
-            },
-        };
     }
 }

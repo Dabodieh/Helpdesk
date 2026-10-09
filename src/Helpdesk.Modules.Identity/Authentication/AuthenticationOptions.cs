@@ -61,10 +61,8 @@ internal sealed class AuthenticationOptionsValidator(IHostEnvironment environmen
                 failures.Add("Authentication:Entra:ClientSecret is required (use user-secrets or environment variables).");
             }
         }
-        else if (!options.DevSignIn.Enabled)
-        {
-            failures.Add("Authentication:Entra must be configured unless Authentication:DevSignIn:Enabled is true (Development/Testing only).");
-        }
+        // Nothing configured is allowed: Microsoft sign-in can be connected from Administration > Microsoft 365 (stored in the database), and until then the sign-in page says
+        // setup is needed. Partial server settings above are still refused.
 
         if (options.BootstrapPlatformAdminSubjects.Any(string.IsNullOrWhiteSpace))
         {

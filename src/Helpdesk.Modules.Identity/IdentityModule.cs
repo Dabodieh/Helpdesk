@@ -36,6 +36,10 @@ public static class IdentityModule
         services.AddScoped<IUserProvisioner, UserProvisioner>();
         services.AddScoped<IUserDirectory, UserDirectory>();
         services.AddScoped<PlatformUserService>();
+        services.AddScoped<EntraSetupService>();
+        services.AddSingleton<EntraSetupSessions>();
+        services.AddOptions<EntraSetupOptions>().BindConfiguration(EntraSetupOptions.Section);
+        services.AddHttpClient(EntraSetupService.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(30));
 
         DataProtectionKeyStore.Add(services);
         AuthenticationSetup.Configure(services, configuration, environment);
@@ -54,6 +58,7 @@ public static class IdentityModule
     {
         AuthEndpoints.Map(app);
         UserEndpoints.Map(app);
+        EntraEndpoints.Map(app);
         return app;
     }
 }
