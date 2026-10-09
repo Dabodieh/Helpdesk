@@ -4181,3 +4181,50 @@ input[type="text"], input[type="search"], input[type="email"], input[type="numbe
 
 /* Cards and panels share one padding and heading rhythm. */
 .card, .form-card, .chart-card, .report-table, .kpi, .report-card { box-sizing: border-box; }
+
+/* =====================================================================
+   Responsive scaling. Decisions use the real CSS viewport (which already reflects
+   browser zoom and Windows display scaling), never the physical monitor size.
+   - compact viewports reflow: the workspace menu collapses, panels close, dialogs fit
+   - large viewports scale the whole interface up so text stays comfortable
+   ===================================================================== */
+:root { --thread-w: 980px; }
+
+/* Larger monitors: scale the interface itself (text, controls, spacing together). Browser zoom still works on top of this. */
+@media (min-width: 2200px) { html { zoom: 1.2; } }
+@media (min-width: 3000px) { html { zoom: 1.5; } }
+@media (min-width: 2200px) { :root { --thread-w: 1080px; } }
+
+/* Conversation and composer share one centred column, so messages and the reply box line up at every width. */
+.workspace[data-layout="ticket"] .conv-scroll { display: flex; flex-direction: column; align-items: center; }
+.workspace[data-layout="ticket"] .conv-scroll > * { width: 100%; max-width: var(--thread-w); }
+.workspace[data-layout="ticket"] .conversation { max-width: var(--thread-w); margin: 0 auto; }
+.workspace[data-layout="ticket"] .composer { max-width: var(--thread-w); width: calc(100% - 56px); margin-left: auto; margin-right: auto; }
+.workspace[data-layout="ticket"] .ticket-main { align-items: stretch; }
+
+/* Tables keep a breathing edge on their last column. */
+.workspace[data-layout="list"] .qtable th:last-child, .workspace[data-layout="list"] .qtable td:last-child { padding-right: 20px; }
+
+/* Compact laptops and zoomed windows. */
+@media (max-width: 1100px) {
+  .shell-workspace .workspace-nav .nav-label, .shell-workspace .workspace-nav .rail-heading { display: none; }
+  .shell-workspace { grid-template-columns: 60px 52px minmax(0, 1fr); }
+  .shell-workspace.rail-hidden { grid-template-columns: 0 52px minmax(0, 1fr); }
+}
+@media (max-width: 1000px) {
+  .workspace[data-layout="ticket"] .props-panel { position: absolute; right: 0; top: 0; bottom: 0; z-index: 25; width: min(340px, 92%); box-shadow: -10px 0 28px #0009; }
+}
+@media (max-width: 760px) {
+  .workspace[data-layout="list"] .qtable { table-layout: auto; }
+  .page, .page.admin, .page.analytics { padding-left: 14px; padding-right: 14px; }
+}
+
+/* Dialogs and drawers always fit inside the viewport and scroll inside themselves. */
+dialog, .dialog, .dialog-panel { max-width: min(96vw, 760px); max-height: 92vh; overflow: auto; }
+
+/* Short screens (13-inch laptops at 125-150%): give height back. */
+@media (max-height: 760px) {
+  .workspace[data-layout="ticket"] .t-head { padding-top: 6px; padding-bottom: 6px; }
+  .workspace[data-layout="ticket"] .composer { max-height: 40%; }
+  .page.dashboard, .main > .page { padding-top: 12px; }
+}

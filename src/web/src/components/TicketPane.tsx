@@ -66,7 +66,7 @@ export default function TicketPane({ ticketRef, composerRef }: Props) {
   const [composing, setComposing] = useState<PresenceState | null>(null)
   const [root, setRoot] = useState<HTMLDivElement | null>(null)
   const narrow = useNarrow(root, DOCK_MIN_WIDTH)
-  const [docked, setDocked] = usePref('helpdesk.properties', ['open', 'closed'] as const, typeof window !== 'undefined' && window.innerWidth >= 1200 && window.innerWidth < 1400 ? 'closed' : 'open')
+  const [docked, setDocked] = usePref('helpdesk.properties', ['open', 'closed'] as const, typeof window !== 'undefined' && window.innerWidth < 1400 ? 'closed' : 'open')
   const [overlayOpen, setOverlayOpen] = useState(false)
   const panelOpen = narrow ? overlayOpen : docked === 'open'
   const togglePanel = () => (narrow ? setOverlayOpen((v) => !v) : setDocked(docked === 'open' ? 'closed' : 'open'))
