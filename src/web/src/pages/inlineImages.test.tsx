@@ -32,19 +32,22 @@ test('a pasted image is uploaded, shown as a removable thumbnail and named in th
   await screen.findByRole('textbox', { name: 'Public reply' })
   await new Promise((r) => setTimeout(r, 50))
 
+  const box = screen.getByRole('textbox', { name: 'Public reply' }) as HTMLTextAreaElement
+  fireEvent.change(box, { target: { value: 'Before after' } })
+  box.setSelectionRange(7, 7)
   paste(png())
-  const remove = await screen.findByRole('button', { name: 'Remove image shot.png' })
+  const remove = await screen.findByRole('button', { name: 'Remove pasted image 1' })
+  expect(box.value).toBe(`Before \n[image:${ID}]\nafter`) // at the cursor, on its own line
   const upload = calls.find((c) => c.path === '/api/tickets/t1/inline-images')!
   expect(upload.method).toBe('POST')
   expect(upload.headers['Content-Type']).toBe('image/png')
   expect(upload.headers['X-CSRF-TOKEN']).toBe('tok')
 
-  fireEvent.click(remove) // removed images are not sent
-  expect(screen.queryByRole('button', { name: 'Remove image shot.png' })).not.toBeInTheDocument()
-  paste(png())
-  await screen.findByRole('button', { name: 'Remove image shot.png' })
+  fireEvent.click(remove) // a removed image is no longer named, so it is not sent
+  expect(box.value).toBe('Before \nafter')
+  expect(screen.queryByRole('button', { name: 'Remove pasted image 1' })).not.toBeInTheDocument()
 
-  fireEvent.change(screen.getByRole('textbox', { name: 'Public reply' }), { target: { value: 'See below' } })
+  fireEvent.change(box, { target: { value: `See below\n[image:${ID}]` } })
   fireEvent.click(screen.getByRole('button', { name: 'Post public reply' }))
   await waitFor(() => expect(calls.some((c) => c.path === '/api/tickets/t1/messages' && c.method === 'POST')).toBe(true))
   const sent = calls.find((c) => c.path === '/api/tickets/t1/messages' && c.method === 'POST')!.body as { body: string }
@@ -62,6 +65,7 @@ test('while uploads are switched off the paste is refused with a short message a
   expect(await screen.findByText('Image uploads are unavailable.')).toBeInTheDocument()
   expect(calls.some((c) => c.path.includes('inline-images'))).toBe(false)
   expect(screen.queryByRole('list', { name: 'Pasted images' })).not.toBeInTheDocument()
+  expect((screen.getByRole('textbox', { name: 'Public reply' }) as HTMLTextAreaElement).value).toBe('')
 })
 
 test('a pasted file that is not a PNG, JPEG or GIF is refused before any upload', async () => {

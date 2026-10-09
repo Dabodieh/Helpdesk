@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
 import { getSignature } from '../api/emailIdentity'
-import { getTicketCapabilities, postMessage, searchMentionable, uploadInlineImage } from '../api/tickets'
+import { attachmentHref, getTicketCapabilities, postMessage, searchMentionable, uploadInlineImage } from '../api/tickets'
 import { describeError } from '../api/errors'
 import { FOCUS_REPLY_EVENT } from './SilentResolveDialog'
 import { canTicket } from '../api/permissions'
@@ -9,14 +9,14 @@ import { STATUSES, type TicketDetail } from '../api/ticketSchemas'
 import { useMe } from '../auth'
 import { useApplyTicket } from '../hooks/useApplyTicket'
 import { getDraft, setDraft } from '../lib/drafts'
-import { imageMarker, MAX_PASTED_IMAGES, PASTE_TYPES } from '../lib/inlineImages'
+import { imageIdsOf, imageMarker, MAX_PASTED_IMAGES, PASTE_TYPES } from '../lib/inlineImages'
 import ArticleLinkPicker from './ArticleLinkPicker'
 import CannedPicker from './CannedPicker'
 import CcRecipients from './CcRecipients'
 import { Icon } from './icons'
 import ProblemBanner from './ProblemBanner'
 
-type PendingImage = { id: string; name: string; preview: string | null }
+const NL = String.fromCharCode(10)
 
 export type ComposerMode = 'Public' | 'Internal'
 export type ComposerHandle = { focus: (mode: ComposerMode) => void; insertDraft: (text: string) => void }
@@ -58,7 +58,8 @@ export default function Composer({
   // Pasted images: uploaded at once as pending (author-only) files and named in the message at send. Whether this is offered is decided by the server's attachment switch.
   const capabilities = useQuery({ queryKey: ['ticket-capabilities'], queryFn: getTicketCapabilities, staleTime: 30_000, retry: false })
   const imagesEnabled = capabilities.data?.attachmentsEnabled === true
-  const [images, setImages] = useState<PendingImage[]>([])
+  // The image is written into the text at the cursor as [image:ID] (so its position is kept and the draft keeps it); the thumbnails below are read from those markers.
+  const previews = useRef(new Map<string, string>())
   const [uploading, setUploading] = useState(0)
   const [imageNote, setImageNote] = useState<string | null>(null)
   // Only to tell the agent what will be appended; the server resolves the real signature when the reply is sent.
@@ -129,7 +130,7 @@ ${draft}` : draft
     }
     setImageNote(null)
     const limit = capabilities.data?.maxInlineImageBytes ?? 0
-    let count = images.length
+    let count = imageIdsOf(text).length
     for (const file of files) {
       if (!PASTE_TYPES.includes(file.type)) {
         setImageNote('Only PNG, JPEG and GIF images can be added.')
@@ -147,8 +148,8 @@ ${draft}` : draft
       setUploading((n) => n + 1)
       try {
         const up = await uploadInlineImage(ticket.id, file)
-        const preview = typeof URL.createObjectURL === 'function' ? URL.createObjectURL(file) : null
-        setImages((cur) => [...cur, { id: up.id, name: file.name || 'Pasted image', preview }])
+        if (typeof URL.createObjectURL === 'function') previews.current.set(up.id, URL.createObjectURL(file))
+        insertImageMarker(up.id)
       } catch (e) {
         count--
         setImageNote(describeError(e))
@@ -158,12 +159,41 @@ ${draft}` : draft
     }
   }
 
-  function removeImage(id: string) {
-    setImages((cur) => {
-      const gone = cur.find((i) => i.id === id)
-      if (gone?.preview) URL.revokeObjectURL(gone.preview)
-      return cur.filter((i) => i.id !== id)
+  /** Puts the marker on its own line at the cursor, using the box's current text (several uploads can finish one after another). */
+  function insertImageMarker(id: string) {
+    const el = area.current
+    const current = el?.value ?? ''
+    const start = el?.selectionStart ?? current.length
+    const end = el?.selectionEnd ?? current.length
+    const before = current.slice(0, start)
+    const after = current.slice(end)
+    const snippet = `${before && !before.endsWith(NL) ? NL : ''}${imageMarker(id)}${after && !after.startsWith(NL) ? NL : ''}`
+    const next = before + snippet + after
+    setText(next)
+    setDraft(ticket.id, next)
+    const pos = before.length + snippet.length
+    requestAnimationFrame(() => {
+      area.current?.focus()
+      area.current?.setSelectionRange(pos, pos)
     })
+  }
+
+  function removeImage(id: string) {
+    // The marker and the line break after it go; when it sat between two lines, one break stays so they do not run together.
+    const at = text.toLowerCase().indexOf(imageMarker(id).toLowerCase())
+    if (at < 0) return
+    let from = at
+    let to = at + imageMarker(id).length
+    const breakBefore = from > 0 && text[from - 1] === NL
+    const breakAfter = text[to] === NL
+    if (breakAfter) to++
+    else if (breakBefore) from--
+    const next = text.slice(0, from) + text.slice(to)
+    setText(next)
+    setDraft(ticket.id, next)
+    const url = previews.current.get(id)
+    if (url) URL.revokeObjectURL(url)
+    previews.current.delete(id)
   }
 
   const picked = mentioned.filter((m) => text.includes(`@${m.displayName}`)).map((m) => m.userId)
@@ -180,7 +210,7 @@ ${draft}` : draft
       postMessage(ticket.id, {
         clientMessageId: clientMessageId.current,
         kind: effectiveMode,
-        body: [text.trim(), ...images.map((i) => imageMarker(i.id))].filter(Boolean).join(String.fromCharCode(10)),
+        body: text.trim(),
         status: statusAfter && statusAfter !== ticket.status ? statusAfter : undefined,
         mentionUserIds: effectiveMode === 'Internal' ? mentionIds : undefined,
       }),
@@ -189,8 +219,8 @@ ${draft}` : draft
       setDraft(ticket.id, '')
       setText('')
       setMentioned([])
-      for (const i of images) if (i.preview) URL.revokeObjectURL(i.preview)
-      setImages([])
+      for (const url of previews.current.values()) URL.revokeObjectURL(url)
+      previews.current.clear()
       setImageNote(null)
       setStatusAfter('')
       apply(res.ticket)
@@ -222,7 +252,8 @@ ${draft}` : draft
     })
   }
 
-  const nothing = text.trim().length === 0 && images.length === 0
+  const nothing = text.trim().length === 0
+  const pasted = imageIdsOf(text)
 
   function submit(e?: FormEvent) {
     e?.preventDefault()
@@ -317,12 +348,12 @@ ${draft}` : draft
           }
         }}
       />
-      {images.length > 0 && (
+      {pasted.length > 0 && (
         <ul className="composer-images" aria-label="Pasted images">
-          {images.map((i) => (
-            <li key={i.id}>
-              {i.preview ? <img src={i.preview} alt={i.name} /> : <span className="muted small">{i.name}</span>}
-              <button type="button" className="icon-btn" aria-label={`Remove image ${i.name}`} onClick={() => removeImage(i.id)}>
+          {pasted.map((id, n) => (
+            <li key={id}>
+              <img src={previews.current.get(id) ?? attachmentHref(ticket.id, id)} alt={`Pasted image ${n + 1}`} />
+              <button type="button" className="icon-btn" aria-label={`Remove pasted image ${n + 1}`} onClick={() => removeImage(id)}>
                 ×
               </button>
             </li>
