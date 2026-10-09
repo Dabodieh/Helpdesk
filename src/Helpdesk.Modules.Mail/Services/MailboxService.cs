@@ -116,6 +116,22 @@ internal sealed partial class MailboxService(
         return [.. mailboxes.Select(m => ToDto(m, stats.GetValueOrDefault(m.Id) ?? new MailboxStats()))];
     }
 
+    /// <summary>Every department's mailboxes, for the platform-level Microsoft 365 page. The endpoint requires platform administration; no ticket data is involved.</summary>
+    public async Task<IReadOnlyList<MailboxDto>> ListAllAsync(CancellationToken ct)
+    {
+        var all = await db.Mailboxes.AsNoTracking().Include(m => m.Sync).OrderBy(m => m.DepartmentId).ThenByDescending(m => m.IsDefault).ThenBy(m => m.Address).ToListAsync(ct);
+        var stats = new Dictionary<Guid, MailboxStats>();
+        foreach (var departmentId in all.Select(m => m.DepartmentId).Distinct())
+        {
+            foreach (var (id, s) in await StatsAsync(departmentId, ct))
+            {
+                stats[id] = s;
+            }
+        }
+
+        return [.. all.Select(m => ToDto(m, stats.GetValueOrDefault(m.Id) ?? new MailboxStats()))];
+    }
+
     public async Task<MailboxDto> GetAsync(Guid departmentId, Guid mailboxId, CancellationToken ct)
     {
         var mailbox = await FindAsync(departmentId, mailboxId, track: false, ct);

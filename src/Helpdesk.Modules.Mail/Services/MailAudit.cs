@@ -24,6 +24,9 @@ internal static class MailAuditActions
     public const string UncertainRetried = "mail.uncertain_retried";
     public const string ResentAfterBounce = "mail.resent_after_bounce";
     public const string FailedRetried = "mail.failed_retried";
+    public const string ConnectionChecked = "m365.connection_checked";
+    public const string MailboxChecked = "m365.mailbox_checked";
+    public const string NewMailboxPlanned = "m365.new_mailbox_planned";
 }
 
 /// <summary>Writes mail-category audit events on the Mail DbContext's open transaction. Never receives subjects, addresses of correspondents or bodies.</summary>
@@ -31,12 +34,13 @@ internal sealed class MailAudit(IAuditWriter writer, MailDbContext db, ICurrentU
 {
     public const string MailboxObject = "mailbox";
     public const string MessageObject = "mail_message";
+    public const string IntegrationObject = "microsoft_365";
 
     public Task WriteSystemAsync(string action, string objectType, Guid objectId, Guid departmentId, object? previous, object? next, CancellationToken ct) =>
         writer.WriteAsync(new AuditEntry(AuditCategories.Mail, action, objectType, objectId, departmentId, null, null, previous, next, AuditSources.System), db, ct);
 
     /// <summary>A change made by the signed-in administrator (mailbox configuration).</summary>
-    public Task WriteAsync(string action, string objectType, Guid objectId, Guid departmentId, object? previous, object? next, CancellationToken ct) =>
+    public Task WriteAsync(string action, string objectType, Guid? objectId, Guid? departmentId, object? previous, object? next, CancellationToken ct) =>
         writer.WriteAsync(new AuditEntry(
             AuditCategories.Mail, action, objectType, objectId, departmentId, current.UserId, current.DisplayName, previous, next), db, ct);
 }

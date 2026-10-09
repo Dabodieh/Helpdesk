@@ -63,6 +63,7 @@ public static class MailModule
         services.AddScoped<SubscriptionService>();
         services.AddScoped<NotificationService>();
         services.AddScoped<MailboxService>();
+        services.AddScoped<Microsoft365Service>();
         services.AddScoped<IMailJobRunner, MailJobRunner>();
         services.AddScoped<IMailboxDirectory, MailboxDirectory>();
         services.AddScoped<IMailboxHealthReader, MailboxHealthReader>();

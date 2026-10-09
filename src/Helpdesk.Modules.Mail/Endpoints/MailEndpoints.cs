@@ -50,6 +50,21 @@ internal static class MailEndpoints
                 TypedResults.Ok(await service.UpdateAsync(departmentId, mailboxId, body, ct)))
             .RequirePermission(PermissionCodes.DepartmentMailboxesManage);
 
+        // Platform-level Microsoft 365 page. Platform administration only; read-only against the tenant (see Microsoft365Service).
+        var m365 = app.MapGroup("/api/admin/microsoft-365").WithTags("Microsoft 365");
+
+        m365.MapGet("", async (Microsoft365Service service, CancellationToken ct) => TypedResults.Ok(await service.GetStatusAsync(ct)))
+            .RequirePermission(PermissionCodes.PlatformDepartmentsManage, departmentRouteParameter: null);
+
+        m365.MapPost("check-connection", async (Microsoft365Service service, CancellationToken ct) => TypedResults.Ok(await service.CheckConnectionAsync(ct)))
+            .RequirePermission(PermissionCodes.PlatformDepartmentsManage, departmentRouteParameter: null);
+
+        m365.MapPost("check-mailbox", async (CheckMailboxRequest body, Microsoft365Service service, CancellationToken ct) => TypedResults.Ok(await service.CheckMailboxAsync(body, ct)))
+            .RequirePermission(PermissionCodes.PlatformDepartmentsManage, departmentRouteParameter: null);
+
+        m365.MapPost("new-mailbox-plan", async (NewMailboxPlanRequest body, Microsoft365Service service, CancellationToken ct) => TypedResults.Ok(await service.PlanNewMailboxAsync(body, ct)))
+            .RequirePermission(PermissionCodes.PlatformDepartmentsManage, departmentRouteParameter: null);
+
         var mail = app.MapGroup("/api/departments/{departmentId:guid}/mail").WithTags("Mail");
 
         mail.MapGet("attention", async (Guid departmentId, string? cursor, int? limit, MailboxService service, CancellationToken ct) =>

@@ -38,6 +38,12 @@ internal sealed class MailOptions
     [Range(1, 1440)]
     public int AcknowledgementWindowMinutes { get; set; } = 10;
 
+    /// <summary>
+    /// Email domains a NEW shared mailbox may be planned under (guided creation only). Empty means the domain is not restricted by Helpdesk; the tenant's own accepted domains still apply.
+    /// Registering an existing mailbox is never restricted by this list: the application's Exchange scope decides what it can reach.
+    /// </summary>
+    public string[] ApprovedDomains { get; set; } = [];
+
     public GraphOptions Graph { get; set; } = new();
 }
 

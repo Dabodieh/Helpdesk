@@ -184,6 +184,8 @@ internal sealed class FakeMailProvider : IMailProvider
         }
     }
 
+    public Task<ConnectionCheck> CheckConnectionAsync(CancellationToken cancellationToken) => Task.FromResult(new ConnectionCheck(true, "ok"));
+
     public Task ProbeMailboxAsync(MailboxRef mailbox, CancellationToken cancellationToken)
     {
         lock (_gate)

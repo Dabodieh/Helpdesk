@@ -113,6 +113,27 @@ internal sealed class MicrosoftGraphMailProvider : IMailProvider
 
     // ---- registration probe (D10; scoping proof is D-16 E-2/E-3) ----
 
+    public async Task<ConnectionCheck> CheckConnectionAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _credential.GetTokenAsync(new TokenRequestContext([Scope]), cancellationToken);
+            return new ConnectionCheck(true, "ok");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (AuthenticationFailedException)
+        {
+            return new ConnectionCheck(false, "authentication"); // wrong tenant, client id, secret or certificate: the provider's text is deliberately not passed on
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or TimeoutException or CredentialUnavailableException)
+        {
+            return new ConnectionCheck(false, "unavailable");
+        }
+    }
+
     public async Task ProbeMailboxAsync(MailboxRef mailbox, CancellationToken cancellationToken)
     {
         using var response = await SendAsync(HttpMethod.Get, $"users/{Escape(mailbox.Reference)}/mailFolders/inbox?$select=id", null, immutableIds: false, cancellationToken);

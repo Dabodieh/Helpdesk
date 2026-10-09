@@ -87,6 +87,28 @@ public sealed class GraphProviderTests
         await Assert.ThrowsAsync<TransientProviderException>(() => provider.ProbeMailboxAsync(Mailbox, CancellationToken.None));
     }
 
+    private sealed class ThrowingCredential(Exception error) : TokenCredential
+    {
+        public override AccessToken GetToken(TokenRequestContext requestContext, CancellationToken cancellationToken) => throw error;
+
+        public override ValueTask<AccessToken> GetTokenAsync(TokenRequestContext requestContext, CancellationToken cancellationToken) => throw error;
+    }
+
+    [Fact]
+    public async Task The_connection_check_only_asks_for_a_token_and_never_passes_on_the_providers_text()
+    {
+        var (provider, handler) = Create();
+        Assert.Equal(new ConnectionCheck(true, "ok"), await provider.CheckConnectionAsync(CancellationToken.None));
+        Assert.Empty(handler.Requests); // no Graph request, nothing read or changed in the tenant
+
+        var wrong = new MicrosoftGraphMailProvider(new Factory(handler), new ThrowingCredential(new Azure.Identity.AuthenticationFailedException("AADSTS7000215: Invalid client secret provided: s3cr3t")), BaseUri);
+        var failed = await wrong.CheckConnectionAsync(CancellationToken.None);
+        Assert.Equal(new ConnectionCheck(false, "authentication"), failed);
+
+        var offline = new MicrosoftGraphMailProvider(new Factory(handler), new ThrowingCredential(new HttpRequestException("no route")), BaseUri);
+        Assert.Equal(new ConnectionCheck(false, "unavailable"), await offline.CheckConnectionAsync(CancellationToken.None));
+    }
+
     [Fact]
     public async Task Subscription_is_created_without_resource_data_with_lifecycle_url_client_state_and_immutable_ids()
     {

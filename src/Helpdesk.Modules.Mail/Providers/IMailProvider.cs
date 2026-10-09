@@ -53,6 +53,9 @@ internal sealed record DraftResult(string DraftId, string? InternetMessageId);
 
 internal sealed record SentCopy(string ProviderMessageId, string? InternetMessageId);
 
+/// <summary>Outcome of a credential check. <see cref="Code"/> is <c>ok</c>, <c>authentication</c> (the application could not sign in) or <c>unavailable</c> (could not be established); never provider text.</summary>
+internal sealed record ConnectionCheck(bool Ok, string Code);
+
 /// <summary>Thrown for failures worth retrying (network, 5xx, 429). Anything else is permanent for the message.</summary>
 internal sealed class TransientProviderException(string code, Exception? inner = null) : Exception(code, inner)
 {
@@ -86,6 +89,9 @@ internal interface IMailProvider
     /// mailbox does not exist or the application is not allowed to access it, <see cref="TransientProviderException"/> when that could not be established.
     /// </summary>
     Task ProbeMailboxAsync(MailboxRef mailbox, CancellationToken cancellationToken);
+
+    /// <summary>Read-only: can the application sign in with its configured credentials? Reads and changes nothing in the tenant.</summary>
+    Task<ConnectionCheck> CheckConnectionAsync(CancellationToken cancellationToken);
 
     Task<ProviderSubscription> CreateSubscriptionAsync(MailboxRef mailbox, SubscriptionRequest request, CancellationToken cancellationToken);
 
