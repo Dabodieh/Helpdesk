@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getMicrosoft365, type M365Mailbox, type Microsoft365Status } from '../api/microsoft365'
 import { ErrorNotice, Loading, PageHeader, StatusBadge } from '../components/common'
+import EntraSetup from '../components/EntraSetup'
 import Microsoft365Wizard from '../components/Microsoft365Wizard'
 import { formatDateTime } from '../lib/format'
 import { HEALTH_LABEL, HEALTH_REASON, HEALTH_TONE } from '../lib/mailHealth'
@@ -209,6 +210,7 @@ export default function Microsoft365Page() {
               })}
             </ul>
           )}
+          <EntraSetup />
           <Overview s={q.data} />
           <Mailboxes s={q.data} />
           <Microsoft365Wizard status={q.data} />
