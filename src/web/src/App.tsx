@@ -2,6 +2,7 @@ import { QueryClientProvider, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { BrowserRouter, Navigate, NavLink, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { setUnauthorizedHandler } from './api/http'
+import { useMe } from './auth'
 import { createQueryClient, endSession } from './queryClient'
 import RequireAuth from './components/RequireAuth'
 import AnalyticsHome from './pages/AnalyticsHome'
@@ -10,6 +11,7 @@ import DashboardPage from './pages/DashboardPage'
 import DepartmentPage from './pages/DepartmentPage'
 import DepartmentsPage from './pages/DepartmentsPage'
 import Landing from './pages/Landing'
+import Microsoft365Page from './pages/Microsoft365Page'
 import RequesterPage from './pages/RequesterPage'
 import ProfilePage from './pages/ProfilePage'
 import ResponsesPage from './pages/ResponsesPage'
@@ -26,6 +28,7 @@ function AdminLayout() {
   // Inside a department the page header carries its own breadcrumb; the switch between Departments and System status is for the top-level pages.
   const path = useLocation().pathname
   const inDepartment = path.startsWith('/admin/departments/')
+  const me = useMe()
   return (
     <div className={inDepartment ? 'page admin department-admin' : 'admin-layout'}>
       {!inDepartment && <aside className="admin-sidebar">
@@ -35,6 +38,7 @@ function AdminLayout() {
           <NavLink to="/admin/departments" end>Departments</NavLink>
           <span className="rail-heading">Platform</span>
           <NavLink to="/admin/status">System status</NavLink>
+          {me.isPlatformAdmin && <NavLink to="/admin/microsoft-365">Microsoft 365</NavLink>}
         </nav>
         <p className="sidebar-note">Department membership controls access to service data.</p>
       </aside>}
@@ -78,6 +82,7 @@ export function AppRoutes() {
           <Route path="departments" element={<DepartmentsPage />} />
           <Route path="departments/:departmentId" element={<DepartmentPage />} />
           <Route path="status" element={<StatusPage />} />
+          <Route path="microsoft-365" element={<Microsoft365Page />} />
         </Route>
         <Route
           path="*"

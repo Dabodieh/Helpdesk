@@ -4239,3 +4239,30 @@ dialog, .dialog, .dialog-panel { max-width: min(96vw, 760px); max-height: 92vh; 
 /* Composer: a roomier writing area; short screens give the height back. */
 .composer textarea { min-height: 120px; height: 150px; }
 @media (max-height: 760px) { .composer textarea { min-height: 84px; height: 100px; } }
+
+/* Microsoft 365 page: status cards, setup wizard, diagnostics. */
+.m365-issues { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 6px; }
+.m365-cards { list-style: none; margin: 0 0 24px; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.m365-cards > li { border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; display: grid; gap: 8px; align-content: start; background: var(--surface); }
+.m365-cards h3 { margin: 0; font-size: 15px; }
+.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; margin: 0; font-size: 13.5px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; overflow-wrap: anywhere; }
+.m365-wizard { margin: 28px 0; border: 1px solid var(--border); border-radius: 8px; padding: 16px 18px; background: var(--surface); }
+.m365-wizard h2 { margin: 0 0 12px; }
+.m365-steps { list-style: none; margin: 0 0 16px; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 6px; }
+.m365-steps button { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; min-height: 30px; font-size: 13px; border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--muted); }
+.m365-steps .current button { color: var(--accent); border-color: var(--accent); }
+.m365-steps .done button { color: var(--text); }
+.m365-step-no { display: inline-grid; place-items: center; width: 18px; height: 18px; font-size: 11px; border-radius: 50%; background: var(--surface-2); }
+.m365-step-body { display: grid; gap: 12px; max-width: 760px; }
+.m365-step-body h3 { margin: 0; font-size: 16px; }
+.m365-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.m365-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.m365-nav { display: flex; justify-content: space-between; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); max-width: 760px; }
+.m365-script { display: grid; gap: 8px; justify-items: start; }
+.m365-script pre { margin: 0; width: 100%; overflow: auto; padding: 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); font-size: 12.5px; line-height: 1.55; white-space: pre; }
+.m365-perms { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.m365-notes { margin: 0; padding-left: 18px; }
+.m365-detail > td { background: var(--surface-2); padding: 12px 16px; }
+.m365-detail .kv { margin-bottom: 8px; }
