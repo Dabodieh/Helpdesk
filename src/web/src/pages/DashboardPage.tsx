@@ -68,14 +68,14 @@ function Content({ d }: { d: Dashboard }) {
     <div className="dash">
       <ul className="dash-kpis" aria-label="Needs attention now">
         <KpiCard label="Active tickets" value={active} sub={`${d.backlog.open} open · ${d.backlog.pending} pending`} to={queueUrl(id)} tone="neutral" icon="inbox" />
-        <KpiCard label="Unassigned" value={d.backlog.unassigned} sub="no assignee yet" to={queueUrl(id, { assignee: 'none' })} tone="warn" icon="unassigned" />
-        <KpiCard label="Awaiting first response" value={d.backlog.awaitingFirstResponse} sub="no human reply yet" to={queueUrl(id, { sla: 'awaitingresponse' })} tone="warn" icon="reply" />
-        <KpiCard label="SLA overdue" value={d.sla.overdue} sub="target already missed" to={queueUrl(id, { sla: 'breached' })} tone="bad" icon="alert" />
+        <KpiCard label="Unassigned" value={d.backlog.unassigned} to={queueUrl(id, { assignee: 'none' })} tone="warn" icon="unassigned" />
+        <KpiCard label="Awaiting first response" value={d.backlog.awaitingFirstResponse} to={queueUrl(id, { sla: 'awaitingresponse' })} tone="warn" icon="reply" />
+        <KpiCard label="SLA overdue" value={d.sla.overdue} to={queueUrl(id, { sla: 'breached' })} tone="bad" icon="alert" />
         <KpiCard label="Due soon" value={d.sla.dueSoon} sub={`within ${d.sla.dueSoonWindowMinutes / 60} h`} to={queueUrl(id, { sla: 'duesoon' })} tone="warn" icon="clock" />
         <KpiCard
           label="Email delivery problems"
           value={delivery}
-          sub={delivery > 0 ? `${d.sends.failedTickets} failed · ${d.sends.uncertainTickets} uncertain` : 'no failed replies'}
+          sub={delivery > 0 ? `${d.sends.failedTickets} failed · ${d.sends.uncertainTickets} uncertain` : undefined}
           to={delivery > 0 ? queueUrl(id, { send: d.sends.failedTickets > 0 ? 'failed' : 'uncertain' }) : undefined}
           tone={d.sends.failedTickets > 0 ? 'bad' : 'warn'}
           icon="nomail"
@@ -117,7 +117,7 @@ export default function DashboardPage() {
     if (readable.length === 1) return <Navigate to={`/dashboard/${readable[0]!.departmentId}`} replace />
     return (
       <div className="page">
-        <PageHeader title="Dashboard" subtitle="What needs attention right now. Choose a department: each is shown on its own." />
+        <PageHeader title="Dashboard" subtitle="Choose a department." />
         {readable.length === 0 ? (
           <p className="empty">The dashboard needs a department membership with ticket access.</p>
         ) : (
@@ -149,7 +149,7 @@ export default function DashboardPage() {
         subtitle={
           q.data ? (
             <>
-              Current state as of {updated}, refreshed every minute. {q.isError && <StatusBadge tone="warn">Could not refresh: showing the last data</StatusBadge>}
+              Updated {updated} {q.isError && <StatusBadge tone="warn">Could not refresh: showing the last data</StatusBadge>}
             </>
           ) : undefined
         }

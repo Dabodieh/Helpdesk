@@ -5,7 +5,7 @@ import { PageHeader } from '../components/common'
 export default function ResponsesPage() {
   return (
     <div className="page">
-      <PageHeader title="My canned responses" subtitle="Reusable replies only you can see. Insert one from the reply box; you always review before posting." />
+      <PageHeader title="My canned responses" subtitle="Reusable replies only you can see." />
       <CannedManager scope={{ scope: 'Personal' }} />
     </div>
   )

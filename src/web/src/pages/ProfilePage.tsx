@@ -13,7 +13,7 @@ export default function ProfilePage() {
   const [departmentId, setDepartmentId] = useState(departments[0]?.departmentId ?? '')
   return (
     <div className="page">
-      <PageHeader title="My profile" subtitle="Your account details and the signature added to your public replies." />
+      <PageHeader title="My profile" subtitle="Account details and reply signature." />
       <section aria-labelledby="identity-h">
         <h2 id="identity-h">Identity</h2>
         <dl className="prop-list">

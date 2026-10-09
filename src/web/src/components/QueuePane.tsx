@@ -298,8 +298,8 @@ export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
         {!enabled && (
           <div className="empty">
             <Icon name="search" size={28} />
-            <p>Search every ticket you can access.</p>
-            <p className="muted small">Reference, subject, requester name or email, and message text. Type at least 2 characters.</p>
+            <p>Search tickets.</p>
+            <p className="muted small">Type at least 2 characters.</p>
           </div>
         )}
         {enabled && list.isPending && <QueueSkeleton />}
@@ -316,9 +316,7 @@ export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
               <button type="button" onClick={() => setParams(new URLSearchParams(), { replace: true })}>
                 Reset filters
               </button>
-            ) : (
-              <p className="muted small">New tickets appear automatically.</p>
-            )}
+            ) : null}
           </div>
         )}
         {items.length > 0 && (

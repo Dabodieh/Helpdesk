@@ -303,17 +303,13 @@ export function ServiceHealth({ d }: { d: Dashboard }) {
           <strong>Email delivery</strong>
           <StatusBadge tone={tone}>{failed > 0 ? 'Replies not sent' : uncertain > 0 ? 'Outcome uncertain' : 'No problems'}</StatusBadge>
         </div>
-        <p className="muted small health-sub">
-          {failed === 0 && uncertain === 0 ? (
-            'No reply on an open ticket has failed or is in doubt.'
-          ) : (
-            <>
-              {failed > 0 && <Link to={queueUrl(id, { send: 'failed' })}>{failed} failed</Link>}
-              {failed > 0 && uncertain > 0 && ' · '}
-              {uncertain > 0 && <Link to={queueUrl(id, { send: 'uncertain' })}>{uncertain} uncertain (administrator to check)</Link>}
-            </>
-          )}
-        </p>
+        {(failed > 0 || uncertain > 0) && (
+          <p className="muted small health-sub">
+            {failed > 0 && <Link to={queueUrl(id, { send: 'failed' })}>{failed} failed</Link>}
+            {failed > 0 && uncertain > 0 && ' · '}
+            {uncertain > 0 && <Link to={queueUrl(id, { send: 'uncertain' })}>{uncertain} uncertain (administrator to check)</Link>}
+          </p>
+        )}
       </li>
       {d.mailboxes == null ? (
         <li>

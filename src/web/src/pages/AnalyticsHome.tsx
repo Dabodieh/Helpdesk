@@ -26,7 +26,7 @@ export default function AnalyticsHome() {
   if (departments.length === 0) {
     return (
       <div className="page analytics">
-        <PageHeader title="Analytics" subtitle="Reports on tickets, service levels, workload and email." />
+        <PageHeader title="Analytics" subtitle="Select a report." />
         <p className="empty">Reports need a department membership with ticket access. Ask a department administrator to add you.</p>
       </div>
     )
@@ -46,7 +46,7 @@ export default function AnalyticsHome() {
 
   return (
     <div className="page analytics">
-      <PageHeader title="Analytics" subtitle="Reports on tickets, service levels, workload and email. Every figure covers one department." />
+      <PageHeader title="Analytics" />
       <div className="analytics-toolbar">
         <label className="settings-search"><Icon name="search" size={18} /><input type="search" aria-label="Search reports" placeholder="Search reports, e.g. SLA, backlog or email…" value={search} onChange={(e) => setSearch(e.target.value)} /></label>
         {departments.length > 1 && (

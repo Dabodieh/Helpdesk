@@ -20,7 +20,6 @@ function ChooseForm() {
   return (
     <>
       <h1>Submit a request</h1>
-      <p className="muted">Choose the option that best describes what you need.</p>
       {topics.isSuccess && topics.data.length > 0 && (
         <section className="portal-section" aria-labelledby="topics-h">
           <h2 id="topics-h">Common requests</h2>
