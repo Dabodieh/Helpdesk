@@ -4190,9 +4190,9 @@ input[type="text"], input[type="search"], input[type="email"], input[type="numbe
    ===================================================================== */
 :root { --thread-w: 980px; }
 
-/* Larger monitors: scale the interface itself (text, controls, spacing together). Browser zoom still works on top of this. */
-@media (min-width: 2200px) { html { zoom: 1.2; } }
-@media (min-width: 3000px) { html { zoom: 1.5; } }
+/* Larger monitors do not scale the interface: browser zoom is the user's control (a 27-inch 1440p screen is comfortable at 100% as it is). Wide screens get more columns and a wider reading column instead. */
+
+
 @media (min-width: 2200px) { :root { --thread-w: 1080px; } }
 
 /* Conversation and composer share one centred column, so messages and the reply box line up at every width. */
@@ -4309,8 +4309,8 @@ dialog, .dialog, .dialog-panel { max-width: min(96vw, 760px); max-height: 92vh; 
 /* The app shell is exactly one window tall at every zoom: html{zoom} multiplies lengths, so viewport-height values are divided by it. The window itself never scrolls
    while the shell is present (pages scroll inside .main), so the sidebar's theme, shortcuts, collapse and account rows can never be pushed off screen. */
 :root { --ui-zoom: 1; }
-@media (min-width: 2200px) { :root { --ui-zoom: 1.2; } }
-@media (min-width: 3000px) { :root { --ui-zoom: 1.5; } }
+
+
 .shell { height: calc(100dvh / var(--ui-zoom)); }
 .department-page > .tabs-vertical > .tab-navigation { height: calc(100dvh / var(--ui-zoom) - 60px); }
 dialog, .dialog, .dialog-panel { max-height: calc(92vh / var(--ui-zoom)); }
