@@ -24,13 +24,6 @@ export default function SignIn({ returnUrl = '/' }: { returnUrl?: string }) {
           Sign in
         </a>
       </p>
-      {import.meta.env.DEV && (
-        <p className="muted">
-          Development: when dev sign-in is enabled on the API, open{' '}
-          <code>/api/auth/dev-login?subject=dev-admin&amp;name=Dev%20Admin&amp;email=dev@example.test&amp;returnUrl=/</code>{' '}
-          to get a session (see docs/DEVELOPMENT.md).
-        </p>
-      )}
     </main>
   )
 }
