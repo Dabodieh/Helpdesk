@@ -35,6 +35,9 @@ public static class OrganisationModule
         services.AddScoped<DepartmentService>();
         services.AddScoped<MembershipService>();
         services.AddScoped<MeService>();
+        services.AddScoped<InvitationService>();
+        services.AddOptions<InvitationOptions>().BindConfiguration(InvitationOptions.Section)
+            .Validate(o => o.ExpiryDays is >= 1 and <= 30, "Invitations:ExpiryDays must be between 1 and 30.").ValidateOnStart();
         services.AddScoped<IOrganisationDirectory, OrganisationDirectory>();
         return services;
     }

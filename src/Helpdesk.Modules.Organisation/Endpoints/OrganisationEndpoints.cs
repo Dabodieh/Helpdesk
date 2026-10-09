@@ -16,6 +16,40 @@ internal static class OrganisationEndpoints
 
         MapDepartments(app);
         MapMembers(app);
+        MapInvitations(app);
+    }
+
+    /// <summary>
+    /// Account invitations. Creating, listing, resending and revoking are platform administration (<c>platform.users.manage</c>). Previewing and accepting need only a signed-in user:
+    /// the link's secret and the signed-in address decide, and every unusable link is a plain 404.
+    /// </summary>
+    private static void MapInvitations(IEndpointRouteBuilder app)
+    {
+        var admin = app.MapGroup("/api/admin/invitations").WithTags("Invitations");
+
+        admin.MapGet("", async (InvitationService service, CancellationToken ct) => TypedResults.Ok(await service.ListAsync(ct)))
+            .RequirePermission(PermissionCodes.PlatformUsersManage, departmentRouteParameter: null);
+
+        admin.MapPost("", async (CreateInvitationRequest body, InvitationService service, CancellationToken ct) => TypedResults.Created("/api/admin/invitations", await service.CreateAsync(body, ct)))
+            .RequirePermission(PermissionCodes.PlatformUsersManage, departmentRouteParameter: null);
+
+        admin.MapPost("{id:guid}/resend", async (Guid id, InvitationService service, CancellationToken ct) => TypedResults.Ok(await service.ResendAsync(id, ct)))
+            .RequirePermission(PermissionCodes.PlatformUsersManage, departmentRouteParameter: null);
+
+        admin.MapPost("{id:guid}/revoke", async (Guid id, InvitationService service, CancellationToken ct) =>
+            {
+                await service.RevokeAsync(id, ct);
+                return TypedResults.NoContent();
+            })
+            .RequirePermission(PermissionCodes.PlatformUsersManage, departmentRouteParameter: null);
+
+        app.MapPost("/api/invitations/preview", async (InvitationTokenRequest body, InvitationService service, CancellationToken ct) => TypedResults.Ok(await service.PreviewAsync(body.Token, ct)))
+            .RequireAuthenticatedOnly()
+            .WithTags("Invitations");
+
+        app.MapPost("/api/invitations/accept", async (InvitationTokenRequest body, InvitationService service, CancellationToken ct) => TypedResults.Ok(await service.AcceptAsync(body.Token, ct)))
+            .RequireAuthenticatedOnly()
+            .WithTags("Invitations");
     }
 
     private static void MapDepartments(IEndpointRouteBuilder app)

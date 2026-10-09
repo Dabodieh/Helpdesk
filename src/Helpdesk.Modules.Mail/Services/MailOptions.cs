@@ -44,6 +44,9 @@ internal sealed class MailOptions
     /// </summary>
     public string[] ApprovedDomains { get; set; } = [];
 
+    /// <summary>Address of the dedicated mailbox that sends mail belonging to no ticket (account invitations). Empty: such mail is not sent. Never a department mailbox.</summary>
+    public string? SystemMailbox { get; set; }
+
     public GraphOptions Graph { get; set; } = new();
 }
 

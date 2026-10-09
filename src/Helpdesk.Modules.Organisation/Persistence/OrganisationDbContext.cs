@@ -17,6 +17,8 @@ internal sealed class OrganisationDbContext(DbContextOptions<OrganisationDbConte
 
     public DbSet<TeamMembership> TeamMemberships => Set<TeamMembership>();
 
+    public DbSet<Invitation> Invitations => Set<Invitation>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema(Schema);
@@ -86,6 +88,37 @@ internal sealed class OrganisationDbContext(DbContextOptions<OrganisationDbConte
             e.HasOne<DepartmentMembership>().WithMany().HasForeignKey(x => new { x.UserId, x.DepartmentId })
                 .OnDelete(DeleteBehavior.Cascade).HasConstraintName("fk_team_memberships_department_membership");
             e.HasIndex(x => x.UserId).HasDatabaseName("ix_team_memberships_user_id");
+        });
+
+        modelBuilder.Entity<Invitation>(e =>
+        {
+            e.ToTable("invitations", t =>
+            {
+                t.HasCheckConstraint("ck_invitations_status", "status IN ('Pending','Accepted','Revoked')");
+                t.HasCheckConstraint("ck_invitations_role", "role IN ('DepartmentAdmin','TeamLead','Agent','Viewer')");
+                t.HasCheckConstraint("ck_invitations_email_state", "email_state IN ('NotConfigured','Accepted','Failed','Uncertain')");
+            });
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            e.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(100);
+            e.Property(x => x.Email).HasColumnName("email").HasMaxLength(320);
+            e.Property(x => x.EmailNormalised).HasColumnName("email_normalised").HasMaxLength(320);
+            e.Property(x => x.DepartmentId).HasColumnName("department_id");
+            e.Property(x => x.Role).HasColumnName("role").HasMaxLength(32);
+            e.Property(x => x.TokenHash).HasColumnName("token_hash");
+            e.Property(x => x.Status).HasColumnName("status").HasMaxLength(16);
+            e.Property(x => x.ExpiresAt).HasColumnName("expires_at");
+            e.Property(x => x.EmailState).HasColumnName("email_state").HasMaxLength(16);
+            e.Property(x => x.CreatedBy).HasColumnName("created_by");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            e.Property(x => x.AcceptedAt).HasColumnName("accepted_at");
+            e.Property(x => x.AcceptedUserId).HasColumnName("accepted_user_id");
+            e.HasOne<Department>().WithMany().HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x => x.TokenHash).IsUnique().HasDatabaseName("ux_invitations_token_hash");
+            // One open invitation per person and department.
+            e.HasIndex(x => new { x.EmailNormalised, x.DepartmentId }).IsUnique().HasFilter("status = 'Pending'").HasDatabaseName("ux_invitations_pending");
+            e.HasIndex(x => x.CreatedAt).HasDatabaseName("ix_invitations_created_at");
         });
     }
 }

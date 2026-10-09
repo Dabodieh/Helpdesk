@@ -50,7 +50,8 @@ internal sealed record Microsoft365StatusDto(
     IReadOnlyList<Microsoft365MailboxDto> Mailboxes,
     IReadOnlyList<string> Issues,
     ProvisioningDto Provisioning,
-    IReadOnlyList<string> ApprovedDomains);
+    IReadOnlyList<string> ApprovedDomains,
+    string? SystemMailbox);
 
 internal sealed record ConnectionCheckDto(bool Ok, string Code, DateTimeOffset CheckedAt);
 
@@ -168,7 +169,7 @@ internal sealed partial class Microsoft365Service(
 
         return new Microsoft365StatusDto(
             settings.Provider, simulated, graphDto, signIn, notifications, Permissions, list, issues,
-            new ProvisioningDto(false, "not_configured"), [.. settings.ApprovedDomains]);
+            new ProvisioningDto(false, "not_configured"), [.. settings.ApprovedDomains], string.IsNullOrWhiteSpace(settings.SystemMailbox) ? null : settings.SystemMailbox);
     }
 
     public async Task<ConnectionCheckDto> CheckConnectionAsync(CancellationToken ct)
