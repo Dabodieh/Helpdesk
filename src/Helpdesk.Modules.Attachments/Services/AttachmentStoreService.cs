@@ -19,6 +19,72 @@ internal sealed class AttachmentStoreService(
 
     public bool Enabled => options.Value.Enabled;
 
+    public long MaxInlineImageBytes => options.Value.MaxInlineImageBytes;
+
+    private static string? SniffImageExtension(byte[] c) =>
+        c.AsSpan().StartsWith(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }) ? "png"
+        : c.AsSpan().StartsWith(new byte[] { 0xFF, 0xD8, 0xFF }) ? "jpg"
+        : c.AsSpan().StartsWith("GIF87a"u8) || c.AsSpan().StartsWith("GIF89a"u8) ? "gif"
+        : null;
+
+    public async Task<InlineImageResult> StoreInlineImageAsync(StoreInlineImageRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var settings = options.Value;
+        if (!settings.Enabled)
+        {
+            return new InlineImageResult(null, InlineImageReasons.Disabled);
+        }
+
+        if (request.Content.LongLength == 0)
+        {
+            return new InlineImageResult(null, InlineImageReasons.Empty);
+        }
+
+        if (request.Content.LongLength > Math.Min(settings.MaxInlineImageBytes, settings.MaxBytes))
+        {
+            return new InlineImageResult(null, InlineImageReasons.TooLarge);
+        }
+
+        var extension = SniffImageExtension(request.Content);
+        if (extension is null)
+        {
+            return new InlineImageResult(null, InlineImageReasons.NotAnImage);
+        }
+
+        var summary = await StoreAsync(
+            new StoreAttachmentRequest(request.DepartmentId, request.TicketId, Guid.CreateVersion7(), $"pasted-image.{extension}", null, request.Content, true, null,
+                $"paste:{request.UserId:N}:{Guid.CreateVersion7():N}"), cancellationToken);
+        return summary is { State: AttachmentStates.Stored, Downloadable: true }
+            ? new InlineImageResult(summary, null)
+            : new InlineImageResult(null, summary.BlockReason ?? InlineImageReasons.Unavailable);
+    }
+
+    public async Task<IReadOnlyList<Guid>> ClaimInlineImagesAsync(
+        Guid departmentId, Guid ticketId, Guid userId, IReadOnlyCollection<Guid> attachmentIds, Guid messageId, CancellationToken cancellationToken = default)
+    {
+        var settings = options.Value;
+        var prefix = $"paste:{userId:N}:";
+        var rows = await db.Attachments
+            .Where(a => attachmentIds.Contains(a.Id) && a.DepartmentId == departmentId && a.TicketId == ticketId && a.IsInline && a.SourceRef.StartsWith(prefix))
+            .ToListAsync(cancellationToken);
+        var usable = rows.Where(a => IsDownloadable(a, settings)).ToList();
+        var missing = attachmentIds.Where(id => usable.All(a => a.Id != id)).ToList();
+        if (missing.Count > 0)
+        {
+            return missing;
+        }
+
+        foreach (var a in usable)
+        {
+            a.MessageId = messageId;
+            a.SourceRef = $"pasted:{a.Id:N}";
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+        return [];
+    }
+
     public async Task<AttachmentSummary> StoreAsync(StoreAttachmentRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);

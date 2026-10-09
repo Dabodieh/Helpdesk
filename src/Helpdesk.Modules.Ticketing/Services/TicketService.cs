@@ -345,6 +345,56 @@ internal sealed partial class TicketService(
 
     // ----- messages -----
 
+    /// <summary>An image pasted into a reply or note is written into its text as <c>[image:ID]</c>; the id is a pending upload of the same ticket and author.</summary>
+    internal static readonly System.Text.RegularExpressions.Regex ImageMarker = new(
+        @"\[image:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\]", System.Text.RegularExpressions.RegexOptions.Compiled, TimeSpan.FromSeconds(1));
+
+    public const int MaxImagesPerMessage = 6;
+
+    /// <summary>Stores a pasted image as a pending upload for this ticket and the caller (tickets.note, enforced by the endpoint). Refused unless the attachment capability is on.</summary>
+    public async Task<InlineImageDto> UploadInlineImageAsync(string route, Stream body, CancellationToken ct)
+    {
+        var key = await resolver.FindAsync(route, ct) ?? throw new NotFoundException();
+        var merged = await db.Tickets.AsNoTracking().Where(t => t.Id == key.Id).Select(t => t.MergedIntoTicketId != null).SingleOrDefaultAsync(ct);
+        if (merged)
+        {
+            throw new ConflictException("A merged ticket is read-only.", ProblemCodes.InvalidState);
+        }
+
+        if (!attachments.Enabled)
+        {
+            throw new ConflictException("Image uploads are unavailable.", ProblemCodes.InvalidState);
+        }
+
+        var limit = attachments.MaxInlineImageBytes;
+        using var buffer = new MemoryStream();
+        var chunk = new byte[16 * 1024];
+        int read;
+        while ((read = await body.ReadAsync(chunk, ct)) > 0)
+        {
+            buffer.Write(chunk, 0, read);
+            if (buffer.Length > limit)
+            {
+                throw new RequestValidationException("image", $"The image is larger than {limit / (1024 * 1024)} MB.");
+            }
+        }
+
+        var result = await attachments.StoreInlineImageAsync(new StoreInlineImageRequest(key.DepartmentId, key.Id, current.UserId, buffer.ToArray()), ct);
+        if (result.Image is not { } image)
+        {
+            throw result.Reason switch
+            {
+                InlineImageReasons.Disabled => new ConflictException("Image uploads are unavailable.", ProblemCodes.InvalidState),
+                InlineImageReasons.TooLarge => new RequestValidationException("image", $"The image is larger than {limit / (1024 * 1024)} MB."),
+                InlineImageReasons.Empty => new RequestValidationException("image", "The image is empty."),
+                InlineImageReasons.NotAnImage => new RequestValidationException("image", "Only PNG, JPEG and GIF images can be pasted."),
+                _ => new ConflictException("The image could not be stored safely.", ProblemCodes.InvalidState),
+            };
+        }
+
+        return new InlineImageDto(image.Id, $"/api/tickets/{Uri.EscapeDataString(route)}/attachments/{image.Id}", image.ContentType, image.Size);
+    }
+
     public async Task<PostedMessageDto> PostMessageAsync(string route, PostMessageRequest request, CancellationToken ct)
     {
         var errors = new Dictionary<string, string[]>();
@@ -357,6 +407,12 @@ internal sealed partial class TicketService(
         TicketValidation.Body(errors, "body", request.Body);
         var status = TicketValidation.ParseEnum<TicketStatus>(errors, "status", request.Status);
         var sourceRef = ClientMessageIds.SourceRef(errors, request.ClientMessageId);
+        var imageIds = request.Body is null ? [] : ImageMarker.Matches(request.Body).Select(m => Guid.Parse(m.Groups[1].Value)).Distinct().ToList();
+        if (imageIds.Count > MaxImagesPerMessage)
+        {
+            errors["body"] = [$"A message can hold at most {MaxImagesPerMessage} pasted images."];
+        }
+
         TicketValidation.ThrowIfAny(errors);
 
         var key = await resolver.FindAsync(route, ct) ?? throw new NotFoundException();
@@ -435,6 +491,11 @@ internal sealed partial class TicketService(
             DeliveryError = blockedReason,
             CreatedAt = now,
         };
+        if (imageIds.Count > 0 && !attachments.Enabled)
+        {
+            throw new ConflictException("Image uploads are unavailable, so a message with pasted images cannot be posted.", ProblemCodes.InvalidState);
+        }
+
         db.Messages.Add(message);
         foreach (var mentioned in mentionIds)
         {
@@ -457,6 +518,12 @@ internal sealed partial class TicketService(
         }
 
         await SaveAsync(ct);
+
+        // The pasted images become attachments of THIS message (all of them, or the post fails and nothing is kept). Only the author's own pending uploads of this ticket qualify.
+        if (imageIds.Count > 0 && await attachments.ClaimInlineImagesAsync(ticket.DepartmentId, ticket.Id, current.UserId, imageIds, message.Id, ct) is { Count: > 0 })
+        {
+            throw new RequestValidationException("body", "A pasted image is no longer available. Remove it and paste it again.");
+        }
 
         await audit.WriteAsync(TicketAuditActions.MessageAdded, TicketingAudit.TicketObject, ticket.Id, ticket.DepartmentId, null,
             new { messageId = message.Id, kind = message.Kind.ToString(), authorType = message.AuthorType.ToString() }, ct);

@@ -60,8 +60,9 @@ internal sealed class MailOutbox(IMailJobScheduler scheduler, TimeProvider clock
             signature = null;
         }
 
-        var html = MailText.TextToHtml(request.BodyText) + (signature is null ? "" : "<div style=\"margin-top:16px\">-- <br>\n" + signature + "</div>");
-        var text = signature is null ? request.BodyText : request.BodyText + "\n\n-- \n" + MailText.HtmlToText(signature);
+        var html = MailText.ImageMarkersToHtml(MailText.TextToHtml(request.BodyText)) + (signature is null ? "" : "<div style=\"margin-top:16px\">-- <br>\n" + signature + "</div>");
+        var plain = MailText.ImageMarkersToText(request.BodyText);
+        var text = signature is null ? plain : plain + "\n\n-- \n" + MailText.HtmlToText(signature);
         var inserted = await caller.Database.ExecuteSqlRawAsync(
             InsertSql,
             [
@@ -207,6 +208,7 @@ internal sealed class MailOutbox(IMailJobScheduler scheduler, TimeProvider clock
 /// </summary>
 internal sealed class OutboundSender(
     MailDbContext db,
+    Helpdesk.Modules.Attachments.Contracts.IAttachmentStore attachments,
     IMailProvider provider,
     IDeliveryStateSink delivery,
     MailAudit audit,
@@ -255,6 +257,7 @@ internal sealed class OutboundSender(
                             .Select(m => m.ProviderMessageId).SingleOrDefaultAsync(ct);
                     }
 
+                    var inline = await LoadInlineImagesAsync(message, ct);
                     var content = new OutboundContent(
                         replyTo,
                         replyTo is null ? OutboundSubject(message) : message.Subject,
@@ -263,7 +266,8 @@ internal sealed class OutboundSender(
                         Parse(message.CcJson),
                         message.OutboundToken!,
                         new EmailAddress(mailbox.Address, null), // Reply-To is always the helpdesk mailbox, never an agent's own address
-                        MessageFlags.Has(message.Flags, "auto_reply"));
+                        MessageFlags.Has(message.Flags, "auto_reply"),
+                        inline);
                     var draft = await provider.CreateDraftAsync(mref, content, ct);
 
                     // Persist the draft id (and the id the provider reports) BEFORE sending: a crash after the send must not send twice.
@@ -476,6 +480,44 @@ internal sealed class OutboundSender(
         }
 
         await tx.CommitAsync(ct);
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex CidRef = new(@"cid:([0-9a-f]{32})@helpdesk", System.Text.RegularExpressions.RegexOptions.Compiled, TimeSpan.FromSeconds(1));
+
+    /// <summary>
+    /// The pasted images the stored HTML points at, read from attachment storage. Every one must be a stored, downloadable (clean when scanning is required) image of THIS ticket;
+    /// otherwise the message is NOT sent (a permanent failure with a short code), never sent with a broken or unscanned image.
+    /// </summary>
+    private async Task<IReadOnlyList<OutboundInlineImage>?> LoadInlineImagesAsync(MailMessage message, CancellationToken ct)
+    {
+        var html = message.BodyHtmlOriginal;
+        if (html is null || message.TicketId is not { } ticketId)
+        {
+            return null;
+        }
+
+        var ids = CidRef.Matches(html).Select(m => Guid.ParseExact(m.Groups[1].Value, "N")).Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            return null;
+        }
+
+        var images = new List<OutboundInlineImage>();
+        foreach (var id in ids)
+        {
+            var opened = await attachments.OpenAsync(message.DepartmentId, ticketId, id, ct);
+            if (opened.Download is not { } download || !download.ContentType.StartsWith("image/", StringComparison.Ordinal))
+            {
+                throw new PermanentProviderException("inline_image_unavailable");
+            }
+
+            await using var stream = download.Content;
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer, ct);
+            images.Add(new OutboundInlineImage(MailText.ImageContentId(id), download.FileName, download.ContentType, buffer.ToArray()));
+        }
+
+        return images;
     }
 
     private static string OutboundSubject(MailMessage message)

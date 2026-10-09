@@ -250,6 +250,19 @@ internal static class TicketEndpoints
             .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsRead, Route)
             .WithTags("Tickets");
 
+        // A pasted image: raw image bytes in the body. Stored as a pending upload of the caller (tickets.note: every working role holds it). Refused while attachments are off.
+        app.MapPost("/api/tickets/{ticket}/inline-images",
+                async (string ticket, HttpRequest request, TicketService tickets, CancellationToken ct) =>
+                    TypedResults.Ok(await tickets.UploadInlineImageAsync(ticket, request.Body, ct)))
+            .RequireResourcePermission<TicketResolver>(PermissionCodes.TicketsNote, Route)
+            .WithTags("Tickets");
+
+        // What the composer may offer: whether image pasting is available (the server-side attachment switch) and the size limit.
+        app.MapGet("/api/ticket-capabilities",
+                (Helpdesk.Modules.Attachments.Contracts.IAttachmentStore attachments) => TypedResults.Ok(new { attachmentsEnabled = attachments.Enabled, maxInlineImageBytes = attachments.MaxInlineImageBytes }))
+            .RequireAuthenticatedOnly()
+            .WithTags("Tickets");
+
         // Always an attachment download (never rendered inline); blocked or not-yet-scanned items are refused.
         app.MapGet("/api/tickets/{ticket}/attachments/{attachmentId:guid}",
                 async (string ticket, Guid attachmentId, TicketService tickets, CancellationToken ct) =>

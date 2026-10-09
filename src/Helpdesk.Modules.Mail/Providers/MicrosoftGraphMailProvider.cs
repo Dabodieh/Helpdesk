@@ -279,7 +279,25 @@ internal sealed class MicrosoftGraphMailProvider : IMailProvider
 
         using var response = await SendAsync(HttpMethod.Post, path, message, immutableIds: true, cancellationToken);
         var json = await ReadJsonAsync(response, cancellationToken);
-        return new DraftResult(json["id"]!.GetValue<string>(), json["internetMessageId"]?.GetValue<string>());
+        var draftId = json["id"]!.GetValue<string>();
+
+        // Inline images are separate file attachments of the draft with isInline and the Content-ID the HTML points at (cid:...). Graph accepts a file attachment of up to
+        // 3 MB in one request, which is the largest image Helpdesk stores. The body alone never produces an embedded image.
+        foreach (var image in content.InlineImages ?? [])
+        {
+            var attachment = new JsonObject
+            {
+                ["@odata.type"] = "#microsoft.graph.fileAttachment",
+                ["name"] = image.FileName,
+                ["contentType"] = image.ContentType,
+                ["contentBytes"] = Convert.ToBase64String(image.Bytes),
+                ["isInline"] = true,
+                ["contentId"] = image.ContentId,
+            };
+            using var added = await SendAsync(HttpMethod.Post, $"users/{Escape(mailbox.Reference)}/messages/{Escape(draftId)}/attachments", attachment, immutableIds: true, cancellationToken);
+        }
+
+        return new DraftResult(draftId, json["internetMessageId"]?.GetValue<string>());
     }
 
     public async Task SendDraftAsync(MailboxRef mailbox, string draftId, CancellationToken cancellationToken)

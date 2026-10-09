@@ -157,3 +157,5 @@ internal sealed record TicketListQuery(
     string? Sla = null,
     Guid? TypeId = null,
     string? Send = null);
+
+internal sealed record InlineImageDto(Guid Id, string Url, string ContentType, long Size);

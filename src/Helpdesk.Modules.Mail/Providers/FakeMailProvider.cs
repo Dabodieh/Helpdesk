@@ -35,7 +35,8 @@ internal sealed record FakeSent(
     string Token,
     DateTimeOffset SentAt,
     EmailAddress? ReplyTo = null,
-    bool AutoResponseSuppress = false);
+    bool AutoResponseSuppress = false,
+    IReadOnlyList<OutboundInlineImage>? InlineImages = null);
 
 /// <summary>
 /// In-process mailbox simulator behind <see cref="IMailProvider"/>: drives the complete email loop without a tenant (integration
@@ -381,7 +382,7 @@ internal sealed class FakeMailProvider : IMailProvider
             state.Sent.Add(new FakeSent(
                 mailbox.Address, draftId, draft.InternetMessageId, draft.InReplyTo, draft.References, draft.ConversationId,
                 draft.Content.ReplyToProviderMessageId is null ? draft.Content.Subject : (draft.Content.Subject.StartsWith("Re:", StringComparison.OrdinalIgnoreCase) ? draft.Content.Subject : "Re: " + draft.Content.Subject),
-                draft.Content.BodyHtml, draft.Content.To, draft.Content.Cc, draft.Content.Token, DateTimeOffset.UtcNow, draft.Content.ReplyTo, draft.Content.IsAutomatic));
+                draft.Content.BodyHtml, draft.Content.To, draft.Content.Cc, draft.Content.Token, DateTimeOffset.UtcNow, draft.Content.ReplyTo, draft.Content.IsAutomatic, draft.Content.InlineImages));
             return timeout ? throw new TransientProviderException("graph_timeout") { Ambiguous = true } : Task.CompletedTask;
         }
     }

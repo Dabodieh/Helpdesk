@@ -34,6 +34,9 @@ internal sealed record SubscriptionRequest(string NotificationUrl, string Lifecy
 /// <param name="ReplyToProviderMessageId">Set for a reply: the provider message being answered (Exchange then sets In-Reply-To/References, E-23).</param>
 /// <param name="Token">Opaque correlation token (header and body footer).</param>
 /// <param name="IsAutomatic">An acknowledgement: marked <c>x-auto-response-suppress: All</c> so a peer auto-responder or helpdesk does not answer it (MSG-006). Graph accepts only <c>x-</c> headers on a draft, so <c>Auto-Submitted</c> cannot be set; the real header set is a D-16 tenant check (E-37, E-38).</param>
+/// <summary>A pasted image sent inline: referenced from the HTML as <c>cid:{ContentId}</c> and attached with the same Content-ID.</summary>
+internal sealed record OutboundInlineImage(string ContentId, string FileName, string ContentType, byte[] Bytes);
+
 internal sealed record OutboundContent(
     string? ReplyToProviderMessageId,
     string Subject,
@@ -42,7 +45,8 @@ internal sealed record OutboundContent(
     IReadOnlyList<EmailAddress> Cc,
     string Token,
     EmailAddress? ReplyTo = null,
-    bool IsAutomatic = false);
+    bool IsAutomatic = false,
+    IReadOnlyList<OutboundInlineImage>? InlineImages = null);
 
 /// <param name="InternetMessageId">What the provider reports for the draft; Exchange may rewrite it on submission (E-12), so the sent copy is looked up afterwards.</param>
 internal sealed record DraftResult(string DraftId, string? InternetMessageId);

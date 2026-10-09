@@ -164,6 +164,21 @@ internal static partial class MailText
         return encoded.Replace("\n", "<br>\n", StringComparison.Ordinal);
     }
 
+    private static readonly System.Text.RegularExpressions.Regex ImageMarker = new(
+        @"\[image:([0-9a-fA-F]{8})-([0-9a-fA-F]{4})-([0-9a-fA-F]{4})-([0-9a-fA-F]{4})-([0-9a-fA-F]{12})\]", System.Text.RegularExpressions.RegexOptions.Compiled, TimeSpan.FromSeconds(1));
+
+    /// <summary>The Content-ID of a pasted image (its attachment id): what the HTML references as <c>cid:</c> and what the inline attachment carries.</summary>
+    public static string ImageContentId(Guid attachmentId) => attachmentId.ToString("N") + "@helpdesk";
+
+    /// <summary>Turns <c>[image:ID]</c> markers (already HTML-safe text) into inline image tags. Only a well-formed id can become a tag, so no other markup is introduced.</summary>
+    public static string ImageMarkersToHtml(string html) =>
+        ImageMarker.Replace(html, m => $"<img src=\"cid:{ImageContentId(Guid.Parse(m.Value[7..^1]))}\" alt=\"Pasted image\" style=\"max-width:100%;height:auto;display:block;margin:8px 0\">");
+
+    public static string ImageMarkersToText(string text) => ImageMarker.Replace(text, "[image]");
+
+    /// <summary>The pasted-image ids a stored message body refers to.</summary>
+    public static IReadOnlyList<Guid> ImageIds(string text) => [.. ImageMarker.Matches(text).Select(m => Guid.Parse(m.Value[7..^1])).Distinct()];
+
     public static string BodyTextOf(string? text, string? html)
     {
         var basis = !string.IsNullOrWhiteSpace(text) ? Tidy(text) : !string.IsNullOrWhiteSpace(html) ? HtmlToText(html) : "";

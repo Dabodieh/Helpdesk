@@ -53,6 +53,21 @@ public sealed record AttachmentOpenResult(AttachmentDownload? Download, bool Not
     public static AttachmentOpenResult Missing { get; } = new(null, true, null);
 }
 
+/// <param name="UserId">The agent who pasted the image. Only that user can attach it to a message.</param>
+public sealed record StoreInlineImageRequest(Guid DepartmentId, Guid TicketId, Guid UserId, byte[] Content);
+
+/// <param name="Image">The stored image; null when it was refused, with <see cref="Reason"/> (attachments_disabled, empty, too_large, not_an_image, scan_failed).</param>
+public sealed record InlineImageResult(AttachmentSummary? Image, string? Reason);
+
+public static class InlineImageReasons
+{
+    public const string Disabled = "attachments_disabled";
+    public const string Empty = "empty";
+    public const string TooLarge = "too_large";
+    public const string NotAnImage = "not_an_image";
+    public const string Unavailable = "unavailable";
+}
+
 /// <summary>
 /// Department-scoped attachment storage for other modules (no table access across modules). Every method takes the department
 /// explicitly and filters by it; callers authorise access to the ticket before calling.
@@ -61,6 +76,22 @@ public interface IAttachmentStore
 {
     /// <summary>False when attachments are switched off: callers need not fetch or read bytes (they would not be stored).</summary>
     bool Enabled { get; }
+
+    /// <summary>The largest pasted image accepted.</summary>
+    long MaxInlineImageBytes { get; }
+
+    /// <summary>
+    /// Stores a pasted image as a pending upload of this ticket and user. The type comes from the bytes themselves (PNG, JPEG or GIF; never SVG or anything
+    /// scriptable), never from a name or header the client sent. Goes through the same size, scan and storage pipeline as every attachment, so it cannot bypass the
+    /// attachment switch or the clean-scan requirement.
+    /// </summary>
+    Task<InlineImageResult> StoreInlineImageAsync(StoreInlineImageRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Attaches pending pasted images of this user to a message. Returns the ids that could NOT be claimed (unknown, someone else's, already used, not stored or not
+    /// clean); nothing is changed unless all of them can be.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> ClaimInlineImagesAsync(Guid departmentId, Guid ticketId, Guid userId, IReadOnlyCollection<Guid> attachmentIds, Guid messageId, CancellationToken cancellationToken = default);
 
     /// <summary>Validates (size, type, extension, magic bytes), hashes, stores and records the attachment. Idempotent on <c>SourceRef</c>.</summary>
     Task<AttachmentSummary> StoreAsync(StoreAttachmentRequest request, CancellationToken cancellationToken = default);

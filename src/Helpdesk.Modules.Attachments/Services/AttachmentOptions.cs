@@ -19,6 +19,9 @@ internal sealed class AttachmentOptions
     /// and downloads are refused. Production must keep it false until a malware scanning engine is integrated (D-08); the host refuses to start otherwise.
     /// </summary>
     public bool Enabled { get; set; } = true;
+
+    /// <summary>Largest pasted (inline) image. Kept at 3 MB: Microsoft Graph accepts inline file attachments of that size in one request, so a stored image is always sendable.</summary>
+    public long MaxInlineImageBytes { get; set; } = 3 * 1024 * 1024;
 }
 
 /// <summary>Bound from the <c>Storage</c> configuration section.</summary>
