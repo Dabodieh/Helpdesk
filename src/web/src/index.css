@@ -4287,3 +4287,21 @@ dialog, .dialog, .dialog-panel { max-width: min(96vw, 760px); max-height: 92vh; 
 .report-filter-menu { position: static; }
 .report-filter-panel { top: calc(100% - 4px); left: 14px; max-width: calc(100% - 28px); }
 .table-scroll { position: relative; }
+
+/* Short windows (laptops at 150% zoom with browser chrome are about 400-560px tall): the rail compacts so the theme, shortcuts, collapse and account rows stay on screen. */
+@media (max-height: 640px) {
+  .app-rail, .shell:not(.rail-narrow):not(.rail-hidden) .app-rail { padding-top: 8px; padding-bottom: 6px; }
+  .app-rail-nav { margin-top: 10px; }
+  .app-rail-nav, .app-rail-foot, .shell:not(.rail-narrow):not(.rail-hidden) .app-rail-nav, .shell:not(.rail-narrow):not(.rail-hidden) .app-rail-foot { gap: 2px; }
+  .rail-link, .shell:not(.rail-narrow):not(.rail-hidden) .rail-link { height: 34px; }
+  .app-rail .usermenu-trigger, .shell:not(.rail-narrow):not(.rail-hidden) .app-rail .usermenu-trigger { height: 38px; }
+  .rail-collapse { margin-top: 0; }
+}
+@media (max-height: 460px) {
+  .graphite-brand { height: 26px; }
+  .graphite-brand span { height: 20px; }
+  .graphite-brand span:nth-child(2) { height: 12px; }
+  .rail-link, .shell:not(.rail-narrow):not(.rail-hidden) .rail-link { height: 30px; font-size: 14px; }
+  .app-rail .usermenu-trigger, .shell:not(.rail-narrow):not(.rail-hidden) .app-rail .usermenu-trigger { height: 32px; padding-top: 0; padding-bottom: 0; }
+  .app-rail .avatar { width: 26px; height: 26px; }
+}
