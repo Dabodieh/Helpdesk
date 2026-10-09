@@ -4270,3 +4270,14 @@ dialog, .dialog, .dialog-panel { max-width: min(96vw, 760px); max-height: 92vh; 
 .m365-cards .status { justify-self: start; }
 .m365-mailboxes td:last-child { white-space: nowrap; text-align: right; }
 .m365-step-body > button, .m365-step-body > .m365-actions { justify-self: start; }
+
+/* Composer rows share one left edge (12px) and centre their controls; pasted-image thumbnails have a fixed height. */
+.composer .composer-cc { padding: 6px 12px 0; margin: 0; align-items: center; }
+.composer .composer-cc-list li { align-items: center; }
+.composer .composer-cc button { min-height: 26px; padding: 2px 8px; font-size: 12.5px; }
+.composer .composer-images { padding: 8px 12px 0; }
+.composer .composer-images img { height: 64px; width: auto; max-width: 160px; object-fit: cover; }
+.composer .notice, .composer .composer-images + p { margin-left: 12px; margin-right: 12px; }
+/* The send row stays visible while a short screen scrolls the rest of the composer. */
+.composer-actions { position: sticky; bottom: 0; z-index: 1; background: var(--surface, var(--bg)); }
+@media (max-height: 760px) { .composer .composer-images img { height: 44px; } }
