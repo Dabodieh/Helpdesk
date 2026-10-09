@@ -176,7 +176,7 @@ export default function Microsoft365Wizard({ status }: { status: Microsoft365Sta
             <ul className="m365-perms">
               {status.requiredPermissions.map((p) => (
                 <li key={p.name}>
-                  <StatusBadge tone={p.required ? 'info' : 'off'}>{p.required ? 'Required' : 'Not needed'}</StatusBadge> <strong>{p.name}</strong>
+                  <StatusBadge tone="off">{p.required ? 'Required' : 'Not needed'}</StatusBadge> <strong>{p.name}</strong>
                   <span className="muted small"> {p.purpose} {p.scope}.</span>
                 </li>
               ))}

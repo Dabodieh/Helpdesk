@@ -86,7 +86,7 @@ function Permissions({ s }: { s: Microsoft365Status }) {
                 <td>{p.purpose}</td>
                 <td>{p.scope}</td>
                 <td>
-                  <StatusBadge tone={p.required ? 'info' : 'off'}>{p.required ? 'Yes' : 'No'}</StatusBadge>
+                  <StatusBadge tone="off">{p.required ? 'Yes' : 'No'}</StatusBadge>
                 </td>
               </tr>
             ))}
@@ -152,7 +152,7 @@ function Mailboxes({ s }: { s: Microsoft365Status }) {
       {s.mailboxes.length === 0 ? (
         <p className="empty small">No mailbox is connected.</p>
       ) : (
-        <div className="table-wrap">
+        <div className="table-wrap m365-mailboxes">
           <table className="grid compact">
             <thead>
               <tr>

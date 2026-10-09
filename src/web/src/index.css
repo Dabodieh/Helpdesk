@@ -4266,3 +4266,7 @@ dialog, .dialog, .dialog-panel { max-width: min(96vw, 760px); max-height: 92vh; 
 .m365-notes { margin: 0; padding-left: 18px; }
 .m365-detail > td { background: var(--surface-2); padding: 12px 16px; }
 .m365-detail .kv { margin-bottom: 8px; }
+.m365-cards { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.m365-cards .status { justify-self: start; }
+.m365-mailboxes td:last-child { white-space: nowrap; text-align: right; }
+.m365-step-body > button, .m365-step-body > .m365-actions { justify-self: start; }
