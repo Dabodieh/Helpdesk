@@ -39,6 +39,11 @@ export default function PortalShell({ children }: { children: ReactNode }) {
             <span className="portal-brand-label">Help &amp; support</span>
           </Link>
           <div className="portal-tools">
+            {isAgent && (
+              <Link to="/" className="portal-back">
+                ← Back to Helpdesk
+              </Link>
+            )}
             <ThemeToggle />
             <div className="portal-account">
               <button type="button" className="ghost" aria-expanded={open} aria-controls="portal-account-menu" onClick={() => setOpen(!open)}>

@@ -4317,3 +4317,4 @@ dialog, .dialog, .dialog-panel { max-height: calc(92vh / var(--ui-zoom)); }
 html:has(.shell), html:has(.shell) body { overflow: hidden; height: 100%; }
 /* Visually hidden text is absolutely positioned: contain it in the scrolling area so it can never stretch the window. */
 .shell, .main { position: relative; }
+.portal-back { display: inline-flex; align-items: center; min-height: 36px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 7px; font-size: 14px; font-weight: 600; text-decoration: none; white-space: nowrap; }

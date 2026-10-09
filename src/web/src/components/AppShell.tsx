@@ -147,9 +147,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <NavLink to="/analytics" className="rail-link" aria-label="Analytics" title="Analytics"><Icon name="chart" /><span className="rail-label">Analytics</span></NavLink>
             </>}
             <NavLink to="/portal/knowledge" className="rail-link" aria-label="Knowledge" title="Knowledge"><Icon name="file" /><span className="rail-label">Knowledge</span></NavLink>
-            {canAdminister(me) && <NavLink to="/admin" className="rail-link" aria-label="Administration" title="Administration"><Icon name="admin" /><span className="rail-label">Administration</span></NavLink>}
           </nav>
           <div className="app-rail-foot">
+            {canAdminister(me) && <NavLink to="/admin" className="rail-link" aria-label="Administration" title="Administration"><Icon name="admin" /><span className="rail-label">Administration</span></NavLink>}
             <ThemeToggle />
             <button type="button" className="rail-link" aria-label="Keyboard shortcuts" title="Keyboard shortcuts" onClick={() => setDialog('help')}><Icon name="help" /><span className="rail-label">Shortcuts</span></button>
             <button type="button" className="rail-link rail-collapse" aria-expanded={!railNarrow} aria-label={railNarrow ? 'Expand navigation labels' : 'Collapse navigation to icons'} title={railNarrow ? 'Expand' : 'Collapse'} onClick={toggleNarrow}><span aria-hidden="true" className="rail-chevron">{railNarrow ? '»' : '«'}</span><span className="rail-label">Collapse</span></button>
