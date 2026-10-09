@@ -4281,3 +4281,9 @@ dialog, .dialog, .dialog-panel { max-width: min(96vw, 760px); max-height: 92vh; 
 /* The send row stays visible while a short screen scrolls the rest of the composer. */
 .composer-actions { position: sticky; bottom: 0; z-index: 1; background: var(--surface, var(--bg)); }
 @media (max-height: 760px) { .composer .composer-images img { height: 44px; } }
+
+/* 200% zoom on a 1080p screen is a 960px viewport: popovers anchor to the filter bar (always inside it) and visually hidden text cannot widen the page. */
+.report-filters { position: relative; }
+.report-filter-menu { position: static; }
+.report-filter-panel { top: calc(100% - 4px); left: 14px; max-width: calc(100% - 28px); }
+.table-scroll { position: relative; }
