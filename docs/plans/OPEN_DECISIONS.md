@@ -10,6 +10,8 @@
 | D-12 | Future audited emergency ("break-glass") ticket access | Not implemented. Constraints recorded in PERMISSIONS.md. | PO |
 | D-14 | User (de)activation API; do inactive users count toward last-admin rules | `is_active` is enforced per request but no endpoint changes it (Phase 1 contract has none). | Principal |
 | D-16 (OPEN; Refinement 3 real-tenant run BLOCKED: no approved tenant configuration, see docs/guides/GRAPH_TENANT_VALIDATION.md) | Close the ADR-011 production validation gate (ADR is Accepted as design direction; production readiness conditional on real-tenant validation) | Requires a test tenant + shared mailboxes + Exchange admin (runbook `docs/guides/GRAPH_TENANT_VALIDATION.md`). Gate stays OPEN until the runbook has run successfully against an approved test mailbox. Blocks Phase 3 production email readiness, not Phase 2. | Principal / PO |
+| D-18 | Automatic shared-mailbox creation | Not built. Needs a separate Exchange Online management identity (not the mail application), a role limited to creating shared mailboxes, an approved process and a tenant to validate against. Until then the Microsoft 365 page prepares a script for a tenant administrator (ADR-035). | Principal / tenant admin |
+| D-19 | Polling-only mail for local Docker (no public HTTPS) | With `Mail:Provider=Graph` startup requires a public https `Mail:NotificationBaseUrl`; subscriptions are made on registration. The 5-minute reconcile already finds mail without a subscription, but a mailbox without one reports `subscription_*` attention and registration would try to create it. Allowing an explicit polling-only mode changes startup validation and mailbox health semantics: needs a decision. | Principal |
 
 ## Resolved
 | ID | Decision | Resolution |
