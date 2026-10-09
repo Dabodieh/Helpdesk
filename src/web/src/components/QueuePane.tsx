@@ -1,6 +1,6 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { listTickets } from '../api/tickets'
 import type { QueueColumn } from '../api/queuePrefs'
 import type { Queue, TicketListItem } from '../api/ticketSchemas'
@@ -8,7 +8,9 @@ import { useMe } from '../auth'
 import { formatDateTime, timeAgo } from '../lib/format'
 import { DEFAULT_SORT, hasCustomFilters, parseFilters, QUEUE_TITLES, withParam, type Mode } from '../lib/filters'
 import { useQueuePrefs, visibleColumns } from '../hooks/useQueuePrefs'
+import { hasDraft } from '../lib/drafts'
 import { usePref } from '../lib/prefs'
+import { readScroll, saveQueueContext, saveScroll } from '../lib/queueContext'
 import { isActivatable, useShortcuts } from '../lib/shortcuts'
 import { livePolling } from '../queries'
 import BulkBar from './BulkBar'
@@ -62,6 +64,7 @@ const MATCH_LABEL: Record<string, string> = {
 export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
   const me = useMe()
   const navigate = useNavigate()
+  const location = useLocation()
   const [params, setParams] = useSearchParams()
   const searchRef = useRef<HTMLInputElement>(null)
   const filters = useMemo(() => parseFilters(queue, params, mode, me.id), [queue, params, mode, me.id])
@@ -84,6 +87,21 @@ export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
     for (const page of list.data?.pages ?? []) for (const t of page.items) if (!seen.has(t.id)) seen.set(t.id, t)
     return [...seen.values()]
   }, [list.data])
+
+  // Remember this list (its address with filters and sort, and the order of what is loaded) so a ticket page can go back to it and step to the previous/next ticket.
+  const backTo = `${location.pathname}${location.search}`
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const restored = useRef(false)
+  useEffect(() => {
+    if (items.length > 0) saveQueueContext({ backTo, refs: items.map((t) => t.reference) })
+  }, [items, backTo])
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el || restored.current || items.length === 0) return
+    restored.current = true
+    const top = readScroll(backTo)
+    if (top > 0) el.scrollTop = top
+  }, [items, backTo])
 
   const isSelected = useCallback(
     (t: TicketListItem) => !!selected && (t.id === selected || t.reference.toLowerCase() === selected.toLowerCase()),
@@ -276,7 +294,7 @@ export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
       {prefsOpen && <QueuePrefsMenu queue={queue} onClose={() => setPrefsOpen(false)} />}
       <QueueFilters mode={mode} searchRef={searchRef} filters={filters} />
       {checkedItems.length > 0 && <BulkBar tickets={checkedItems} onClear={() => setChecked(new Set())} />}
-      <div className="queue-scroll" id="queue-list" tabIndex={-1}>
+      <div className="queue-scroll" id="queue-list" tabIndex={-1} ref={scrollRef} onScroll={(e) => saveScroll(backTo, e.currentTarget.scrollTop)}>
         {!enabled && (
           <div className="empty">
             <Icon name="search" size={28} />
@@ -361,6 +379,7 @@ export default function QueuePane({ queue, mode, selected, hrefFor }: Props) {
                       </Link>
                       <span className="subline">
                         {t.requester.displayName} · {t.assignee?.displayName ?? 'Unassigned'}
+                        {hasDraft(t.id) && <span className="draft-tag" title="You have an unsent reply or note on this ticket">Draft</span>}
                       </span>
                       {t.match && t.match.field !== 'subject' && (
                         <span className="match">

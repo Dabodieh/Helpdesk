@@ -1,11 +1,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { canAdminister, hasAnyPermission } from '../api/permissions'
 import { logout } from '../api/organisation'
 import { listViews } from '../api/views'
 import { useMe } from '../auth'
-import { clearDrafts } from '../lib/drafts'
+import { clearDrafts, draftCount } from '../lib/drafts'
 import { viewLocation } from '../lib/filters'
 import { useRealtime, useRealtimeStatus } from '../lib/realtime'
 import { useShortcuts } from '../lib/shortcuts'
@@ -112,7 +112,20 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   useShortcuts({ '?': api.openHelp, c: api.openNewTicket }, dialog === null)
 
+  // Unsent replies and notes live in this tab: warn before the tab is closed or the user signs out and they would be discarded.
+  useEffect(() => {
+    const warn = (e: BeforeUnloadEvent) => {
+      if (draftCount() > 0) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [])
+
   async function signOut() {
+    if (draftCount() > 0 && !window.confirm(`You have ${draftCount()} unsent ${draftCount() === 1 ? 'draft' : 'drafts'} (replies or notes). Signing out discards them. Sign out anyway?`)) return
     try {
       await logout()
     } finally {
@@ -123,7 +136,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <ShellContext.Provider value={api}>
-      <div className={`shell${inWorkspace ? ' shell-workspace' : ''}${inWorkspace && collapsed ? ' nav-collapsed' : ''}${railHidden ? ' rail-hidden' : ''}${railNarrow ? ' rail-narrow' : ''}`}>
+      <div className={`shell${inWorkspace ? ' shell-workspace' : ''}${inWorkspace && (collapsed || location.pathname.startsWith('/tickets/')) ? ' nav-collapsed' : ''}${railHidden ? ' rail-hidden' : ''}${railNarrow ? ' rail-narrow' : ''}`}>
         <a className="skip-link" href="#main-content">Skip to content</a>
         <aside className="app-rail" aria-label="Application">
           <Link to="/" className="graphite-brand" aria-label="Helpdesk home"><span /><span /><span /></Link>

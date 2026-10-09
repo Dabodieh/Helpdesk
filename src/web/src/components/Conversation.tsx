@@ -142,6 +142,9 @@ export function MessageItem({ message: m, departmentId }: { message: Message; de
   const internal = m.kind === 'Internal'
   const label = internal ? 'Internal note' : m.authorType === 'Requester' ? 'Requester message' : 'Public reply'
   const [formatted, setFormatted] = useState(false)
+  // Long messages start clamped so a thread stays scannable; one click shows the whole message.
+  const long = m.body.length > 900 || m.body.split(String.fromCharCode(10)).length > 14
+  const [expanded, setExpanded] = useState(false)
   return (
     <article
       id={`msg-${m.id}`}
@@ -167,7 +170,12 @@ export function MessageItem({ message: m, departmentId }: { message: Message; de
         </p>
       )}
       {/* Plain text by default: React escapes it and CSS preserves the line breaks. Mentioned colleagues are marked (text plus style). */}
-      {formatted && m.bodyHtml ? <FormattedBody html={m.bodyHtml} /> : <p className="msg-body">{internal && m.mentions?.length ? withMentions(m.body, m.mentions.map((x) => x.displayName)) : m.body}</p>}
+      {formatted && m.bodyHtml ? <FormattedBody html={m.bodyHtml} /> : <p className={`msg-body${long && !expanded ? ' clamped' : ''}`}>{internal && m.mentions?.length ? withMentions(m.body, m.mentions.map((x) => x.displayName)) : m.body}</p>}
+      {long && !(formatted && m.bodyHtml) && (
+        <button type="button" className="linklike small" aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>
+          {expanded ? 'Show less' : 'Show full message'}
+        </button>
+      )}
       {!internal && m.bodyHtml && (
         <button type="button" className="linklike small" aria-pressed={formatted} onClick={() => setFormatted((v) => !v)}>
           {formatted ? 'Show plain text' : 'Show formatted'}

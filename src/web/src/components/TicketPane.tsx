@@ -1,11 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState, type RefObject } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useMemo, useState, type RefObject } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { canTicket } from '../api/permissions'
 import { getTicket } from '../api/tickets'
 import { useMe } from '../auth'
 import { formatDateTime } from '../lib/format'
 import { usePref } from '../lib/prefs'
+import { neighbours, readQueueContext, saveQueueContext } from '../lib/queueContext'
+import { useShortcuts } from '../lib/shortcuts'
 import { useReportPresence, usePresence, type PresenceState } from '../lib/realtime'
 import { livePolling } from '../queries'
 import { ErrorNotice, Loading } from './common'
@@ -20,7 +22,7 @@ import PropertiesPanel from './PropertiesPanel'
 import TicketHeader from './TicketHeader'
 import { TicketDialogs, type TicketDialogName } from './TicketLinks'
 
-type Props = { ticketRef: string; backTo: string; composerRef: RefObject<ComposerHandle | null> }
+type Props = { ticketRef: string; composerRef: RefObject<ComposerHandle | null> }
 
 /** Below this width of the ticket pane the properties panel is an overlay instead of a docked column, so the conversation keeps usable room. */
 const DOCK_MIN_WIDTH = 690
@@ -37,8 +39,21 @@ function useNarrow(el: HTMLElement | null, limit: number) {
   return narrow
 }
 
-export default function TicketPane({ ticketRef, backTo, composerRef }: Props) {
+export default function TicketPane({ ticketRef, composerRef }: Props) {
   const qc = useQueryClient()
+  const navigate = useNavigate()
+  const location = useLocation()
+  // Where the agent came from (their filters, sort and place in the list) and the tickets either side of this one in that list.
+  const fromState = (location.state as { backTo?: string } | null)?.backTo
+  const nav = useMemo(() => {
+    if (fromState) saveQueueContext({ backTo: fromState, refs: readQueueContext()?.backTo === fromState ? readQueueContext()!.refs : [] })
+    return neighbours(readQueueContext(), ticketRef)
+  }, [fromState, ticketRef])
+  const backTo = fromState && nav.index < 0 ? fromState : nav.backTo
+  const goto = (ref: string | undefined) => {
+    if (ref) void navigate(`/tickets/${encodeURIComponent(ref)}`)
+  }
+  useShortcuts({ ']': (e) => { e.preventDefault(); goto(nav.next) }, '[': (e) => { e.preventDefault(); goto(nav.previous) } })
   const me = useMe()
   const ticket = useQuery({
     queryKey: ['ticket', ticketRef],
@@ -51,7 +66,7 @@ export default function TicketPane({ ticketRef, backTo, composerRef }: Props) {
   const [composing, setComposing] = useState<PresenceState | null>(null)
   const [root, setRoot] = useState<HTMLDivElement | null>(null)
   const narrow = useNarrow(root, DOCK_MIN_WIDTH)
-  const [docked, setDocked] = usePref('helpdesk.properties', ['open', 'closed'] as const, 'open')
+  const [docked, setDocked] = usePref('helpdesk.properties', ['open', 'closed'] as const, typeof window !== 'undefined' && window.innerWidth < 1400 ? 'closed' : 'open')
   const [overlayOpen, setOverlayOpen] = useState(false)
   const panelOpen = narrow ? overlayOpen : docked === 'open'
   const togglePanel = () => (narrow ? setOverlayOpen((v) => !v) : setDocked(docked === 'open' ? 'closed' : 'open'))
@@ -67,8 +82,15 @@ export default function TicketPane({ ticketRef, backTo, composerRef }: Props) {
 
   const back = (
     <Link to={backTo} className="back">
-      <Icon name="back" /> Back to list
+      <Icon name="back" /> Back to queue
     </Link>
+  )
+  const stepper = (
+    <span className="ticket-stepper" role="group" aria-label="Tickets in this queue">
+      {nav.previous ? <Link to={`/tickets/${encodeURIComponent(nav.previous)}`} className="button" rel="prev" aria-label={`Previous ticket, ${nav.previous}`} title="Previous ticket ([)">←</Link> : <span className="button disabled" aria-hidden="true">←</span>}
+      <span className="muted small" role="status">{nav.index >= 0 ? `${nav.index + 1} of ${nav.total}` : ''}</span>
+      {nav.next ? <Link to={`/tickets/${encodeURIComponent(nav.next)}`} className="button" rel="next" aria-label={`Next ticket, ${nav.next}`} title="Next ticket (])">→</Link> : <span className="button disabled" aria-hidden="true">→</span>}
+    </span>
   )
 
   if (ticket.isPending)
@@ -101,6 +123,7 @@ export default function TicketPane({ ticketRef, backTo, composerRef }: Props) {
           ticket={t}
           routeRef={ticketRef}
           back={back}
+          stepper={stepper}
           canUpdate={canUpdate}
           onProblem={setProblem}
           onOpen={setDialog}

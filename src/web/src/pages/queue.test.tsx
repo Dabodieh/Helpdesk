@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
+import { setDraft } from '../lib/drafts'
 import {
   agentMe,
   makeDetail,
@@ -67,21 +68,46 @@ test('pagination: one page is fetched, "Load more" follows the cursor and append
   expect(screen.getByRole('link', { name: 'Printer jam' })).toBeInTheDocument()
 })
 
-test('the open ticket is highlighted and stays selected when more rows load', async () => {
+test('a queue is a full-width list; a ticket opens on its own page with Back to queue, previous and next from that list', async () => {
+  window.sessionStorage.clear()
   mockFetch({
     ...workspaceRoutes(),
-    'GET /api/tickets': (c) => (query(c).get('cursor') === 'c1' ? page([T3]) : page([T1, T2], 'c1')),
+    'GET /api/tickets': () => page([T1, T2, T3]),
     'GET /api/tickets/IT-2': () => makeDetail({ id: 't2', reference: 'IT-2', subject: 'VPN down' }),
     'GET /api/tickets/t2/messages': () => page([]),
   })
-  renderApp('/queue/my/IT-2')
-  const link = await screen.findByRole('link', { name: 'VPN down' })
-  expect(link).toHaveAttribute('aria-current', 'true')
-  expect(link.closest('tr')).toHaveAttribute('data-selected')
-  fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
-  await screen.findByRole('link', { name: 'New laptop' })
-  expect(screen.getByRole('link', { name: 'VPN down' })).toHaveAttribute('aria-current', 'true')
-  expect(screen.getByRole('link', { name: 'Printer jam' })).not.toHaveAttribute('aria-current')
+  renderApp('/queue/my?status=Open')
+  fireEvent.click(await screen.findByRole('link', { name: 'VPN down' }))
+  expect(await screen.findByRole('heading', { name: 'VPN down', level: 2 })).toBeInTheDocument()
+  // the list is not on this page: the conversation has the width
+  expect(screen.queryByRole('searchbox', { name: 'Search tickets' })).not.toBeInTheDocument()
+  expect(screen.getByRole('link', { name: /Back to queue/ })).toHaveAttribute('href', '/queue/my?status=Open')
+  expect(screen.getByRole('link', { name: /Previous ticket, IT-1/ })).toHaveAttribute('href', '/tickets/IT-1')
+  expect(screen.getByRole('link', { name: /Next ticket, IT-3/ })).toHaveAttribute('href', '/tickets/IT-3')
+  expect(screen.getByText('2 of 3')).toBeInTheDocument()
+})
+
+test('an old split-view address forwards to the ticket page and still goes back to its list', async () => {
+  window.sessionStorage.clear()
+  mockFetch({
+    ...workspaceRoutes(),
+    'GET /api/tickets/IT-2': () => makeDetail({ id: 't2', reference: 'IT-2', subject: 'VPN down' }),
+    'GET /api/tickets/t2/messages': () => page([]),
+  })
+  renderApp('/queue/my/IT-2?priority=High')
+  expect(await screen.findByRole('heading', { name: 'VPN down', level: 2 })).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: /Back to queue/ })).toHaveAttribute('href', '/queue/my?priority=High')
+})
+
+test('a list row shows when the agent has an unsent draft on that ticket', async () => {
+  window.sessionStorage.clear()
+  setDraft('t1', 'half a reply')
+  mockFetch({ ...workspaceRoutes(), 'GET /api/tickets': () => page([T1, T2]) })
+  renderApp('/queue/all')
+  const row = (await screen.findByRole('link', { name: 'Printer jam' })).closest('tr')!
+  expect(within(row).getByText('Draft')).toBeInTheDocument()
+  expect(within(screen.getByRole('link', { name: 'VPN down' }).closest('tr')!).queryByText('Draft')).not.toBeInTheDocument()
+  setDraft('t1', '')
 })
 
 test('keyboard: j/k move the cursor, Enter opens the highlighted ticket', async () => {
@@ -176,7 +202,7 @@ test('Administration is offered for department.manage and hidden otherwise', asy
   expect(await screen.findByRole('link', { name: /Administration/ })).toHaveAttribute('href', '/admin')
 })
 
-test('a ticket URL (reference) opens the split workspace on a hard load, and a GUID works too', async () => {
+test('a ticket URL (reference) opens the ticket page on a hard load, and a GUID works too', async () => {
   const calls = mockFetch({
     ...workspaceRoutes(),
     'GET /api/tickets/IT-1042': () => makeDetail({ id: 'g-1042', reference: 'IT-1042', subject: 'Direct link ticket' }),
@@ -184,9 +210,8 @@ test('a ticket URL (reference) opens the split workspace on a hard load, and a G
   })
   renderApp('/tickets/IT-1042')
   expect(await screen.findByRole('heading', { name: 'Direct link ticket', level: 2 })).toBeInTheDocument()
-  // the list pane is there as well (split workspace), and the ticket is requested by the URL segment
-  expect(screen.getByRole('searchbox', { name: 'Search tickets' })).toBeInTheDocument()
   expect(calls.some((c) => c.path === '/api/tickets/IT-1042')).toBe(true)
+  expect(screen.getByRole('link', { name: /Back to queue/ })).toBeInTheDocument()
 })
 
 test('a missing or inaccessible ticket shows the neutral not-found message', async () => {

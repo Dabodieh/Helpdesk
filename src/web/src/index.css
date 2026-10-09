@@ -4044,3 +4044,81 @@ button, input, select, textarea { font-size: 14px; }
 :root[data-theme="light"] { --chart-info: #2f6fe0; }
 .kpi-button { align-items: flex-start; justify-content: flex-start; }
 @media (min-width: 1001px) { .shell:not(.rail-narrow):not(.rail-hidden) .app-rail .usermenu-name { display: flex; max-width: 120px; } }
+
+/* ---------- Ticket workspace: full-width queue and a dedicated ticket page ---------- */
+.workspace[data-layout] { display: block; height: 100%; min-height: 0; }
+.workspace[data-layout="list"] > .queue-pane { width: 100%; height: 100%; max-width: none; border-right: 0; }
+.workspace[data-layout="list"] .queue-scroll { padding: 0 6px 12px; }
+.workspace[data-layout="list"] .qtable { width: 100%; }
+.workspace[data-layout="list"] .qtable td { padding-top: 11px; padding-bottom: 11px; }
+.workspace[data-layout="list"] .qtable .col-subject { width: auto; min-width: 280px; }
+.workspace[data-layout="list"] .qtable .row-link { font-size: 15px; font-weight: 650; }
+.workspace[data-layout="list"] .qtable tbody tr { cursor: pointer; }
+.workspace[data-layout="list"] .qtable tbody tr:hover { background: var(--surface-2); }
+.workspace[data-layout="list"] .pane-head, .workspace[data-layout="list"] .filters { padding-left: 18px; padding-right: 18px; }
+.draft-tag { margin-left: 8px; padding: 1px 6px; border-radius: 4px; background: var(--internal-bg); color: var(--internal-text); border: 1px solid var(--internal-border); font-size: 12px; font-weight: 650; }
+
+.workspace[data-layout="ticket"] > .ticket-pane { height: 100%; }
+.workspace[data-layout="ticket"] .ticket-inner { height: 100%; }
+.workspace[data-layout="ticket"] .t-head { padding: 14px 28px 12px; border-bottom: 1px solid var(--border); background: var(--surface); }
+.t-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.t-title .grow { flex: 1; }
+.t-title .ref { padding: 2px 8px; border-radius: 5px; background: var(--surface-2); font-size: 14px; font-weight: 700; letter-spacing: .2px; }
+.dept-chip { padding: 2px 9px; border: 1px solid var(--border-strong); border-radius: 999px; color: var(--muted); font-size: 12.5px; }
+.ticket-stepper { display: inline-flex; align-items: center; gap: 6px; margin-left: 4px; }
+.ticket-stepper .button { display: inline-grid; place-items: center; min-width: 32px; height: 32px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: 7px; color: var(--text); text-decoration: none; background: var(--surface); }
+.ticket-stepper .button:hover { background: var(--hover); }
+.ticket-stepper .button.disabled { opacity: .35; }
+.t-head .subject, .t-head h1, .t-head h2 { font-size: 22px; line-height: 1.3; }
+.t-who { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin-top: 6px; }
+.t-state { display: inline-flex; gap: 8px; }
+.workspace[data-layout="ticket"] .ticket-main > .tabs { padding: 0 28px; background: var(--surface); }
+.workspace[data-layout="ticket"] .conv-scroll { padding: 18px 28px 12px; }
+.workspace[data-layout="ticket"] .conversation { max-width: 980px; margin: 0 auto; gap: 14px; }
+.workspace[data-layout="ticket"] .msg { padding: 14px 18px; border-radius: 10px; }
+.workspace[data-layout="ticket"] .msg-head { gap: 10px; margin-bottom: 8px; }
+.workspace[data-layout="ticket"] .msg-body { max-width: 78ch; font-size: 15px; line-height: 1.65; }
+.msg-body.clamped { display: -webkit-box; -webkit-line-clamp: 12; -webkit-box-orient: vertical; overflow: hidden; }
+.workspace[data-layout="ticket"] .msg-internal { border-left: 4px solid var(--internal-text); background: var(--internal-bg); }
+.workspace[data-layout="ticket"] .msg-internal .msg-head .kind { color: var(--internal-text); font-weight: 700; }
+.workspace[data-layout="ticket"] .composer { max-width: 980px; width: calc(100% - 56px); margin: 0 auto 14px; box-shadow: 0 -6px 18px #0004; background: var(--surface); }
+.workspace[data-layout="ticket"] .composer-internal { border-color: var(--internal-border); background: var(--internal-bg); }
+.workspace[data-layout="ticket"] .composer textarea { min-height: 96px; font-size: 15px; }
+.workspace[data-layout="ticket"] .props-panel { width: 340px; }
+@media (max-width: 1100px) {
+  .workspace[data-layout="ticket"] .t-head, .workspace[data-layout="ticket"] .ticket-main > .tabs { padding-left: 16px; padding-right: 16px; }
+  .workspace[data-layout="ticket"] .conv-scroll { padding-left: 16px; padding-right: 16px; }
+  .workspace[data-layout="ticket"] .composer { width: calc(100% - 32px); }
+}
+
+/* ---------- refinements after the first look ---------- */
+.workspace[data-layout="list"] .qtable { table-layout: fixed; }
+.workspace[data-layout="list"] .qtable .col-check { width: 40px; }
+.workspace[data-layout="list"] .qtable .col-ref { width: 84px; }
+.workspace[data-layout="list"] .qtable .col-requester { width: 170px; }
+.workspace[data-layout="list"] .qtable .col-status { width: 150px; white-space: normal; }
+.workspace[data-layout="list"] .qtable .col-prio { width: 112px; }
+.workspace[data-layout="list"] .qtable .col-sla { width: 104px; }
+.workspace[data-layout="list"] .qtable .col-assignee { width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace[data-layout="list"] .qtable .col-age { width: 84px; }
+.workspace[data-layout="list"] .qtable .col-subject { min-width: 0; overflow: hidden; }
+.workspace[data-layout="list"] .qtable .col-subject .row-link { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace[data-layout="list"] .qtable .col-requester { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace[data-layout="list"] .qtable .subline { display: none; }
+
+.workspace[data-layout="ticket"] .t-head { padding: 10px 24px 8px; }
+.workspace[data-layout="ticket"] .t-title { gap: 8px; }
+.workspace[data-layout="ticket"] .t-who { margin-top: 2px; font-size: 14px; }
+.workspace[data-layout="ticket"] .t-times { margin-left: auto; }
+.workspace[data-layout="ticket"] .props-panel { width: 310px; }
+.workspace[data-layout="ticket"] .composer { max-height: 44%; margin-bottom: 10px; }
+.workspace[data-layout="ticket"] .composer textarea { min-height: 70px; height: 74px; }
+.workspace[data-layout="ticket"] .ticket-main > .tabs { min-height: 38px; }
+.workspace[data-layout="ticket"] .conv-scroll { padding-top: 12px; }
+.workspace[data-layout="list"] .qtable .col-ref { width: 76px; }
+.workspace[data-layout="list"] .qtable .col-requester { width: 140px; }
+.workspace[data-layout="list"] .qtable .col-status { width: 124px; }
+.workspace[data-layout="list"] .qtable .col-prio { width: 100px; }
+.workspace[data-layout="list"] .qtable .col-sla { width: 90px; }
+.workspace[data-layout="list"] .qtable .col-assignee { width: 120px; }
+.workspace[data-layout="list"] .qtable .col-age { width: 70px; }

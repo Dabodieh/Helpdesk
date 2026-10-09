@@ -17,6 +17,7 @@ export default function TicketHeader({
   ticket: t,
   routeRef,
   back,
+  stepper,
   canUpdate,
   onProblem,
   onOpen,
@@ -26,6 +27,7 @@ export default function TicketHeader({
   ticket: TicketDetail
   routeRef: string
   back: ReactNode
+  stepper?: ReactNode
   canUpdate: boolean
   onProblem: (e: unknown) => void
   onOpen: (dialog: TicketDialogName) => void
@@ -45,8 +47,9 @@ export default function TicketHeader({
     <header className="t-head">
       <div className="t-title">
         {back}
+        {stepper}
         <span className="ref">{t.reference}</span>
-        <span className="muted small">{t.departmentName}</span>
+        <span className="dept-chip" title="Department">{t.departmentName}</span>
         <span className="grow" />
         {canUpdate && (
           <button type="button" onClick={() => onOpen('macro')}>
