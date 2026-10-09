@@ -4305,3 +4305,15 @@ dialog, .dialog, .dialog-panel { max-width: min(96vw, 760px); max-height: 92vh; 
   .app-rail .usermenu-trigger, .shell:not(.rail-narrow):not(.rail-hidden) .app-rail .usermenu-trigger { height: 32px; padding-top: 0; padding-bottom: 0; }
   .app-rail .avatar { width: 26px; height: 26px; }
 }
+
+/* The app shell is exactly one window tall at every zoom: html{zoom} multiplies lengths, so viewport-height values are divided by it. The window itself never scrolls
+   while the shell is present (pages scroll inside .main), so the sidebar's theme, shortcuts, collapse and account rows can never be pushed off screen. */
+:root { --ui-zoom: 1; }
+@media (min-width: 2200px) { :root { --ui-zoom: 1.2; } }
+@media (min-width: 3000px) { :root { --ui-zoom: 1.5; } }
+.shell { height: calc(100dvh / var(--ui-zoom)); }
+.department-page > .tabs-vertical > .tab-navigation { height: calc(100dvh / var(--ui-zoom) - 60px); }
+dialog, .dialog, .dialog-panel { max-height: calc(92vh / var(--ui-zoom)); }
+html:has(.shell), html:has(.shell) body { overflow: hidden; height: 100%; }
+/* Visually hidden text is absolutely positioned: contain it in the scrolling area so it can never stretch the window. */
+.shell, .main { position: relative; }
