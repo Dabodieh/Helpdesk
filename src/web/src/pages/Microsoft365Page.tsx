@@ -54,6 +54,8 @@ function Overview({ s }: { s: Microsoft365Status }) {
           <dd>Every {s.notifications.reconcileMinutes} min</dd>
           <dt>Subscription life</dt>
           <dd>{s.notifications.subscriptionLifetimeDays} days</dd>
+          <dt>System email</dt>
+          <dd>{s.systemMailbox ?? 'Not set (invitations are not emailed)'}</dd>
         </dl>
       </li>
       <li>

@@ -33,6 +33,7 @@ export const microsoft365Schema = z.object({
   issues: z.array(z.string()),
   provisioning,
   approvedDomains: z.array(z.string()),
+  systemMailbox: z.string().nullable().optional(),
 })
 export type Microsoft365Status = z.infer<typeof microsoft365Schema>
 

@@ -12,6 +12,8 @@ import DepartmentPage from './pages/DepartmentPage'
 import DepartmentsPage from './pages/DepartmentsPage'
 import Landing from './pages/Landing'
 import Microsoft365Page from './pages/Microsoft365Page'
+import ActivatePage from './pages/ActivatePage'
+import PeoplePage from './pages/PeoplePage'
 import RequesterPage from './pages/RequesterPage'
 import ProfilePage from './pages/ProfilePage'
 import ResponsesPage from './pages/ResponsesPage'
@@ -38,6 +40,7 @@ function AdminLayout() {
           <NavLink to="/admin/departments" end>Departments</NavLink>
           <span className="rail-heading">Platform</span>
           <NavLink to="/admin/status">System status</NavLink>
+          {me.isPlatformAdmin && <NavLink to="/admin/people">People</NavLink>}
           {me.isPlatformAdmin && <NavLink to="/admin/microsoft-365">Microsoft 365</NavLink>}
         </nav>
         <p className="sidebar-note">Department membership controls access to service data.</p>
@@ -66,6 +69,9 @@ export function AppRoutes() {
         <Route path="knowledge" element={<KnowledgeHome />} />
         <Route path="knowledge/:slug" element={<KnowledgeArticle />} />
       </Route>
+      <Route path="activate/:token" element={<RequireAuth layout="portal" />}>
+        <Route index element={<ActivatePage />} />
+      </Route>
       <Route element={<RequireAuth />}>
         <Route index element={<Landing />} />
         <Route path="queue/:queue/:ticket?" element={<WorkspacePage mode="queue" />} />
@@ -82,6 +88,7 @@ export function AppRoutes() {
           <Route path="departments" element={<DepartmentsPage />} />
           <Route path="departments/:departmentId" element={<DepartmentPage />} />
           <Route path="status" element={<StatusPage />} />
+          <Route path="people" element={<PeoplePage />} />
           <Route path="microsoft-365" element={<Microsoft365Page />} />
         </Route>
         <Route
