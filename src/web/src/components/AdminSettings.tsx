@@ -12,7 +12,7 @@ export function DepartmentSelect({ departments, value, onChange, disabled = fals
   </select></label>
 }
 export function SettingsSearch({ value, onChange, label = 'Search administration settings' }: { value: string; onChange: (value: string) => void; label?: string }) {
-  return <div className="settings-search"><Icon name="search" size={20} /><input type="search" aria-label={label} placeholder="Search settings, e.g. mailboxes or SLA…" value={value} onChange={e => onChange(e.target.value)} />{value && <button type="button" className="ghost" aria-label="Clear settings search" onClick={() => onChange('')}>Clear</button>}</div>
+  return <div className="settings-search"><Icon name="search" size={20} /><input type="search" aria-label={label} placeholder="Search settings…" value={value} onChange={e => onChange(e.target.value)} />{value && <button type="button" className="ghost" aria-label="Clear settings search" onClick={() => onChange('')}>Clear</button>}</div>
 }
 export function SettingsCatalog({ settings, departmentId, states, search = '', category = '' }: { settings: AdminSetting[]; departmentId: string; states: Record<string, ConfigurationState>; search?: string; category?: string }) {
   const visible = settings.filter(s => (!category || s.category === category) && matchesSetting(s, search))

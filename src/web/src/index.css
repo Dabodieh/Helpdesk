@@ -4122,3 +4122,62 @@ button, input, select, textarea { font-size: 14px; }
 .workspace[data-layout="list"] .qtable .col-sla { width: 90px; }
 .workspace[data-layout="list"] .qtable .col-assignee { width: 120px; }
 .workspace[data-layout="list"] .qtable .col-age { width: 70px; }
+
+/* =====================================================================
+   Layout primitives. One definition of how tables, list rows, form fields,
+   section heads and empty states align, so screens do not need their own offsets.
+   ===================================================================== */
+
+/* Data tables: every header aligns with its data, text is vertically centred, numbers right-aligned. */
+table.grid, .department-table, .report-table table, .drill-panel table { width: 100%; border-collapse: collapse; }
+table.grid th, .department-table th, .report-table th, .drill-panel th {
+  padding: 10px 14px; text-align: left; vertical-align: middle; white-space: nowrap;
+  font-size: 12.5px; font-weight: 650; letter-spacing: .5px; text-transform: uppercase; color: var(--muted);
+  border-bottom: 1px solid var(--border-strong); background: transparent;
+}
+table.grid td, .department-table td, .report-table td, .drill-panel td {
+  padding: 10px 14px; text-align: left; vertical-align: middle; font-size: 14px; line-height: 1.45;
+  border-bottom: 1px solid var(--border); overflow-wrap: anywhere;
+}
+table.grid th.num, table.grid td.num, .report-table .num, .drill-panel .num { text-align: right; font-variant-numeric: tabular-nums; }
+table.grid td > .row-actions, table.grid td.actions, .department-table td.actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+table.grid td select, table.grid td input { margin: 0; }
+
+/* List rows that carry a title block between a leading and a trailing control group (ticket types, request forms, fields). */
+.form-card-head {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px 14px;
+  padding: 10px 14px; text-align: left;
+}
+.form-card-head > div { min-width: 0; text-align: left; }
+.form-card-head > div > strong { margin-right: 6px; overflow-wrap: anywhere; }
+.form-card-head p { margin: 2px 0 0; overflow-wrap: anywhere; }
+.form-card-head .row-actions { display: inline-flex; align-items: center; gap: 6px; }
+.form-card { margin: 0 0 8px; }
+@media (max-width: 720px) {
+  .form-card-head { grid-template-columns: auto minmax(0, 1fr); }
+  .form-card-head > .row-actions:last-child { grid-column: 1 / -1; justify-content: flex-end; }
+}
+
+/* Section heads: title on the left, actions on the right, same baseline everywhere. */
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; margin: 4px 0 10px; }
+.section-head h2, .section-head h3 { margin: 0; }
+.section-head + p, .section-head + .muted { margin-top: 0; }
+
+/* Empty states sit inside the content column, not inset from it. */
+.empty { margin: 12px 0; }
+
+/* Form fields: label above control, controls share one height and width logic, messages do not move neighbours. */
+.field, .dialog-form .field { display: flex; flex-direction: column; gap: 5px; text-align: left; }
+.field > label, .field > span:first-child { font-size: 13px; font-weight: 600; color: var(--muted); }
+.field input, .field select, .field textarea { width: 100%; }
+.field .field-error, .field .hint { margin: 0; min-height: 0; font-size: 12.5px; line-height: 1.35; }
+.dialog-form { display: flex; flex-direction: column; gap: 14px; }
+.dialog-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* Controls: one height, text centred vertically, icons aligned with the label. */
+input[type="text"], input[type="search"], input[type="email"], input[type="number"], input[type="date"], select { min-height: var(--ctl-h); }
+.badge, .pill, .count { display: inline-flex; align-items: center; line-height: 1.2; vertical-align: middle; }
+.icon, svg.icon { flex: none; vertical-align: middle; }
+
+/* Cards and panels share one padding and heading rhythm. */
+.card, .form-card, .chart-card, .report-table, .kpi, .report-card { box-sizing: border-box; }

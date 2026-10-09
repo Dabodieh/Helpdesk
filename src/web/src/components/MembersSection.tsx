@@ -169,7 +169,7 @@ export default function MembersSection({ department }: { department: Department 
       {members.isError && <ErrorNotice error={members.error} onRetry={() => void members.refetch()} />}
       {members.data && members.data.length === 0 && <p>No members yet.</p>}
       {members.data && members.data.length > 0 && (
-        <table>
+        <table className="grid">
           <caption className="sr-only">Department members</caption>
           <thead>
             <tr>
