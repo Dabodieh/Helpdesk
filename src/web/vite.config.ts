@@ -6,6 +6,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    // Reachable from the Cloudflare tunnel on this machine (it connects to the LAN address); only this public hostname is accepted besides localhost.
+    host: true,
+    allowedHosts: ['helpdesk.amb-it.co.uk'],
     // Same-origin to the browser, so cookie auth + CSRF behave as in production.
     proxy: {
       '/api': 'http://localhost:5080',
