@@ -4,6 +4,7 @@ import { canTicket } from '../api/permissions'
 import { attachmentHref, listMessages, retryDelivery } from '../api/tickets'
 import type { Attachment, Message } from '../api/ticketSchemas'
 import { useMe } from '../auth'
+import { imageIdsOf, renderBodyWithImages } from '../lib/inlineImages'
 import { pollInterval } from '../lib/realtime'
 import { useLocation } from 'react-router-dom'
 import { formatDateTime } from '../lib/format'
@@ -145,6 +146,9 @@ export function MessageItem({ message: m, departmentId }: { message: Message; de
   // Long messages start clamped so a thread stays scannable; one click shows the whole message.
   const long = m.body.length > 900 || m.body.split(String.fromCharCode(10)).length > 14
   const [expanded, setExpanded] = useState(false)
+  // Pasted images are shown in the text; only real attachments are listed.
+  const shown = imageIdsOf(m.body)
+  const listed = m.attachments.filter((a) => !shown.includes(a.id.toLowerCase()))
   return (
     <article
       id={`msg-${m.id}`}
@@ -170,7 +174,7 @@ export function MessageItem({ message: m, departmentId }: { message: Message; de
         </p>
       )}
       {/* Plain text by default: React escapes it and CSS preserves the line breaks. Mentioned colleagues are marked (text plus style). */}
-      {formatted && m.bodyHtml ? <FormattedBody html={m.bodyHtml} /> : <p className={`msg-body${long && !expanded ? ' clamped' : ''}`}>{internal && m.mentions?.length ? withMentions(m.body, m.mentions.map((x) => x.displayName)) : m.body}</p>}
+      {formatted && m.bodyHtml ? <FormattedBody html={m.bodyHtml} /> : <p className={`msg-body${long && !expanded ? ' clamped' : ''}`}>{renderBodyWithImages(m.body, m.attachments, (id) => attachmentHref(m.ticketId, id), internal && m.mentions?.length ? (t) => withMentions(t, m.mentions!.map((x) => x.displayName)) : undefined)}</p>}
       {long && !(formatted && m.bodyHtml) && (
         <button type="button" className="linklike small" aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>
           {expanded ? 'Show less' : 'Show full message'}
@@ -181,7 +185,7 @@ export function MessageItem({ message: m, departmentId }: { message: Message; de
           {formatted ? 'Show plain text' : 'Show formatted'}
         </button>
       )}
-      {m.attachments.length > 0 && <AttachmentList ticketId={m.ticketId} items={m.attachments} />}
+      {listed.length > 0 && <AttachmentList ticketId={m.ticketId} items={listed} />}
       <Delivery message={m} departmentId={departmentId} />
     </article>
   )

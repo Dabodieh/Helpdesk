@@ -4228,3 +4228,10 @@ dialog, .dialog, .dialog-panel { max-width: min(96vw, 760px); max-height: 92vh; 
   .workspace[data-layout="ticket"] .composer { max-height: 40%; }
   .page.dashboard, .main > .page { padding-top: 12px; }
 }
+
+/* Pasted images: thumbnails in the composer, inline images in messages. */
+.composer-images { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.composer-images li { position: relative; border: 1px solid var(--border); border-radius: 6px; padding: 3px; }
+.composer-images img { display: block; max-height: 72px; max-width: 120px; border-radius: 4px; }
+.composer-images button { position: absolute; top: -8px; right: -8px; width: 20px; height: 20px; min-height: 0; padding: 0; line-height: 1; border-radius: 50%; }
+.msg-img, .bubble-body img { display: block; max-width: min(100%, 520px); height: auto; margin: 8px 0; border: 1px solid var(--border); border-radius: 6px; }

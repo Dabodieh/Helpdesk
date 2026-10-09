@@ -6,10 +6,15 @@ import { fieldErrors } from '../../api/errors'
 import { getPortalRequest, portalAttachmentHref, replyToRequest } from '../../api/portal'
 import { ErrorNotice, Field, Loading } from '../../components/common'
 import { formatDateTime } from '../../lib/format'
+import { imageIdsOf, renderBodyWithImages } from '../../lib/inlineImages'
 import { pollInterval } from '../../lib/realtime'
 import { StatusBadge } from './parts'
 
 const MAX_FILES = 5
+
+/** Pasted images are shown in the text; only real attachments are listed. */
+const listed = (m: { body: string; attachments: { id: string; fileName: string; size: number; downloadable: boolean }[] }) =>
+  m.attachments.filter((a) => !imageIdsOf(m.body).includes(a.id.toLowerCase()))
 
 const formatBytes = (n: number) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`)
 
@@ -121,10 +126,10 @@ function PortalRequest({ reference }: { reference: string }) {
               <header>
                 <strong>{m.author}</strong> <time className="muted small" dateTime={m.at}>{formatDateTime(m.at)}</time>
               </header>
-              <p className="bubble-body">{m.body}</p>
-              {m.attachments.length > 0 && (
+              <p className="bubble-body">{renderBodyWithImages(m.body, m.attachments, (id) => portalAttachmentHref(r.reference, id))}</p>
+              {listed(m).length > 0 && (
                 <ul className="attachments" aria-label="Attachments">
-                  {m.attachments.map((a) => (
+                  {listed(m).map((a) => (
                     <li key={a.id}>
                       {a.downloadable ? (
                         <a href={portalAttachmentHref(r.reference, a.id)} download>

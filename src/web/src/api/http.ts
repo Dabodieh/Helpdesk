@@ -82,12 +82,13 @@ const UNSAFE = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 export async function api<T = void>(
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   path: string,
-  opts: { body?: unknown; schema?: z.ZodType<T> } = {},
+  opts: { body?: unknown; schema?: z.ZodType<T>; raw?: Blob } = {},
 ): Promise<T> {
   const unsafe = UNSAFE.has(method)
   for (let attempt = 0; ; attempt++) {
     const headers: Record<string, string> = { Accept: 'application/json' }
-    if (opts.body !== undefined) headers['Content-Type'] = 'application/json'
+    if (opts.raw) headers['Content-Type'] = opts.raw.type || 'application/octet-stream'
+    else if (opts.body !== undefined) headers['Content-Type'] = 'application/json'
     if (unsafe) {
       const token = await getCsrf()
       headers[token.headerName] = token.token
@@ -98,7 +99,7 @@ export async function api<T = void>(
         method,
         headers,
         credentials: 'same-origin',
-        body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+        body: opts.raw ?? (opts.body === undefined ? undefined : JSON.stringify(opts.body)),
       })
     } catch {
       throw new ApiError(0, 'Network error', 'The server could not be reached.')

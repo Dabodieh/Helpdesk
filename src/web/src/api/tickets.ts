@@ -88,6 +88,15 @@ export const listMessages = (ticket: string, cursor: string | null, limit = 50) 
 export const postMessage = (ticket: string, body: { kind: 'Public' | 'Internal'; body: string; status?: string; mentionUserIds?: string[]; clientMessageId?: string }) =>
   api('POST', `${tk(ticket)}/messages`, { body, schema: postMessageResultSchema })
 
+const inlineImageSchema = z.object({ id: z.string(), url: z.string(), contentType: z.string(), size: z.number() })
+
+/** Whether the composer may offer image pasting: the server-side attachment switch, never a client decision. */
+export const getTicketCapabilities = () =>
+  api('GET', '/api/ticket-capabilities', { schema: z.object({ attachmentsEnabled: z.boolean(), maxInlineImageBytes: z.number() }) })
+
+/** Uploads a pasted image as raw bytes. It stays pending (usable only by its author on this ticket) until a message that names it is posted. */
+export const uploadInlineImage = (ticket: string, image: Blob) => api('POST', `${tk(ticket)}/inline-images`, { raw: image, schema: inlineImageSchema })
+
 /** Eligible colleagues for an @mention in an internal note of this ticket (this department only; the server decides eligibility). */
 export const searchMentionable = (ticket: string, q: string) =>
   api('GET', `${tk(ticket)}/mentionable?q=${encodeURIComponent(q)}`, { schema: z.array(z.object({ userId: z.string(), displayName: z.string() })) })

@@ -1,18 +1,22 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
 import { getSignature } from '../api/emailIdentity'
-import { postMessage, searchMentionable } from '../api/tickets'
+import { getTicketCapabilities, postMessage, searchMentionable, uploadInlineImage } from '../api/tickets'
+import { describeError } from '../api/errors'
 import { FOCUS_REPLY_EVENT } from './SilentResolveDialog'
 import { canTicket } from '../api/permissions'
 import { STATUSES, type TicketDetail } from '../api/ticketSchemas'
 import { useMe } from '../auth'
 import { useApplyTicket } from '../hooks/useApplyTicket'
 import { getDraft, setDraft } from '../lib/drafts'
+import { imageMarker, MAX_PASTED_IMAGES, PASTE_TYPES } from '../lib/inlineImages'
 import ArticleLinkPicker from './ArticleLinkPicker'
 import CannedPicker from './CannedPicker'
 import CcRecipients from './CcRecipients'
 import { Icon } from './icons'
 import ProblemBanner from './ProblemBanner'
+
+type PendingImage = { id: string; name: string; preview: string | null }
 
 export type ComposerMode = 'Public' | 'Internal'
 export type ComposerHandle = { focus: (mode: ComposerMode) => void; insertDraft: (text: string) => void }
@@ -51,6 +55,12 @@ export default function Composer({
   const [mentioned, setMentioned] = useState<{ userId: string; displayName: string }[]>([])
   const [caret, setCaret] = useState(0)
   const area = useRef<HTMLTextAreaElement>(null)
+  // Pasted images: uploaded at once as pending (author-only) files and named in the message at send. Whether this is offered is decided by the server's attachment switch.
+  const capabilities = useQuery({ queryKey: ['ticket-capabilities'], queryFn: getTicketCapabilities, staleTime: 30_000, retry: false })
+  const imagesEnabled = capabilities.data?.attachmentsEnabled === true
+  const [images, setImages] = useState<PendingImage[]>([])
+  const [uploading, setUploading] = useState(0)
+  const [imageNote, setImageNote] = useState<string | null>(null)
   // Only to tell the agent what will be appended; the server resolves the real signature when the reply is sent.
   const signature = useQuery({ queryKey: ['signature', ticket.departmentId], queryFn: () => getSignature(ticket.departmentId), enabled: canReply, retry: false, staleTime: 60_000 })
 
@@ -112,6 +122,50 @@ ${draft}` : draft
     })
   }
 
+  async function addImages(files: File[]) {
+    if (!imagesEnabled) {
+      setImageNote('Image uploads are unavailable.')
+      return
+    }
+    setImageNote(null)
+    const limit = capabilities.data?.maxInlineImageBytes ?? 0
+    let count = images.length
+    for (const file of files) {
+      if (!PASTE_TYPES.includes(file.type)) {
+        setImageNote('Only PNG, JPEG and GIF images can be added.')
+        continue
+      }
+      if (count >= MAX_PASTED_IMAGES) {
+        setImageNote(`At most ${MAX_PASTED_IMAGES} images per message.`)
+        break
+      }
+      if (limit > 0 && file.size > limit) {
+        setImageNote(`That image is larger than ${Math.floor(limit / (1024 * 1024))} MB.`)
+        continue
+      }
+      count++
+      setUploading((n) => n + 1)
+      try {
+        const up = await uploadInlineImage(ticket.id, file)
+        const preview = typeof URL.createObjectURL === 'function' ? URL.createObjectURL(file) : null
+        setImages((cur) => [...cur, { id: up.id, name: file.name || 'Pasted image', preview }])
+      } catch (e) {
+        count--
+        setImageNote(describeError(e))
+      } finally {
+        setUploading((n) => n - 1)
+      }
+    }
+  }
+
+  function removeImage(id: string) {
+    setImages((cur) => {
+      const gone = cur.find((i) => i.id === id)
+      if (gone?.preview) URL.revokeObjectURL(gone.preview)
+      return cur.filter((i) => i.id !== id)
+    })
+  }
+
   const picked = mentioned.filter((m) => text.includes(`@${m.displayName}`)).map((m) => m.userId)
   const mentionIds = picked.length > 0 ? picked : undefined
   // One id per composed message, kept across retries and double clicks so the server never posts it twice; a new one after it was accepted.
@@ -126,7 +180,7 @@ ${draft}` : draft
       postMessage(ticket.id, {
         clientMessageId: clientMessageId.current,
         kind: effectiveMode,
-        body: text.trim(),
+        body: [text.trim(), ...images.map((i) => imageMarker(i.id))].filter(Boolean).join(String.fromCharCode(10)),
         status: statusAfter && statusAfter !== ticket.status ? statusAfter : undefined,
         mentionUserIds: effectiveMode === 'Internal' ? mentionIds : undefined,
       }),
@@ -135,6 +189,9 @@ ${draft}` : draft
       setDraft(ticket.id, '')
       setText('')
       setMentioned([])
+      for (const i of images) if (i.preview) URL.revokeObjectURL(i.preview)
+      setImages([])
+      setImageNote(null)
       setStatusAfter('')
       apply(res.ticket)
     },
@@ -165,11 +222,11 @@ ${draft}` : draft
     })
   }
 
-  const nothing = text.trim().length === 0
+  const nothing = text.trim().length === 0 && images.length === 0
 
   function submit(e?: FormEvent) {
     e?.preventDefault()
-    if (nothing || send.isPending) return
+    if (nothing || send.isPending || uploading > 0) return
     send.mutate()
   }
 
@@ -235,6 +292,21 @@ ${draft}` : draft
           setDraft(ticket.id, e.target.value)
         }}
         onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
+        onPaste={(e) => {
+          const files = [...e.clipboardData.files].filter((f) => f.type.startsWith('image/'))
+          if (files.length === 0) return
+          e.preventDefault()
+          void addImages(files)
+        }}
+        onDragOver={(e) => {
+          if (e.dataTransfer.types.includes('Files')) e.preventDefault()
+        }}
+        onDrop={(e) => {
+          const files = [...e.dataTransfer.files]
+          if (files.length === 0) return
+          e.preventDefault()
+          void addImages(files)
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
             e.preventDefault()
@@ -245,6 +317,28 @@ ${draft}` : draft
           }
         }}
       />
+      {images.length > 0 && (
+        <ul className="composer-images" aria-label="Pasted images">
+          {images.map((i) => (
+            <li key={i.id}>
+              {i.preview ? <img src={i.preview} alt={i.name} /> : <span className="muted small">{i.name}</span>}
+              <button type="button" className="icon-btn" aria-label={`Remove image ${i.name}`} onClick={() => removeImage(i.id)}>
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {uploading > 0 && (
+        <p className="muted small" role="status">
+          Adding image…
+        </p>
+      )}
+      {imageNote && (
+        <p className="notice warn small" role="status">
+          {imageNote}
+        </p>
+      )}
       {internal && query.length >= 2 && found.data && (
         <div className="mention-picker" role="group" aria-label="Mention a colleague">
           <span className="sr-only" role="status">
@@ -286,7 +380,7 @@ ${draft}` : draft
         <span className="muted small send-hint">
           <kbd>Ctrl</kbd>+<kbd>Enter</kbd> sends
         </span>
-        <button type="submit" className="primary" disabled={nothing || send.isPending}>
+        <button type="submit" className="primary" disabled={nothing || send.isPending || uploading > 0}>
           {send.isPending ? 'Posting…' : internal ? 'Add internal note' : 'Post public reply'}
         </button>
       </div>

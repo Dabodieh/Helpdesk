@@ -29,7 +29,7 @@ export function mockFetch(handlers: Handlers) {
       method,
       path,
       headers: (init?.headers ?? {}) as Record<string, string>,
-      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      body: init?.body ? (typeof init.body === 'string' ? JSON.parse(init.body) : init.body) : undefined,
     }
     calls.push(call)
     // Exact match including the query string first, then the bare path.
