@@ -61,6 +61,8 @@ export default function Composer({
   // The image is written into the text at the cursor as [image:ID] (so its position is kept and the draft keeps it); the thumbnails below are read from those markers.
   const previews = useRef(new Map<string, string>())
   const [uploading, setUploading] = useState(0)
+  // Placeholders of an inserted canned response that had no value for this ticket (the server says which); the agent checks the text before sending.
+  const [emptyTokens, setEmptyTokens] = useState<string[]>([])
   const [imageNote, setImageNote] = useState<string | null>(null)
   // Only to tell the agent what will be appended; the server resolves the real signature when the reply is sent.
   const signature = useQuery({ queryKey: ['signature', ticket.departmentId], queryFn: () => getSignature(ticket.departmentId), enabled: canReply, retry: false, staleTime: 60_000 })
@@ -109,7 +111,8 @@ ${draft}` : draft
   }, [handleRef, publicBlocked, canNote, text, ticket.id])
 
   /** Insert canned text at the cursor (or replace the selection). Nothing is posted; the agent reviews and submits. */
-  function insertText(snippet: string) {
+  function insertText(snippet: string, empty: string[] = []) {
+    setEmptyTokens(empty)
     const el = area.current
     const start = el?.selectionStart ?? text.length
     const end = el?.selectionEnd ?? text.length
@@ -222,6 +225,7 @@ ${draft}` : draft
       for (const url of previews.current.values()) URL.revokeObjectURL(url)
       previews.current.clear()
       setImageNote(null)
+      setEmptyTokens([])
       setStatusAfter('')
       apply(res.ticket)
     },
@@ -365,6 +369,14 @@ ${draft}` : draft
           Adding image…
         </p>
       )}
+      {emptyTokens.length > 0 && (
+        <p className="notice warn small" role="status">
+          No value for {emptyTokens.map((t) => (t.startsWith('{') ? t : `{{${t}}}`)).join(', ')} on this ticket. Check the text before you send.{' '}
+          <button type="button" className="linklike" onClick={() => setEmptyTokens([])}>
+            Dismiss
+          </button>
+        </p>
+      )}
       {imageNote && (
         <p className="notice warn small" role="status">
           {imageNote}
@@ -408,10 +420,7 @@ ${draft}` : draft
           </label>
         )}
         <span className="grow" />
-        <span className="muted small send-hint">
-          <kbd>Ctrl</kbd>+<kbd>Enter</kbd> sends
-        </span>
-        <button type="submit" className="primary" disabled={nothing || send.isPending || uploading > 0}>
+        <button type="submit" className="primary" title="Ctrl+Enter" disabled={nothing || send.isPending || uploading > 0}>
           {send.isPending ? 'Posting…' : internal ? 'Add internal note' : 'Post public reply'}
         </button>
       </div>

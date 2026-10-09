@@ -10,7 +10,7 @@ import { Icon } from './icons'
  * Insert a canned response into the composer. Picking one only inserts its text: the agent still reviews and submits it, nothing is
  * ever posted or sent automatically.
  */
-export default function CannedPicker({ departmentId, ticketId, onPick }: { departmentId: string; ticketId: string; onPick: (text: string) => void }) {
+export default function CannedPicker({ departmentId, ticketId, onPick }: { departmentId: string; ticketId: string; onPick: (text: string, emptyPlaceholders: string[]) => void }) {
   const [open, setOpen] = useState(false)
   const [failure, setFailure] = useState<unknown>(null)
   const [filter, setFilter] = useState('')
@@ -26,7 +26,7 @@ export default function CannedPicker({ departmentId, ticketId, onPick }: { depar
     setFailure(null)
     try {
       const rendered = await renderCanned(ticketId, c.id)
-      onPick(rendered.body)
+      onPick(rendered.body, rendered.emptyPlaceholders)
       setOpen(false)
       setFilter('')
     } catch (error) {

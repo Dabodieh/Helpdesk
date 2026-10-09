@@ -4235,3 +4235,7 @@ dialog, .dialog, .dialog-panel { max-width: min(96vw, 760px); max-height: 92vh; 
 .composer-images img { display: block; max-height: 72px; max-width: 120px; border-radius: 4px; }
 .composer-images button { position: absolute; top: -8px; right: -8px; width: 20px; height: 20px; min-height: 0; padding: 0; line-height: 1; border-radius: 50%; }
 .msg-img, .bubble-body img { display: block; max-width: min(100%, 520px); height: auto; margin: 8px 0; border: 1px solid var(--border); border-radius: 6px; }
+
+/* Composer: a roomier writing area; short screens give the height back. */
+.composer textarea { min-height: 120px; height: 150px; }
+@media (max-height: 760px) { .composer textarea { min-height: 84px; height: 100px; } }

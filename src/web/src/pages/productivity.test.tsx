@@ -45,6 +45,20 @@ test('canned response: picking inserts the text rendered for this ticket into th
   expect(calls.some((c) => c.method === 'POST')).toBe(false)
 })
 
+test('canned response: a placeholder with no value for this ticket is flagged before sending', async () => {
+  mockFetch({
+    ...routes(),
+    'GET /api/tickets/t1/canned-responses/c1/render': () => json({ id: 'c1', title: 'Reset password', body: 'Hello ,', emptyPlaceholders: ['requester.name'] }),
+  })
+  renderApp('/queue/my/IT-1')
+  await screen.findByRole('heading', { name: 'Printer jam', level: 2 })
+  fireEvent.click(screen.getByRole('button', { name: /Insert response/ }))
+  fireEvent.click(await within(await screen.findByRole('dialog')).findByRole('button', { name: /Reset password/ }))
+  expect(await screen.findByText(/No value for \{\{requester\.name\}\} on this ticket/)).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
+  expect(screen.queryByText(/No value for/)).not.toBeInTheDocument()
+})
+
 test('queue rows can be selected and the bulk bar appears', async () => {
   mockFetch({ ...workspaceRoutes(agentMe()), 'GET /api/tickets': () => page([makeTicket({ id: 't1', reference: 'IT-1', subject: 'Printer jam' })]) })
   renderApp('/queue/my')
