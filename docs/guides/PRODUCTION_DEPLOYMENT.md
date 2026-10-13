@@ -9,7 +9,7 @@ Reference topology (ADR-020): `docker/production/` runs one Helpdesk container (
 4. `... up -d`. The first sign-in of the `BOOTSTRAP_PLATFORM_ADMIN_SUBJECT` identity becomes the Platform Admin; mailboxes are then registered by a Platform Admin (ADR-019).
 
 ## Settings the host insists on (it refuses to start otherwise)
-`Proxy__KnownProxies` / `Proxy__KnownNetworks` (the proxy's address; compose pins Nginx at 172.29.0.10), `AllowedHosts` (public host name), `Storage__Provider=S3`, `Attachments__RequireCleanScan=true`, Entra, Graph and S3 credentials. `Realtime__AllowedOrigins__0` is the public https origin of the site.
+`Proxy__KnownProxies` / `Proxy__KnownNetworks` (the proxy's address; compose pins Nginx at 172.29.0.10), `AllowedHosts` (public host name), `Storage__Provider=S3`, `Attachments__RequireCleanScan=true`, Entra, Graph and S3 credentials. `Realtime__AllowedOrigins__0` is the public https origin of the site. It also refuses: an empty `Database__ConnectionString`, `Database__MigrateOnStartup=true` (migrations are the explicit one-off `migrate` run), non-https `Realtime__AllowedOrigins`, and `Serilog__MinimumLevel__Default` of Debug or Verbose. Infrastructure rate limits (sign-in and OIDC per client address, Graph webhooks per address, invitations and administrative writes per user; section `RateLimits`) are always on in production; the numbers are provisional. `BIND_ADDRESS` (default `0.0.0.0`; the Windows example sets `127.0.0.1`) chooses the host interface that publishes the proxy. See `docs/reports/PRODUCTION-HARDENING.md`.
 
 ## Headers
 Only the application sets security headers (CSP, framing, nosniff, referrer policy, Permissions-Policy denying camera/microphone/geolocation, and same-origin COOP/CORP). Do not add them in Nginx. Verify they survive the real proxy on pages, assets, API errors and sign-in redirects. Full-page Entra sign-in is supported; review the policy before introducing popup authentication or cross-origin resource consumers. HSTS and real-browser behaviour still require deployment evidence.
@@ -35,3 +35,24 @@ Monitoring and the malware scanner are separate gates (see the remediation statu
 
 ## Invitation URL logging (2026-10-12)
 New invitation links use `/activate#<token>`; the fragment never reaches the HTTP server. The browser keeps it in tab-scoped session storage through sign-in and uses `/activate` as the return URL. Existing `/activate/<token>` emails still work, but their initial request necessarily reaches the reverse proxy. Redact those legacy paths to `/activate` in proxy/access-log and tracing configuration, and restrict access to existing logs according to your policy. Application request-completion logs redact the legacy path. Do not enable request-body logging on invitation POST endpoints. This release does not scrub old logs.
+
+## Data Protection key encryption at rest (optional, gate F-04)
+
+The key ring in `identity.data_protection_keys` is plain by default: anyone who can read the database or a backup can read the keys (and with them forge sessions or decrypt the stored Entra secret). With a certificate configured the host encrypts **new** keys with the certificate's public key; reading them needs the private key, which lives only in a PFX file you supply.
+
+| Setting (env name in compose) | Meaning |
+|---|---|
+| `DataProtection__CertificatePath` (`DP_CERT_PATH`) | In-container path of the PFX (RSA, with private key, not expired). |
+| `DataProtection__CertificatePasswordFile` (`DP_CERT_PASSWORD_FILE`) | In-container path of a file holding the PFX password (preferred). `DataProtection__CertificatePassword` also works for non-production only. |
+| `DataProtection__PreviousCertificatePaths__0..n` | Earlier certificates, used only to read keys they protected. |
+| `DataProtection__RequireCertificate` (`DP_REQUIRE_CERT`) | `true` makes a production host refuse to start without a certificate. Off until the policy is approved. |
+
+**Rules:** the PFX and the password file are never in Git or in an image; mount them read-only from a folder outside the repository whose NTFS permissions allow only the account that runs Docker, using a compose override (`volumes: ["C:\\HelpdeskSecrets\\dp:/run/dp:ro"]` on the `helpdesk` and `migrate` services). A configured certificate that is missing, expired, wrong-password or public-only stops the start; there is no fallback to plain keys, and no message prints a password.
+
+**Existing keys are not touched.** Plain keys stay readable and are replaced by encrypted ones as the ring rolls (a key lives 90 days). Forcing every key to be re-protected means revoking the ring, which signs everyone out and must be approved first.
+
+**Rotation:** create the new PFX; set `CertificatePath` to it and move the old one into `PreviousCertificatePaths`; restart. Remove the old certificate only when no key and no backup you may still restore depends on it.
+
+**Backup and recovery:** a database backup now contains keys that only the PFX can open. Back the PFX and its password up separately from the database backup (for example the password manager and an offline copy) and include "restore the database, mount the PFX, start" in the restore drill. Losing the PFX makes the stored Entra secret unreadable (sign-in stays off until reconnected) and invalidates sessions.
+
+**Generating a certificate** (any RSA 2048+ certificate works; it is not used for TLS): on Windows `New-SelfSignedCertificate -Subject "CN=Helpdesk key ring" -KeyExportPolicy Exportable -KeySpec KeyExchange -NotAfter (Get-Date).AddYears(3)` then `Export-PfxCertificate` with a password you keep in the password manager. Choosing the validity, custody and rotation owner is a decision for the operator and is not made by the application.

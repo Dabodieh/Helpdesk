@@ -76,7 +76,7 @@ try
 
     builder.Services.Configure<ForwardedHeadersOptions>(o => ProductionHosting.ConfigureForwardedHeaders(o, builder.Configuration));
     builder.Services.AddProductionSettingsGuard();
-    builder.Services.AddAbuseControls(builder.Configuration);
+    builder.Services.AddAbuseControls(builder.Configuration, builder.Environment);
     builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = AbuseControls.DefaultMaxRequestBodyBytes);
 
     builder.Services.AddOpenTelemetry()
@@ -117,7 +117,15 @@ try
         return;
     }
 
-    if (app.Services.GetRequiredService<IOptions<DatabaseOptions>>().Value.MigrateOnStartup)
+    // Start-up validation runs when the host starts, which is AFTER this point, so the one setting that acts before it is checked here: a production
+    // host must stop before it touches the database rather than migrate it on its own.
+    var migrateOnStartup = app.Services.GetRequiredService<IOptions<DatabaseOptions>>().Value.MigrateOnStartup;
+    if (migrateOnStartup && !(app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing")))
+    {
+        throw new InvalidOperationException("Unsafe production configuration: Database:MigrateOnStartup must be false; apply migrations with the explicit one-off 'migrate' run.");
+    }
+
+    if (migrateOnStartup)
     {
         await app.Services.GetRequiredService<ModuleMigrationRunner>().RunAsync();
     }

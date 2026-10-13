@@ -63,6 +63,10 @@ public sealed class ProductionHostingTests(HelpdeskFixture fixture) : IClassFixt
     [InlineData("Storage:Provider", "InMemory", "Storage:Provider")]
     [InlineData("Attachments:RequireCleanScan", "false", "RequireCleanScan")]
     [InlineData("Attachments:Enabled", "true", "Attachments:Enabled")]
+    [InlineData("Database:MigrateOnStartup", "true", "MigrateOnStartup")]
+    [InlineData("DataProtection:RequireCertificate", "true", "DataProtection:RequireCertificate")]
+    [InlineData("Realtime:AllowedOrigins:0", "http://helpdesk.example.test", "Realtime:AllowedOrigins")]
+    [InlineData("Serilog:MinimumLevel:Default", "Debug", "Serilog:MinimumLevel:Default")]
     public void A_production_host_refuses_unsafe_settings(string key, string value, string expected)
     {
         var factory = Variant(b =>
@@ -90,6 +94,37 @@ public sealed class ProductionHostingTests(HelpdeskFixture fixture) : IClassFixt
 
         var ex = Assert.ThrowsAny<Exception>(() => factory.CreateClient());
         Assert.Contains(expected, ex.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_refused_production_start_names_the_settings_but_never_prints_their_secret_values()
+    {
+        const string canary = "canary-secret-value-9f3a1c";
+        var factory = Variant(b =>
+        {
+            b.UseEnvironment("Production");
+            b.UseSetting("Authentication:DevSignIn:Enabled", "false");
+            b.UseSetting("Authentication:Entra:TenantId", "33333333-3333-3333-3333-333333333333");
+            b.UseSetting("Authentication:Entra:ClientId", "44444444-4444-4444-4444-444444444444");
+            b.UseSetting("Authentication:Entra:ClientSecret", canary);
+            b.UseSetting("Mail:Provider", "Graph");
+            b.UseSetting("Mail:NotificationBaseUrl", "https://helpdesk.example.test");
+            b.UseSetting("Mail:Graph:TenantId", "11111111-1111-1111-1111-111111111111");
+            b.UseSetting("Mail:Graph:ClientId", "22222222-2222-2222-2222-222222222222");
+            b.UseSetting("Mail:Graph:ClientSecret", canary);
+            b.UseSetting("Storage:Provider", "S3");
+            b.UseSetting("Storage:S3:AccessKey", canary);
+            b.UseSetting("Storage:S3:SecretKey", canary);
+            b.UseSetting("Attachments:RequireCleanScan", "true");
+            b.UseSetting("Attachments:Enabled", "false");
+            b.UseSetting("AllowedHosts", "*"); // the unsafe setting that makes the start fail
+            b.UseSetting("Proxy:KnownProxies:0", "10.0.0.2");
+            b.UseSetting("Jobs:Enabled", "false");
+        });
+
+        var ex = Assert.ThrowsAny<Exception>(() => factory.CreateClient());
+        Assert.Contains("AllowedHosts", ex.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain(canary, ex.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]

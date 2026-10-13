@@ -1,0 +1,14 @@
+# Optional overlay for a private validation stack: the application, database and object store sit on an INTERNAL network with no route out, so the
+# stack cannot reach Microsoft 365 or anything else on the internet. Nginx keeps a second ordinary network only so that its ports can be published
+# (to BIND_ADDRESS). Used by scripts/windows/helpdesk.ps1 when NO_EGRESS=true.
+services:
+  nginx:
+    networks:
+      internal:
+        ipv4_address: ${PROXY_IP:-172.29.0.10}
+      edge: {}
+
+networks:
+  internal:
+    internal: true
+  edge: {}

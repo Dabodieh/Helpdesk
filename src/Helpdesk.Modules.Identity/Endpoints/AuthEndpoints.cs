@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Helpdesk.SharedKernel.Authorization;
 
@@ -26,16 +27,26 @@ internal static class AuthEndpoints
             .AllowAnonymous()
             .WithTags("Auth");
 
-        app.MapGet("/api/auth/login", (string? returnUrl, EntraSettingsStore entra) =>
+        app.MapGet("/api/auth/login", async (HttpContext http, string? returnUrl, EntraSettingsStore entra, ILoggerFactory loggers) =>
             {
                 if (!entra.Current.IsConfigured)
                 {
                     return Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Entra sign-in is not configured");
                 }
 
-                return Results.Challenge(
-                    new AuthenticationProperties { RedirectUri = ReturnUrl.Sanitize(returnUrl) },
-                    [AuthSchemes.Entra]);
+                try
+                {
+                    await http.ChallengeAsync(AuthSchemes.Entra, new AuthenticationProperties { RedirectUri = ReturnUrl.Sanitize(returnUrl) });
+                    return Results.Empty;
+                }
+                catch (Exception ex) when (!http.RequestAborted.IsCancellationRequested)
+                {
+                    // Microsoft could not be reached or answered something unusable (metadata discovery fails here). Fail closed: no session is created and nothing
+                    // falls back. The browser gets a clear, safe message with a reference; the detail stays in the log under the same reference.
+                    var reference = http.TraceIdentifier;
+                    SignInLog.StartFailed(loggers.CreateLogger(SignInLog.Category), ex, reference);
+                    return Results.Redirect($"/?authError=unavailable&ref={Uri.EscapeDataString(reference)}");
+                }
             })
             .AllowAnonymous()
             .WithTags("Auth");

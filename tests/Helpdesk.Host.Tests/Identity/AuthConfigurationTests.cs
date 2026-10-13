@@ -158,6 +158,40 @@ public sealed class AuthConfigurationTests(HelpdeskFixture fixture) : IClassFixt
         Assert.Contains(response.Message.Headers.GetValues("Set-Cookie"), c => c.Contains(".AspNetCore.OpenIdConnect.Nonce", StringComparison.Ordinal));
     }
 
+    private sealed class UnreachableMetadata : IConfigurationManager<OpenIdConnectConfiguration>
+    {
+        public Task<OpenIdConnectConfiguration> GetConfigurationAsync(CancellationToken cancel) =>
+            throw new InvalidOperationException("IDX20803: Unable to obtain configuration from: 'https://login.example.invalid/secret-looking-detail'.");
+
+        public void RequestRefresh()
+        {
+        }
+    }
+
+    [Fact]
+    public async Task Entra_login_fails_closed_with_a_safe_reference_when_the_identity_provider_cannot_be_reached()
+    {
+        var factory = Variant("Testing", b =>
+        {
+            Entra(b, devSignIn: false);
+            b.ConfigureTestServices(services => services.PostConfigure<OpenIdConnectOptions>(AuthSchemes.Entra, o => o.ConfigurationManager = new UnreachableMetadata()));
+        });
+        var client = fixture.CreateAnonymousClient(factory);
+
+        var response = await client.GetAsync("/api/auth/login?returnUrl=/inbox");
+        var location = response.Message.Headers.Location!;
+        Assert.Equal(HttpStatusCode.Redirect, response.Status); // not a 500
+        Assert.Equal("/", location.OriginalString.Split('?')[0]); // a local page, never an external address
+        var query = HttpUtility.ParseQueryString(location.OriginalString.Split('?')[1]);
+        Assert.Equal("unavailable", query["authError"]);
+        Assert.False(string.IsNullOrEmpty(query["ref"]));
+        Assert.DoesNotContain("secret-looking-detail", location.OriginalString, StringComparison.Ordinal); // the exception text stays in the log
+        Assert.DoesNotContain("IDX20803", response.Body, StringComparison.Ordinal);
+        // fail closed: no session and no authenticated state was created
+        Assert.DoesNotContain(response.Message.Headers.TryGetValues("Set-Cookie", out var cookies) ? cookies : [], c => c.StartsWith("helpdesk.session", StringComparison.Ordinal));
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/me")).Status);
+    }
+
     [Fact]
     public async Task Entra_login_does_not_redirect_to_a_non_local_return_url()
     {

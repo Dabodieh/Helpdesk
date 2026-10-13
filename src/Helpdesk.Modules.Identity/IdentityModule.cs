@@ -41,7 +41,7 @@ public static class IdentityModule
         services.AddOptions<EntraSetupOptions>().BindConfiguration(EntraSetupOptions.Section);
         services.AddHttpClient(EntraSetupService.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(30));
 
-        DataProtectionKeyStore.Add(services);
+        DataProtectionKeyStore.Add(services, configuration);
         AuthenticationSetup.Configure(services, configuration, environment);
         return services;
     }

@@ -5,11 +5,13 @@ import { getAuthProviders } from '../api/entra'
 const AUTH_ERRORS: Record<string, string> = {
   failed: 'Sign-in failed. Please try again.',
   inactive: 'Your account is not active. Contact an administrator.',
+  unavailable: 'Microsoft sign-in is temporarily unavailable. Try again in a few minutes; if it continues, contact an administrator.',
 }
 
 export default function SignIn({ returnUrl = '/' }: { returnUrl?: string }) {
   const [params] = useSearchParams()
   const authError = AUTH_ERRORS[params.get('authError') ?? '']
+  const reference = (params.get('ref') ?? '').match(/^[A-Za-z0-9:_-]{1,64}$/)?.[0]
   // returnUrl must be a local path
   const safe = returnUrl.startsWith('/') && !returnUrl.startsWith('//') ? returnUrl : '/'
   // Only an explicit "not set up" hides the button: if the answer is unknown the button stays.
@@ -21,6 +23,7 @@ export default function SignIn({ returnUrl = '/' }: { returnUrl?: string }) {
       {authError && (
         <p role="alert" className="notice error">
           {authError}
+          {reference && <span className="muted"> Reference: {reference}</span>}
         </p>
       )}
       {notSetUp ? (

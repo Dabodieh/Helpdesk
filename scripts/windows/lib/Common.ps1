@@ -6,6 +6,7 @@ Set-StrictMode -Version 2.0
 $script:Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 $script:ComposeFile = Join-Path $script:Root 'docker\production\compose.yml'
 $script:ObjectStoreFile = Join-Path $script:Root 'docker\windows\compose.objectstore.yml'
+$script:NoEgressFile = Join-Path $script:Root 'docker\windows\compose.no-egress.yml'
 $script:EnvFile = if ($env:HELPDESK_ENV_FILE) { $env:HELPDESK_ENV_FILE } else { Join-Path $script:Root 'docker\windows\.env' }
 $script:ReservedProjects = @('helpdesk')   # the local development stack's project name: its volumes hold development data
 
@@ -43,6 +44,7 @@ function Get-Project([hashtable]$Settings) {
 function Get-ComposeBaseArgs([string]$Project, [hashtable]$Settings) {
     $a = @('compose', '-p', $Project, '-f', $script:ComposeFile)
     if ((Get-Setting $Settings 'LOCAL_OBJECT_STORE') -eq 'true') { $a += @('-f', $script:ObjectStoreFile) }
+    if ((Get-Setting $Settings 'NO_EGRESS') -eq 'true') { $a += @('-f', $script:NoEgressFile) }
     return $a + @('--env-file', $script:EnvFile)
 }
 
@@ -129,6 +131,9 @@ function Test-HelpdeskConfig([switch]$ForRunning) {
                    'INTERNAL_SUBNET', 'PROXY_IP', 'HTTP_PORT', 'HTTPS_PORT', 'TLS_DIR', 'BACKUP_DIR') {
         if ((Get-Setting $s $k) -eq '') { $problems += "MISSING  $k" }
     }
+    $bind = Get-Setting $s 'BIND_ADDRESS'
+    $ip = $null
+    if ($bind -ne '' -and -not [System.Net.IPAddress]::TryParse($bind, [ref]$ip)) { $problems += 'INVALID  BIND_ADDRESS must be an IP address (127.0.0.1 keeps the proxy private to this PC)' }
     foreach ($k in 'ENTRA_TENANT_ID', 'ENTRA_CLIENT_ID', 'GRAPH_TENANT_ID', 'GRAPH_CLIENT_ID') {
         $v = Get-Setting $s $k
         $g = [guid]::Empty

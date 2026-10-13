@@ -32,6 +32,16 @@ services:
       dockerfile: docker/host.Dockerfile
     image: helpdesk-host:${HELPDESK_VERSION:-local}
     restart: unless-stopped
+    # The application needs no capabilities and must not gain privileges (non-root image user, no setuid escalation).
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    # The runtime image has no curl or wget: a plain TCP request to the liveness endpoint from bash (not sh: dash has no /dev/tcp). Unhealthy never restarts the container on its own (single instance).
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health/live HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 && head -n 1 <&3 | grep -q ' 200 '"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
     depends_on:
       postgres: { condition: service_healthy }
     environment: &app-env
@@ -56,6 +66,11 @@ services:
       Storage__S3__Bucket: ${S3_BUCKET:-helpdesk}
       Storage__S3__AccessKey: ${S3_ACCESS_KEY:?set in .env}
       Storage__S3__SecretKey: ${S3_SECRET_KEY:?set in .env}
+      # Optional encryption of the Data Protection key ring at rest (gate F-04). The PFX and its password file are mounted read-only from OUTSIDE the repository
+      # and image (add a volume in a compose override); see docs/guides/PRODUCTION_DEPLOYMENT.md. Empty means plain keys, as before.
+      DataProtection__CertificatePath: ${DP_CERT_PATH:-}
+      DataProtection__CertificatePasswordFile: ${DP_CERT_PASSWORD_FILE:-}
+      DataProtection__RequireCertificate: ${DP_REQUIRE_CERT:-false}
       Attachments__RequireCleanScan: "true"
       # Off until a malware scanning engine is integrated (D-08); the host refuses to start with it on.
       Attachments__Enabled: "false"
@@ -72,7 +87,9 @@ services:
     image: nginx:1.29.8-alpine
     restart: unless-stopped
     depends_on: [helpdesk]
-    ports: ["${HTTP_PORT:-80}:80", "${HTTPS_PORT:-443}:443"]
+    # BIND_ADDRESS limits which host interface publishes the proxy: set 127.0.0.1 on a PC that must stay private (Windows Docker Desktop).
+    ports: ["${BIND_ADDRESS:-0.0.0.0}:${HTTP_PORT:-80}:80", "${BIND_ADDRESS:-0.0.0.0}:${HTTPS_PORT:-443}:443"]
+    security_opt: ["no-new-privileges:true"]
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ${TLS_DIR:-./tls}:/etc/nginx/tls:ro

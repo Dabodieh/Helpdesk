@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 
@@ -203,9 +204,11 @@ internal sealed class EntraOpenIdConnectConfigurer(EntraSettingsStore store) : I
             },
             OnRemoteFailure = ctx =>
             {
-                // Never surface exception details to the browser.
+                // Never surface exception details to the browser; the log carries them under the same reference the browser is given.
                 var reason = ctx.Failure?.Message == "inactive" ? "inactive" : "failed";
-                ctx.Response.Redirect($"/?authError={reason}");
+                var reference = ctx.HttpContext.TraceIdentifier;
+                SignInLog.Incomplete(ctx.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger(SignInLog.Category), ctx.Failure, reason, reference);
+                ctx.Response.Redirect($"/?authError={reason}&ref={Uri.EscapeDataString(reference)}");
                 ctx.HandleResponse();
                 return Task.CompletedTask;
             },

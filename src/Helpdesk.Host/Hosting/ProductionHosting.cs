@@ -107,6 +107,36 @@ internal static class ProductionHosting
             problems.Add("Attachments:Enabled must be false until a malware scanner is integrated (D-08).");
         }
 
+        // The development credentials and behaviours must never reach production (PRODUCTION-HARDENING.md).
+        var connection = configuration["Database:ConnectionString"];
+        if (string.IsNullOrWhiteSpace(connection))
+        {
+            problems.Add("Database:ConnectionString must be set.");
+        }
+
+        if (bool.TryParse(configuration["Database:MigrateOnStartup"], out var migrateOnStartup) && migrateOnStartup)
+        {
+            problems.Add("Database:MigrateOnStartup must be false; apply migrations with the explicit one-off 'migrate' run.");
+        }
+
+        if (Configured(configuration, "Realtime:AllowedOrigins").Any(o => !(Uri.TryCreate(o, UriKind.Absolute, out var u) && u.Scheme == Uri.UriSchemeHttps)))
+        {
+            problems.Add("Realtime:AllowedOrigins must be absolute https origins.");
+        }
+
+        // Opt-in until the key-management decision is made: with DataProtection:RequireCertificate=true a production host refuses to run with a plain key ring.
+        if (bool.TryParse(configuration["DataProtection:RequireCertificate"], out var requireCertificate) && requireCertificate
+            && string.IsNullOrWhiteSpace(configuration["DataProtection:CertificatePath"]))
+        {
+            problems.Add("DataProtection:RequireCertificate is true but DataProtection:CertificatePath is not set.");
+        }
+
+        var logLevel = configuration["Serilog:MinimumLevel:Default"];
+        if (string.Equals(logLevel, "Debug", StringComparison.OrdinalIgnoreCase) || string.Equals(logLevel, "Verbose", StringComparison.OrdinalIgnoreCase))
+        {
+            problems.Add("Serilog:MinimumLevel:Default must not be Debug or Verbose in production (message bodies and tokens must never be logged).");
+        }
+
         if (problems.Count > 0)
         {
             throw new InvalidOperationException("Unsafe production configuration: " + string.Join(" ", problems));
