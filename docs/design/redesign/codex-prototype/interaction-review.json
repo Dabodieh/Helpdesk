@@ -1,0 +1,62 @@
+{
+  "checks": [
+    "Department search, status filtering and empty-state recovery",
+    "Navigation and theme persistence across files",
+    "Keyboard screen search and Escape",
+    "Mailbox add, live sender preview, duplicate validation and honest unconnected state",
+    "Mailbox editing, fixed address, unique default, deactivation warning and focus restoration",
+    "Uncertain send review has no blind retry action",
+    "Ticket selection and isolated per-ticket public/Internal Note drafts",
+    "Local Internal Note submission has explicit no-send state",
+    "Reply/note tab keyboard navigation and local public reply",
+    "Property edits, focus retention, resolve and reopen",
+    "Queue selection, counts, search and empty-state recovery",
+    "Landing page uses four real, locally loaded screenshots",
+    "Corrected composer tab grouping and rechecked keyboard interaction in both themes",
+    "Screenshot gallery theme/viewport filtering and updated landing captures"
+  ],
+  "accessibility": [
+    {
+      "screen": "administration",
+      "theme": "light",
+      "violations": []
+    },
+    {
+      "screen": "department",
+      "theme": "light",
+      "violations": []
+    },
+    {
+      "screen": "mailboxes",
+      "theme": "light",
+      "violations": []
+    },
+    {
+      "screen": "administration",
+      "theme": "dark",
+      "violations": []
+    },
+    {
+      "screen": "department",
+      "theme": "dark",
+      "violations": []
+    },
+    {
+      "screen": "mailboxes",
+      "theme": "dark",
+      "violations": []
+    },
+    {
+      "screen": "workspace",
+      "theme": "light",
+      "violations": []
+    },
+    {
+      "screen": "workspace",
+      "theme": "dark",
+      "violations": []
+    }
+  ],
+  "errors": [],
+  "externalRequests": []
+}
