@@ -18,12 +18,13 @@ const ISSUE_TEXT: Record<string, { tone: 'warn' | 'info' | 'bad'; text: string }
   mailbox_attention: { tone: 'warn', text: 'At least one mailbox needs attention. See the table below.' },
 }
 
+/** The sign-in card lists identifiers only; its "not configured" state is stated once, with the connect action, by the "Staff sign-in" section above. */
 function Overview({ s }: { s: Microsoft365Status }) {
   return (
     <ul className="m365-cards" aria-label="Configuration">
       <li>
         <h3>Sign-in</h3>
-        <StatusBadge tone={s.signIn.entraConfigured ? 'ok' : 'warn'}>{s.signIn.entraConfigured ? 'Microsoft Entra ID' : 'Not configured'}</StatusBadge>
+        {s.signIn.entraConfigured && <StatusBadge tone="ok">Microsoft Entra ID</StatusBadge>}
         <dl className="kv">
           <dt>Tenant</dt>
           <dd>{s.signIn.tenantId ?? '–'}</dd>
@@ -187,7 +188,7 @@ export default function Microsoft365Page() {
     <section aria-label="Microsoft 365">
       <PageHeader
         title="Microsoft 365"
-        subtitle="Staff sign-in, mail processing and shared mailboxes. Sign-in, mail processing and mailbox creation use separate identities."
+        subtitle="Staff sign-in, mail processing and shared mailboxes. Each uses its own identity."
         actions={
           <button type="button" disabled={q.isFetching} onClick={() => void q.refetch()}>
             {q.isFetching ? 'Refreshing…' : 'Refresh'}
@@ -198,9 +199,9 @@ export default function Microsoft365Page() {
       {q.isError && <ErrorNotice error={q.error} onRetry={() => void q.refetch()} />}
       {q.data && (
         <>
-          {q.data.issues.length > 0 && (
+          {q.data.issues.some((code) => code !== 'sign_in_not_configured') && (
             <ul className="m365-issues" aria-label="Findings">
-              {q.data.issues.map((code) => {
+              {q.data.issues.filter((code) => code !== 'sign_in_not_configured').map((code) => { // that one is stated, with its action, by the sign-in section just below
                 const i = ISSUE_TEXT[code]
                 return i ? (
                   <li key={code}>

@@ -42,6 +42,7 @@ export const SHORTCUT_HELP: { keys: string; action: string }[] = [
   { keys: 'j / Down', action: 'Next ticket in the list' },
   { keys: 'k / Up', action: 'Previous ticket in the list' },
   { keys: 'Enter', action: 'Open the highlighted ticket' },
+  { keys: '[ / ]', action: 'Previous / next ticket of the queue you came from (on a ticket page)' },
   { keys: 'r', action: 'Write a public reply' },
   { keys: 'n', action: 'Write an internal note' },
   { keys: 'Ctrl+Enter', action: 'Post from the reply box' },

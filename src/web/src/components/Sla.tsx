@@ -103,31 +103,6 @@ function DetailsBody({ sla }: { sla: TicketSla }) {
   )
 }
 
-/** SLA state in the ticket header. Silent when the ticket has no SLA; the dialog explains every deadline. */
-export function SlaStrip({ ticketRef, sla }: { ticketRef: string; sla: SlaSummary | null | undefined }) {
-  const [open, setOpen] = useState(false)
-  if (!sla || (sla.firstResponse === 'None' && sla.resolution === 'None')) return null
-  return (
-    <div className="sla-strip" role="group" aria-label="Ticket service level">
-      <span className="sla-label">Service level</span>
-      {sla.firstResponse !== 'None' && (
-        <span>
-          First response <SlaBadge sla={{ ...sla, state: sla.firstResponse, clock: 'FirstResponse', dueAt: sla.clock === 'FirstResponse' ? sla.dueAt : null }} />
-        </span>
-      )}
-      {sla.resolution !== 'None' && (
-        <span>
-          Resolution <SlaBadge sla={{ ...sla, state: sla.resolution, clock: 'Resolution', dueAt: sla.clock === 'Resolution' ? sla.dueAt : null }} />
-        </span>
-      )}
-      <button type="button" className="ghost" onClick={() => setOpen(true)}>
-        Details
-      </button>
-      {open && <Details ticket={ticketRef} onClose={() => setOpen(false)} />}
-    </div>
-  )
-}
-
 function clockText(clock: TicketSla['firstResponse'], createdAt: string): string {
   switch (clock.state) {
     case 'Met':

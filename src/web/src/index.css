@@ -1766,18 +1766,6 @@ table.grid tbody tr:hover {
     display: none;
   }
 }
-.sla-strip {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem 1rem;
-  margin: 0.5rem 0 0.1rem;
-  padding: 0.35rem 0.6rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-2);
-  font-size: 13.5px;
-}
 .sla-label {
   font-weight: 600;
   color: var(--muted);
@@ -3678,7 +3666,7 @@ table.compact th {
 .portal-bar { max-width:1150px; min-height:70px; padding:12px 28px; }
 .portal-brand { gap:17px; text-decoration:none; }
 .portal-brand-label { border-left:1px solid var(--border); padding-left:17px; font-size:14.5px; font-weight:500; color:var(--muted); }
-.portal-tools { display:flex; align-items:center; gap:12px; margin-left:auto; }
+.portal-tools { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:6px 12px; margin-left:auto; min-width:0; }
 .portal-tools .theme-toggle { color:var(--muted); width:34px; height:34px; }
 .portal-tools .theme-toggle:hover { background:var(--hover); color:var(--text); }
 .portal-nav { max-width:1150px; padding:0 28px; gap:26px; }
@@ -4051,7 +4039,7 @@ button, input, select, textarea { font-size: 14px; }
 .workspace[data-layout="list"] .queue-scroll { padding: 0 6px 12px; }
 .workspace[data-layout="list"] .qtable { width: 100%; }
 .workspace[data-layout="list"] .qtable td { padding-top: 11px; padding-bottom: 11px; }
-.workspace[data-layout="list"] .qtable .col-subject { width: auto; min-width: 280px; }
+.workspace[data-layout="list"] .qtable .col-subject { width: auto; min-width: 240px; }
 .workspace[data-layout="list"] .qtable .row-link { font-size: 15px; font-weight: 650; }
 .workspace[data-layout="list"] .qtable tbody tr { cursor: pointer; }
 .workspace[data-layout="list"] .qtable tbody tr:hover { background: var(--surface-2); }
@@ -4095,11 +4083,11 @@ button, input, select, textarea { font-size: 14px; }
 .workspace[data-layout="list"] .qtable { table-layout: fixed; }
 .workspace[data-layout="list"] .qtable .col-check { width: 40px; }
 .workspace[data-layout="list"] .qtable .col-ref { width: 84px; }
-.workspace[data-layout="list"] .qtable .col-requester { width: 170px; }
-.workspace[data-layout="list"] .qtable .col-status { width: 150px; white-space: normal; }
+.workspace[data-layout="list"] .qtable .col-requester { width: 150px; }
+.workspace[data-layout="list"] .qtable .col-status { width: 140px; white-space: normal; }
 .workspace[data-layout="list"] .qtable .col-prio { width: 112px; }
-.workspace[data-layout="list"] .qtable .col-sla { width: 104px; }
-.workspace[data-layout="list"] .qtable .col-assignee { width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace[data-layout="list"] .qtable .col-sla { width: 96px; }
+.workspace[data-layout="list"] .qtable .col-assignee { width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace[data-layout="list"] .qtable .col-age { width: 84px; }
 .workspace[data-layout="list"] .qtable .col-subject { min-width: 0; overflow: hidden; }
 .workspace[data-layout="list"] .qtable .col-subject .row-link { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -4335,3 +4323,16 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; height: 100%; }
 .entra-origins li { display: flex; gap: 12px; align-items: center; }
 .entra-add { display: flex; gap: 8px; }
 .entra-add input { flex: 1; }
+
+.rail-note { margin: 8px 12px 0; font-size: 12px; line-height: 1.4; color: var(--muted); }
+.shell:not(.rail-narrow):not(.rail-hidden) .rail-note.rail-label { display: block; white-space: normal; }
+
+/* Agent workspace and administration are desktop-first: below 768 px they are replaced by a notice instead of a crushed layout. The portal is unaffected. */
+.desktop-required { display: none; }
+@media (max-width: 767px) {
+  .shell > :not(.desktop-required) { display: none !important; }
+  .shell { display: block; height: auto; min-height: 100vh; }
+  .desktop-required { display: block; padding: 32px 20px; max-width: 420px; margin: 0 auto; }
+  .desktop-required h1 { font-size: 20px; margin: 0 0 12px; }
+  .desktop-required p { color: var(--muted); margin: 0 0 12px; line-height: 1.5; }
+}

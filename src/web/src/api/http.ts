@@ -20,11 +20,14 @@ export class ApiError extends Error {
 
 type Csrf = { headerName: string; token: string }
 let csrf: Csrf | null = null
+/** The fetch in flight: every caller that needs a token meanwhile shares it (a second GET would replace the antiforgery cookie and invalidate the first token). */
+let csrfPending: Promise<Csrf> | null = null
 let unauthorized: (() => void) | null = null
 
 /** Forget the cached CSRF token (the token is bound to the signed-in user). */
 export function resetCsrf() {
   csrf = null
+  csrfPending = null
 }
 
 /** Register a callback invoked when a request (other than the /api/me probe) returns 401. */
@@ -63,12 +66,19 @@ function isCsrfFailure(e: ApiError) {
 }
 
 async function getCsrf(): Promise<Csrf> {
-  if (!csrf) {
+  if (csrf) return csrf
+  csrfPending ??= (async () => {
     const res = await fetch('/api/csrf', { credentials: 'same-origin' })
     if (!res.ok) throw await toError(res)
-    csrf = await parse(res, csrfSchema)
+    return await parse(res, csrfSchema)
+  })()
+  const pending = csrfPending
+  try {
+    csrf = await pending
+    return csrf
+  } finally {
+    if (csrfPending === pending) csrfPending = null
   }
-  return csrf
 }
 
 /** Headers the realtime connection needs for its (unsafe) negotiate request. */

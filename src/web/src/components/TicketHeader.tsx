@@ -63,7 +63,7 @@ export default function TicketHeader({
       </div>
       <Subject ticket={t} canEdit={canUpdate} busy={patch.isPending} save={(subject, version) => patch.mutateAsync({ subject, version: version ?? t.version })} onProblem={onProblem} />
       <div className="t-who">
-        <RequesterName requesterId={t.requester.id} name={t.requester.displayName} /> <span className="muted">&lt;{t.requester.email}&gt;</span>
+        <RequesterName requesterId={t.requester.id} name={t.requester.displayName} />
         <span className="t-state">
           <StatusPill status={t.status} />
           <PriorityMark priority={t.priority} />

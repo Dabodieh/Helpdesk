@@ -426,21 +426,24 @@ test('new ticket: the ticket type can be chosen (default preselected) and is pos
   expect((calls.find((c) => c.method === 'POST' && c.path === '/api/departments/d1/tickets')?.body as { ticketTypeId?: string }).ticketTypeId).toBe('ty2')
 })
 
-test('the workspace sidebar collapses to icons, expands again and remembers the choice', async () => {
-  window.localStorage.removeItem('helpdesk.nav.collapsed')
+test('the one collapse control narrows the navigation and the queue panel to icons, expands again and remembers the choice', async () => {
+  window.localStorage.removeItem('helpdesk.rail.narrow')
   mockFetch({ ...workspaceRoutes(agentMe()) })
   renderApp('/queue/my')
-  const toggle = await screen.findByRole('button', { name: 'Collapse sidebar' })
+  const toggle = await screen.findByRole('button', { name: 'Collapse navigation' })
   expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  expect(screen.getAllByRole('button', { name: /Collapse (sidebar|navigation)/ })).toHaveLength(1) // no second collapse control in the queue panel
+  expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument() // the application rail link only
+  expect(within(screen.getByRole('navigation', { name: 'Queues' })).queryByRole('link', { name: /Dashboard/ })).toBeNull()
   fireEvent.click(toggle)
-  const expand = await screen.findByRole('button', { name: 'Expand sidebar' })
+  const expand = await screen.findByRole('button', { name: 'Expand navigation' })
   expect(expand).toHaveAttribute('aria-expanded', 'false')
   expect(document.querySelector('.shell')).toHaveClass('nav-collapsed')
-  expect(window.localStorage.getItem('helpdesk.nav.collapsed')).toBe('1')
+  expect(window.localStorage.getItem('helpdesk.rail.narrow')).toBe('1')
   expect(screen.getByRole('link', { name: /My Queue/ })).toHaveAttribute('title', 'My Queue') // still reachable and named when only the icon shows
   fireEvent.click(expand)
-  expect(await screen.findByRole('button', { name: 'Collapse sidebar' })).toBeInTheDocument()
-  expect(window.localStorage.getItem('helpdesk.nav.collapsed')).toBe('0')
+  expect(await screen.findByRole('button', { name: 'Collapse navigation' })).toBeInTheDocument()
+  expect(window.localStorage.getItem('helpdesk.rail.narrow')).toBe('0')
 })
 
 test('the navigation strip can be hidden from the top bar and shown again, and the choice is remembered', async () => {

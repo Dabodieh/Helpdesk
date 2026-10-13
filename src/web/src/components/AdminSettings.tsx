@@ -23,14 +23,14 @@ export function SettingsCatalog({ settings, departmentId, states, search = '', c
       const items = visible.filter(s => s.category === group.id)
       if (!items.length) return null
       return <section key={group.id} className="settings-category" aria-labelledby={`settings-${group.id}`}>
-        <div className="settings-category-heading"><h2 id={`settings-${group.id}`}>{group.title}</h2><p>{group.description}</p></div>
+        <div className="settings-category-heading"><h2 id={`settings-${group.id}`}>{group.title}</h2></div>
         <div className="settings-card-grid">
           {items.map(setting => {
             const status = states[setting.id]
             return <article className="setting-card" key={setting.id}>
               <Link to={settingHref(setting, departmentId)} className="setting-main" aria-label={`Open ${setting.title}`}>
                 <span className="setting-icon"><Icon name={setting.icon} size={22} /></span>
-                <div><h3>{setting.title}</h3><p>{setting.description}</p></div><span className="setting-arrow" aria-hidden="true">↗</span>
+                <div><h3>{setting.title}</h3><p>{setting.description}</p></div>
               </Link>
               <div className="setting-footer">
                 {status ? <StatusBadge tone={status.tone}>{status.label}</StatusBadge> : <span className="muted">{setting.content ? 'Live operational view' : 'Department setting'}</span>}

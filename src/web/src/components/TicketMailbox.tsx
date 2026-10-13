@@ -31,7 +31,7 @@ export default function TicketMailbox({ ticket: t, routeRef }: { ticket: TicketD
 
           </>
         ) : (
-          <span className="muted">No mailbox: replies cannot be emailed</span>
+          <span className="muted">None assigned</span>
         )}
         {offer && (
           <>

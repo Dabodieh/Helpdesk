@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { csrfHandler, json, mockFetch, problem } from '../test-utils'
 import { describeError, isVersionConflict } from './errors'
-import { api, ApiError, resetCsrf, setUnauthorizedHandler } from './http'
+import { api, ApiError, csrfHeaders, resetCsrf, setUnauthorizedHandler } from './http'
 
 beforeEach(() => resetCsrf())
 afterEach(() => {
@@ -17,6 +17,31 @@ test('unsafe requests send the CSRF header; GET does not fetch a token', async (
   const post = calls.find((c) => c.method === 'POST')!
   expect(post.headers['X-CSRF-TOKEN']).toBe('tok')
   expect(post.body).toEqual({ a: 1 })
+})
+
+test('concurrent unsafe requests (and the realtime negotiate) share ONE token fetch', async () => {
+  // A second GET /api/csrf would replace the antiforgery cookie and invalidate the token the first caller holds.
+  let n = 0
+  const calls = mockFetch({
+    'GET /api/csrf': () => ({ headerName: 'X-CSRF-TOKEN', token: `t${++n}` }),
+    'POST /api/x': () => json({}),
+  })
+  await Promise.all([api('POST', '/api/x'), api('POST', '/api/x'), csrfHeaders()])
+  expect(calls.filter((c) => c.path === '/api/csrf')).toHaveLength(1)
+  expect(calls.filter((c) => c.method === 'POST').map((p) => p.headers['X-CSRF-TOKEN'])).toEqual(['t1', 't1'])
+})
+
+test('a failed token fetch rejects every waiting caller and clears the shared request, so the next call fetches again', async () => {
+  let n = 0
+  const calls = mockFetch({
+    'GET /api/csrf': [() => problem(500, 'Server error'), () => ({ headerName: 'X-CSRF-TOKEN', token: `t${++n}` })],
+  })
+  const [a, b] = await Promise.allSettled([csrfHeaders(), csrfHeaders()])
+  expect(a.status).toBe('rejected')
+  expect(b.status).toBe('rejected')
+  expect(calls.filter((c) => c.path === '/api/csrf')).toHaveLength(1) // both waited on the same failed fetch
+  expect(await csrfHeaders()).toEqual({ 'X-CSRF-TOKEN': 't1' }) // not stuck on the failure
+  expect(calls.filter((c) => c.path === '/api/csrf')).toHaveLength(2)
 })
 
 test('a 400 CSRF failure refetches the token and retries once', async () => {
