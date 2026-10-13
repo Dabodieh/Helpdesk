@@ -30,11 +30,15 @@ public sealed class DepartmentOwnedDataAccessTests
         "Helpdesk.Modules.Mail.Services.CorrelationEngine",
         "Helpdesk.Modules.Mail.Services.InboundProcessor",
         "Helpdesk.Modules.Mail.Services.MailJobRunner",
+        "Helpdesk.Modules.Mail.Services.MailSyncAgeSignal", // operational metric: oldest sync age across active mailboxes; a number only, no address or id
         "Helpdesk.Modules.Mail.Services.MailSyncService",
         "Helpdesk.Modules.Mail.Services.MailboxDirectory",
         "Helpdesk.Modules.Mail.Services.MailboxService",
+        "Helpdesk.Modules.Mail.Services.Microsoft365Service", // platform-administrator page (platform.departments.manage); mailbox health across Departments, no ticket content (ADR-035)
         "Helpdesk.Modules.Mail.Services.NdrCorrelation",
         "Helpdesk.Modules.Mail.Services.NotificationService",
+        "Helpdesk.Modules.Mail.Services.OutboundNeedingAttentionSignal", // operational metric: a count only
+        "Helpdesk.Modules.Mail.Services.OutboundQueueAgeSignal", // operational metric: an age only
         "Helpdesk.Modules.Mail.Services.OutboundSender",
         "Helpdesk.Modules.Mail.Services.SubscriptionService",
     ];

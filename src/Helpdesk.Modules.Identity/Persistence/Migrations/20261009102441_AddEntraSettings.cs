@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Helpdesk.Modules.Identity.Persistence.Migrations
 {
     /// <inheritdoc />
-    public partial class AddEntraSettings : Migration
+    internal partial class AddEntraSettings : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)

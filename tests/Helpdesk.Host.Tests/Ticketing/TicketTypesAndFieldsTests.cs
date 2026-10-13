@@ -216,6 +216,7 @@ public sealed class TicketTypesAndFieldsTests(HelpdeskFixture fixture) : IClassF
     public async Task Requesters_see_and_supply_only_requester_visible_fields_and_edit_only_editable_ones()
     {
         var d = await fixture.NewDeptAsync();
+        await fixture.CreateMailboxAsync(d); // the portal only serves forms for a Department with a usable default mailbox (PR10-D22)
         var alice = await fixture.EmployeeAsync("alice");
         var bob = await fixture.EmployeeAsync("bob");
         var type = await TypeAsync(d, "Hardware");

@@ -98,6 +98,7 @@ public sealed class ModuleBoundaryTests
         // Audit -> SharedKernel; Identity -> Audit; Organisation -> Audit, Identity; Attachments -> (nothing); Mail -> Audit, Organisation, Attachments;
         // Ticketing -> Audit, Identity, Organisation, Attachments, Mail (nothing depends on Ticketing but the Host: Mail reaches Ticketing only through
         // interfaces that Ticketing implements, ADR-013).
+        // Knowledge -> Audit, Identity, Organisation: Identity only through Identity.Contracts (IUserDirectory, ICurrentUser), as Organisation and Ticketing do.
         static IEnumerable<string> ModuleRefs(Assembly a) =>
             a.GetReferencedAssemblies().Select(r => r.Name!).Where(n => n.StartsWith("Helpdesk.Modules.", StringComparison.Ordinal));
 
@@ -109,7 +110,7 @@ public sealed class ModuleBoundaryTests
         Assert.Equal(
             ["Helpdesk.Modules.Attachments", "Helpdesk.Modules.Audit", "Helpdesk.Modules.Identity", "Helpdesk.Modules.Knowledge", "Helpdesk.Modules.Mail", "Helpdesk.Modules.Organisation"],
             ModuleRefs(Modules.Ticketing).Order());
-        Assert.Equal(["Helpdesk.Modules.Audit", "Helpdesk.Modules.Organisation"], ModuleRefs(Modules.Knowledge).Order());
+        Assert.Equal(["Helpdesk.Modules.Audit", "Helpdesk.Modules.Identity", "Helpdesk.Modules.Organisation"], ModuleRefs(Modules.Knowledge).Order());
         Assert.Empty(ModuleRefs(Modules.SharedKernel));
     }
 

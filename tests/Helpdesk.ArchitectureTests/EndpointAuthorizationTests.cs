@@ -20,6 +20,9 @@ public sealed class EndpointAuthorizationTests(AppFixture app) : IClassFixture<A
         "DELETE /api/views/{viewId:guid}",
         "GET /api/canned-responses",
         "GET /api/canned-responses/placeholders", // a constant list, no data
+        "GET /api/ticket-capabilities", // one UI flag set (attachments enabled, size limit); no Department data
+        "POST /api/invitations/preview", // the single-use token is the credential; the service also requires the signed-in identity to be the invited address
+        "POST /api/invitations/accept", // same: token plus matching signed-in identity, decided inside InvitationService
         "GET /api/portal/capabilities", // one UI flag (attachments enabled); upload and download stay authorised by the attachment pipeline
         "GET /api/departments",
         "GET /api/requesters/{requesterId:guid}",
@@ -67,6 +70,7 @@ public sealed class EndpointAuthorizationTests(AppFixture app) : IClassFixture<A
         "/health/ready",
         "/api/csrf",
         "/api/auth/login",
+        "/api/auth/providers", // one boolean (whether Entra sign-in is configured) so the sign-in page can say setup is needed (ADR-037)
         "/api/auth/dev-login",
         "/api/mail/graph/notifications",
         "/api/mail/graph/lifecycle",

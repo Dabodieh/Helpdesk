@@ -5,7 +5,7 @@
 namespace Helpdesk.Modules.Mail.Persistence.Migrations
 {
     /// <inheritdoc />
-    public partial class DeliveryReportSequence : Migration
+    internal partial class DeliveryReportSequence : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)

@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Helpdesk.Modules.Organisation.Persistence.Migrations
 {
     /// <inheritdoc />
-    public partial class AddInvitations : Migration
+    internal partial class AddInvitations : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)

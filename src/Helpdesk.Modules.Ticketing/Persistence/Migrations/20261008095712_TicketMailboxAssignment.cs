@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
 {
     /// <inheritdoc />
-    public partial class TicketMailboxAssignment : Migration
+    internal partial class TicketMailboxAssignment : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)

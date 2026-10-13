@@ -5,7 +5,7 @@
 namespace Helpdesk.Modules.Ticketing.Persistence.Migrations
 {
     /// <inheritdoc />
-    public partial class DeliveryStatesUncertainBounced : Migration
+    internal partial class DeliveryStatesUncertainBounced : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
