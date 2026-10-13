@@ -1,21 +1,30 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { acceptInvitation, previewInvitation } from '../api/invitations'
 import { ROLE_LABEL } from '../api/schemas'
 import { ApiError } from '../api/http'
 import { ErrorNotice, Loading } from '../components/common'
 import { useMe } from '../auth'
+import { clearInvitationToken, readInvitationToken } from '../lib/invitationToken'
 
 /** The page behind the emailed activation link. Reached after signing in with Microsoft; nothing is granted until the person presses the button. */
 export default function ActivatePage() {
-  const { token = '' } = useParams()
+  const [token] = useState(readInvitationToken)
   const me = useMe()
   const qc = useQueryClient()
   const preview = useQuery({ queryKey: ['invitation', token], queryFn: () => previewInvitation(token), retry: false })
   const accept = useMutation({
     mutationFn: () => acceptInvitation(token),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
+    onSuccess: () => {
+      clearInvitationToken()
+      return qc.invalidateQueries({ queryKey: ['me'] })
+    },
   })
+
+  useEffect(() => {
+    if (preview.error instanceof ApiError && preview.error.status === 404) clearInvitationToken()
+  }, [preview.error])
 
   if (preview.isPending) return <Loading label="Checking your invitation" />
   if (preview.isError) {

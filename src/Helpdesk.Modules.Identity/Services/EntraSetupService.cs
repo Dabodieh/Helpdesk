@@ -271,6 +271,7 @@ internal sealed class EntraSetupService(
 
         var token = session.AccessToken!;
         string? applicationObjectId = null;
+        EntraSetupCreatedDto created;
         try
         {
             var redirectUris = origins.Select(origin => origin + EntraOpenIdConnectConfigurer.CallbackPath).ToList();
@@ -297,29 +298,39 @@ internal sealed class EntraSetupService(
             var secret = secretResponse["secretText"]?.GetValue<string>() ?? throw new InvalidOperationException("no secret");
 
             var previous = await SaveAsync(session, clientId, secret, expires, applicationObjectId, origins, ct);
-            sessions.Remove(session.Id);
-            return new EntraSetupCreatedDto(session.TenantId!, clientId, expires, redirectUris, session.AdminAccount ?? session.AdminName ?? "", previous);
+            created = new EntraSetupCreatedDto(session.TenantId!, clientId, expires, redirectUris, session.AdminAccount ?? session.AdminName ?? "", previous);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex)
         {
-            // Remove only the application this attempt just made, so a retry starts clean. The sign-in is still valid, so the administrator can try again.
+            // Cleanup must outlive request cancellation, but cannot wait indefinitely. Never clean up an application after settings committed.
             if (applicationObjectId is not null)
             {
+                using var cleanupTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 try
                 {
-                    await GraphAsync(HttpMethod.Delete, $"applications/{applicationObjectId}", token, null, CancellationToken.None);
+                    await GraphAsync(HttpMethod.Delete, $"applications/{applicationObjectId}", token, null, cleanupTimeout.Token);
                 }
-                catch (Exception cleanup) when (cleanup is not OperationCanceledException)
+                catch (Exception)
                 {
                     // Left in place; the administrator can remove "Helpdesk staff sign-in" in Entra.
                 }
             }
 
             session.State = "signed_in";
+            if (ex is OperationCanceledException)
+            {
+                throw;
+            }
+
             throw ex is EntraSetupGraphException g && g.Status is HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized
                 ? new ConflictException("The Microsoft account you signed in with is not allowed to create applications. It needs the Application Administrator or Global Administrator role.", ProblemCodes.InvalidState)
                 : new ConflictException("Microsoft refused or could not complete the setup. Nothing was saved; you can try again.", ProblemCodes.InvalidState);
         }
+
+        sessions.Remove(session.Id);
+        // A local reload failure must not delete the now-configured Microsoft application.
+        store.Reload();
+        return created;
     }
 
     /// <summary>Removes the stored sign-in settings (the application in the tenant is left alone). Sign-in then needs setup again, or server settings.</summary>
@@ -364,8 +375,9 @@ internal sealed class EntraSetupService(
         await audit.WriteAsync(
             new AuditEntry(AuditCategories.Identity, isNew ? "entra.connected" : "entra.reconnected", "entra_settings", null, null, current.UserId, current.DisplayName,
                 Next: new { tenantId = row.TenantId, clientId, secretExpiresAt = expires, redirectOrigins = origins }), db, ct);
-        await tx.CommitAsync(ct);
-        store.Reload();
+        // Observe cancellation before committing, then finish the commit independently of a disconnected browser.
+        ct.ThrowIfCancellationRequested();
+        await tx.CommitAsync(CancellationToken.None);
         return previous;
     }
 

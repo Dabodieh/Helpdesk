@@ -62,20 +62,7 @@ internal sealed class MembershipService(
 
         if (existing is null)
         {
-            var user = await users.FindAsync(userId, ct) ?? throw new NotFoundException();
-            if (!user.IsActive)
-            {
-                throw new ConflictException("The user is inactive.", ProblemCodes.Inactive);
-            }
-
-            if (!department.IsActive)
-            {
-                throw new ConflictException("The department is inactive.", ProblemCodes.Inactive);
-            }
-
-            db.DepartmentMemberships.Add(new DepartmentMembership { UserId = userId, DepartmentId = departmentId, Role = role, CreatedAt = now, UpdatedAt = now });
-            await db.SaveChangesAsync(ct);
-            await audit.WriteAsync("membership.added", "department_membership", userId, departmentId, null, new { role, selfGrant }, ct);
+            await AddMemberAsync(department, userId, role, ct);
         }
         else if (existing.Role != role)
         {
@@ -146,6 +133,62 @@ internal sealed class MembershipService(
         memberships.Invalidate();
         await NotifyAccessChangedAsync(userId, ct);
         await NotifyAssignmentsEndedAsync(departmentId, userId, ct);
+    }
+
+    /// <summary>Joins invitation acceptance's transaction. Uses the same Department lock as role changes; never changes an existing member's role.</summary>
+    public async Task<(string Role, bool AlreadyMember)> AddInvitedMemberAsync(Guid departmentId, Guid userId, string role, CancellationToken ct)
+    {
+        if (db.Database.CurrentTransaction is null)
+        {
+            throw new InvalidOperationException("Invitation membership requires the acceptance transaction.");
+        }
+
+        var department = await LockDepartmentAsync(departmentId, ct);
+        var existing = await db.DepartmentMemberships.AsNoTracking().SingleOrDefaultAsync(m => m.DepartmentId == departmentId && m.UserId == userId, ct);
+        if (existing is not null)
+        {
+            return (existing.Role, true);
+        }
+
+        await AddMemberAsync(department, userId, role, ct);
+        return (role, false);
+    }
+
+    /// <summary>Call only after invitation acceptance commits. Realtime failures cannot undo the durable membership or consume the invitation without it.</summary>
+    public async Task InvitationCommittedAsync(Guid userId)
+    {
+        memberships.Invalidate();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        foreach (var listener in accessListeners)
+        {
+            try
+            {
+                await listener.AccessChangedAsync(userId, timeout.Token);
+            }
+            catch (Exception ex)
+            {
+                FollowUpFailed(log, listener.GetType().Name, ex.GetType().Name, null);
+            }
+        }
+    }
+
+    private async Task AddMemberAsync(Department department, Guid userId, string role, CancellationToken ct)
+    {
+        if (!RoleCatalogue.IsValid(role))
+        {
+            throw new RequestValidationException("role", "The invitation role is not valid.");
+        }
+
+        var user = await users.FindAsync(userId, ct) ?? throw new NotFoundException();
+        if (!user.IsActive || !department.IsActive)
+        {
+            throw new ConflictException(!user.IsActive ? "The user is inactive." : "The department is inactive.", ProblemCodes.Inactive);
+        }
+
+        var now = clock.GetUtcNow();
+        db.DepartmentMemberships.Add(new DepartmentMembership { UserId = userId, DepartmentId = department.Id, Role = role, CreatedAt = now, UpdatedAt = now });
+        await db.SaveChangesAsync(ct);
+        await audit.WriteAsync("membership.added", "department_membership", userId, department.Id, null, new { role, selfGrant = userId == current.UserId }, ct);
     }
 
     private async Task NotifyAssignmentsEndedAsync(Guid departmentId, Guid userId, CancellationToken ct)

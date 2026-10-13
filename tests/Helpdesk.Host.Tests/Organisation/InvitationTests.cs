@@ -1,4 +1,8 @@
 using System.Net;
+using System.Collections.Concurrent;
+using Microsoft.AspNetCore.TestHost;
+using Serilog.Core;
+using Serilog.Events;
 using System.Text.RegularExpressions;
 using Helpdesk.Host.Tests.Infrastructure;
 using Helpdesk.Host.Tests.Mail;
@@ -17,7 +21,7 @@ public sealed partial class InvitationTests(HelpdeskFixture fixture) : IClassFix
     private const string Admin = "/api/admin/invitations";
     private const string SystemMailbox = "system@helpdesk.test";
 
-    [GeneratedRegex(@"/activate/([A-Za-z0-9_-]+)")]
+    [GeneratedRegex(@"/activate#([A-Za-z0-9_-]+)")]
     private static partial Regex TokenPattern();
 
     private static string TokenOf(ApiResponse issued) => TokenPattern().Match(issued.Json.GetProperty("activationUrl").GetString()!).Groups[1].Value;
@@ -66,7 +70,7 @@ public sealed partial class InvitationTests(HelpdeskFixture fixture) : IClassFix
         Assert.Equal("Accepted", created.Json.GetProperty("invitation").GetProperty("emailState").GetString());
 
         var sent = Assert.Single(fake.SentMail(SystemMailbox), m => m.To.Any(t => t.Address == email));
-        Assert.Contains($"/activate/{token}", sent.BodyHtml, StringComparison.Ordinal);
+        Assert.Contains($"/activate#{token}", sent.BodyHtml, StringComparison.Ordinal);
         Assert.Contains(d.Department.Name, sent.BodyHtml, StringComparison.Ordinal);
         Assert.Empty(fake.SentMail(d.Department.Key)); // never from a department mailbox
 
@@ -199,4 +203,77 @@ public sealed partial class InvitationTests(HelpdeskFixture fixture) : IClassFix
 
         Assert.Equal(before, await fixture.CountAsync("SELECT count(*) FROM organisation.invitations"));
     }
+    [Fact]
+    public async Task Membership_failure_rolls_back_acceptance_and_audit_and_the_same_link_can_retry()
+    {
+        var d = await fixture.NewDeptAsync();
+        var platform = await fixture.PlatformAdminAsync();
+        var email = NewEmail();
+        var person = await InviteeAsync(email);
+        var issued = (await InviteAsync(platform, d, email)).Expect(HttpStatusCode.Created);
+        var id = issued.Json.GetProperty("invitation").GetProperty("id").GetGuid();
+        var token = TokenOf(issued);
+        // A real database failure at membership insertion, after the invitation was claimed.
+        await fixture.ExecuteAsync($"""
+            CREATE FUNCTION organisation.fail_invited_membership() RETURNS trigger LANGUAGE plpgsql AS $$
+            BEGIN
+              IF NEW.user_id = '{person.Id}'::uuid THEN RAISE EXCEPTION 'injected membership failure'; END IF;
+              RETURN NEW;
+            END $$;
+            CREATE TRIGGER fail_invited_membership BEFORE INSERT ON organisation.department_memberships
+            FOR EACH ROW EXECUTE FUNCTION organisation.fail_invited_membership();
+            """);
+        try
+        {
+            (await person.Client.PostAsync("/api/invitations/accept", new { token })).Expect(HttpStatusCode.InternalServerError);
+            Assert.Equal(1, await fixture.CountAsync("SELECT count(*) FROM organisation.invitations WHERE id = @i AND status = 'Pending' AND accepted_at IS NULL AND accepted_user_id IS NULL", TicketKit.P("i", id)));
+            Assert.Equal(0, await fixture.CountAsync("SELECT count(*) FROM organisation.department_memberships WHERE user_id = @u", TicketKit.P("u", person.Id)));
+            Assert.Equal(0, await fixture.CountAsync("SELECT count(*) FROM audit.audit_events WHERE action = 'invitation.accepted' AND object_id = @i", TicketKit.P("i", id)));
+        }
+        finally
+        {
+            await fixture.ExecuteAsync("DROP TRIGGER fail_invited_membership ON organisation.department_memberships; DROP FUNCTION organisation.fail_invited_membership()");
+        }
+
+        (await person.Client.PostAsync("/api/invitations/accept", new { token })).Expect(HttpStatusCode.OK);
+        Assert.Equal(1, await fixture.CountAsync("SELECT count(*) FROM audit.audit_events WHERE action = 'invitation.accepted' AND object_id = @i", TicketKit.P("i", id)));
+    }
+
+    [Fact]
+    public async Task Concurrent_activation_grants_membership_and_records_acceptance_once()
+    {
+        var d = await fixture.NewDeptAsync();
+        var platform = await fixture.PlatformAdminAsync();
+        var email = NewEmail();
+        var person = await InviteeAsync(email);
+        var issued = (await InviteAsync(platform, d, email)).Expect(HttpStatusCode.Created);
+        var id = issued.Json.GetProperty("invitation").GetProperty("id").GetGuid();
+        var token = TokenOf(issued);
+        var replies = await Task.WhenAll(
+            person.Client.PostAsync("/api/invitations/accept", new { token }),
+            person.Client.PostAsync("/api/invitations/accept", new { token }));
+        Assert.Single(replies, r => r.Status == HttpStatusCode.OK);
+        Assert.Single(replies, r => r.Status == HttpStatusCode.NotFound);
+        Assert.Equal(1, await fixture.CountAsync("SELECT count(*) FROM organisation.department_memberships WHERE user_id = @u AND department_id = @d", TicketKit.P("u", person.Id), TicketKit.P("d", d.Department.Id)));
+        Assert.Equal(1, await fixture.CountAsync("SELECT count(*) FROM audit.audit_events WHERE action = 'invitation.accepted' AND object_id = @i", TicketKit.P("i", id)));
+    }
+
+    private sealed class CaptureSink : ILogEventSink
+    {
+        public ConcurrentQueue<string> Lines { get; } = new();
+        public void Emit(LogEvent e) => Lines.Enqueue(e.RenderMessage(System.Globalization.CultureInfo.InvariantCulture) + " " + string.Join(" ", e.Properties));
+    }
+
+    [Fact]
+    public async Task Legacy_activation_path_is_redacted_in_application_request_logs()
+    {
+        var sink = new CaptureSink();
+        await using var logged = fixture.Factory.WithWebHostBuilder(b => b.ConfigureTestServices(s => s.AddSingleton<ILogEventSink>(sink)));
+        using var client = logged.CreateClient();
+        var token = "private-invitation-" + Unique.Id();
+        await client.GetAsync("/activate/" + token);
+        Assert.Contains(sink.Lines, l => l.Contains("/activate", StringComparison.Ordinal));
+        Assert.DoesNotContain(sink.Lines, l => l.Contains(token, StringComparison.Ordinal));
+    }
+
 }

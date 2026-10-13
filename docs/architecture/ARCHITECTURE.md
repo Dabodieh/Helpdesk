@@ -28,7 +28,7 @@ Modules are introduced when their functionality is required, not pre-created.
 - Dependency direction enforced with architecture tests (NetArchTest) from Phase 1.
 - Every module registers itself via `AddXModule()` / `MapXEndpoints()`.
 
-## Modules (introduction phase; all built except Reporting)
+## Modules (introduction phase; current implementation)
 | Module | Phase | Responsibility |
 |---|---|---|
 | Identity | 1 | OIDC login, internal users, external-identity mapping, current-user context |
@@ -39,7 +39,7 @@ Modules are introduced when their functionality is required, not pre-created.
 | Attachments | 3 | `IObjectStore` (S3-compatible), validation, scan seam, metadata (ADR-013) |
 | Notifications, Search, SLA, BusinessHours, Automation | 4–5 | as named (inside the Ticketing module; ADR-012, ADR-014) |
 | Knowledge (articles, categories, audiences, feedback, reply links), Portal | 6 | built (ADR-015) |
-| Reporting | 7 | not started: reporting definitions are in `REPORTING_DEFINITIONS.md` (ADR-027) |
+| Reporting | 7 | built inside Ticketing: eight historical report types, ticket drill-down and analytics UI; definitions in `REPORTING_DEFINITIONS.md` (ADR-027) |
 Splitting Requesters/Conversations out of Tickets is deferred until coupling proves it necessary. `TicketService` is large (messages, bulk and delivery retry are partial files of it); split it along those seams only when a change forces it, not as a refactor of its own (ARC-009).
 
 ## Request flow and authorization
@@ -61,6 +61,12 @@ SPA served separately in dev (Vite proxy to API) and as static assets behind the
 ## Hosting target (D-10)
 Linux + Docker + Docker Compose + PostgreSQL + S3-compatible object storage, behind any reverse proxy. Cloud agnostic: nothing may depend on Azure hosting services; Entra ID and Microsoft Graph are integrations only. Must remain deployable to an internal Linux server, Azure, AWS or another Docker environment without redesign.
 
+## Current delivery notes
+
+As of 2026-10-12, core phases and historical analytics are implemented. Teams were removed from active behaviour under ADR-034; old Team schema removal is separately deferred. Invitations and guided Entra setup are implemented under ADR-036/037. Data Protection keys persist in PostgreSQL, without independent encryption at rest. Production attachments remain disabled until malware scanning is integrated. Live Microsoft validation and operational restore/deployment evidence remain open; built does not mean production approved.
+
+The phase descriptions below preserve implementation history; use current ADRs for superseding decisions.
+
 ## Phase 1 structure (ADR-009)
 ```
 src/Helpdesk.SharedKernel      current-principal abstraction (ICurrentUser), authorization primitives (IAuthorizer, PermissionRequirement,
@@ -75,7 +81,7 @@ Module dependency direction (project references, enforced by architecture tests)
 
 The authentication scheme registration (cookie session, Entra OIDC, dev sign-in, antiforgery) is part of the Identity module and wired by the Host (`AddIdentityModule`, `UseIdentityModule`). ASP.NET authorization (fallback policy = authenticated, `PermissionRequirement` handler) is the single enforcement pipeline.
 
-## Phase 1 web (admin UI)
+## Phase 1 web (historical admin UI)
 `src/web` is an authenticated SPA shell over the Phase 1 API: `api/` (fetch wrapper with CSRF handling, zod schemas, error mapping, permission helpers), `pages/` (departments, department detail, team detail, sign-in, status), `components/` (route guard, teams/members sections, shared widgets). Controls are shown or disabled from `/api/me` permissions as a UX hint only; every request is still authorised by the API and 401/403/404 are handled in the UI. Platform administrators without a membership see departments as administrative metadata only. Known gaps are tracked in `docs/plans/BACKLOG.md`.
 
 ## Phase 2 structure

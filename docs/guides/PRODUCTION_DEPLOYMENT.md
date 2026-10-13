@@ -12,7 +12,7 @@ Reference topology (ADR-020): `docker/production/` runs one Helpdesk container (
 `Proxy__KnownProxies` / `Proxy__KnownNetworks` (the proxy's address; compose pins Nginx at 172.29.0.10), `AllowedHosts` (public host name), `Storage__Provider=S3`, `Attachments__RequireCleanScan=true`, Entra, Graph and S3 credentials. `Realtime__AllowedOrigins__0` is the public https origin of the site.
 
 ## Headers
-Only the application sets security headers (CSP, framing, nosniff, referrer policy). Do not add them in Nginx.
+Only the application sets security headers (CSP, framing, nosniff, referrer policy, Permissions-Policy denying camera/microphone/geolocation, and same-origin COOP/CORP). Do not add them in Nginx. Verify they survive the real proxy on pages, assets, API errors and sign-in redirects. Full-page Entra sign-in is supported; review the policy before introducing popup authentication or cross-origin resource consumers. HSTS and real-browser behaviour still require deployment evidence.
 
 ## Migrations
 One database, one database role. `... run --rm migrate` applies the module migrations in the registered order: audit (10), identity (20), organisation (30), then the modules that reference them (ticketing, attachments, mail, knowledge; the `Every_cross_schema_foreign_key_points_at_a_module_that_migrates_earlier` test enforces that every cross-schema foreign key points at an earlier module). Run it before starting a new version. **Rollback is restore, not down-migrations:** take a backup immediately before migrating; to roll back, stop the application and restore that backup into a new database (see `BACKUP_AND_RESTORE.md`).
@@ -31,3 +31,7 @@ One application instance. Do not run two: background jobs, realtime presence and
 
 ## Not covered here
 Monitoring and the malware scanner are separate gates (see the remediation status document).
+
+
+## Invitation URL logging (2026-10-12)
+New invitation links use `/activate#<token>`; the fragment never reaches the HTTP server. The browser keeps it in tab-scoped session storage through sign-in and uses `/activate` as the return URL. Existing `/activate/<token>` emails still work, but their initial request necessarily reaches the reverse proxy. Redact those legacy paths to `/activate` in proxy/access-log and tracing configuration, and restrict access to existing logs according to your policy. Application request-completion logs redact the legacy path. Do not enable request-body logging on invitation POST endpoints. This release does not scrub old logs.

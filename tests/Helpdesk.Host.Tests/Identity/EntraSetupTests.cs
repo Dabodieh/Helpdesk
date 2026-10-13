@@ -45,6 +45,10 @@ public sealed class EntraSetupTests(HelpdeskFixture fixture) : IClassFixture<Hel
 
         public string? TokenError { get; set; }
 
+        public bool CancelAddPassword { get; set; }
+
+        public bool CancelCleanup { get; set; }
+
         private static string Jwt(object payload) =>
             "e30." + Convert.ToBase64String(Encoding.UTF8.GetBytes(System.Text.Json.JsonSerializer.Serialize(payload))).TrimEnd('=').Replace('+', '-').Replace('/', '_') + ".sig";
 
@@ -87,8 +91,11 @@ public sealed class EntraSetupTests(HelpdeskFixture fixture) : IClassFixture<Hel
 
             if (path.EndsWith("/addPassword", StringComparison.Ordinal))
             {
+                if (CancelAddPassword) throw new TaskCanceledException("injected cancellation");
                 return FailAddPassword is { } f ? Json(f, new { error = new { code = "x" } }) : Json(HttpStatusCode.OK, new { secretText = Secret });
             }
+
+            if (request.Method == HttpMethod.Delete && CancelCleanup) throw new TaskCanceledException("injected cleanup timeout");
 
             return request.Method == HttpMethod.Delete ? new HttpResponseMessage(HttpStatusCode.NoContent) : Json(HttpStatusCode.NotFound, new { });
         }
@@ -337,4 +344,26 @@ public sealed class EntraSetupTests(HelpdeskFixture fixture) : IClassFixture<Hel
         Assert.Contains("redirect_uri=" + Uri.EscapeDataString("https://helpdesk.example.org/api/auth/signin-oidc"), location, StringComparison.Ordinal); // https although the request reached the app as http
         Assert.DoesNotContain(Secret, location, StringComparison.Ordinal);
     }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Cancelled_creation_attempts_cleanup_and_releases_the_session_even_if_cleanup_times_out(bool cleanupTimesOut)
+    {
+        var (factory, stub) = Variant();
+        await using var _ = factory;
+        var admin = await fixture.SignInAsync(HelpdeskFactory.PlatformAdminSubject, "Platform Admin", factory: factory);
+        var id = await StartAndSignInAsync(admin, stub);
+        stub.CancelAddPassword = true;
+        stub.CancelCleanup = cleanupTimesOut;
+        (await admin.Client.PostAsync($"{Admin}/setup/create", new { sessionId = id, redirectOrigins = Origins })).Expect(HttpStatusCode.InternalServerError);
+        Assert.Single(stub.Requests, r => r.Method == HttpMethod.Delete && r.Path.EndsWith("/applications/app-object-1", StringComparison.Ordinal));
+        Assert.Equal(0, await fixture.CountAsync("SELECT count(*) FROM identity.entra_settings"));
+        Assert.Equal("signed_in", (await admin.Client.PostAsync($"{Admin}/setup/poll", new { sessionId = id })).Expect(HttpStatusCode.OK).Json.GetProperty("state").GetString());
+
+        stub.CancelAddPassword = false;
+        stub.CancelCleanup = false;
+        (await admin.Client.PostAsync($"{Admin}/setup/create", new { sessionId = id, redirectOrigins = Origins })).Expect(HttpStatusCode.OK);
+        Assert.Equal(1, await fixture.CountAsync("SELECT count(*) FROM identity.entra_settings"));
+    }
+
 }

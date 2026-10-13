@@ -12,5 +12,6 @@ Status: Accepted (post-Refinement-10 remediation, WS-5; decision D1; findings SR
 7. `data:` URLs survive the mail sanitiser only on images (SEC-010). Compose images are pinned (PostgreSQL 18.6, SeaweedFS 4.48, Nginx 1.29.8).
 
 ## Consequences
+- F-10 follow-up (2026-10-12): every application response also carries `Permissions-Policy: camera=(), microphone=(), geolocation=()`, `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Resource-Policy: same-origin`. These deny unused device capabilities, isolate cross-origin opener relationships and restrict cross-origin no-cors embedding. Authentication uses full-page redirects; any future popup login or cross-origin resource consumer requires review. See the security remediation plan for browser-reference research. COEP is not enabled.
 - Frontend work that needs inline scripts, remote scripts or cross-origin connections must change the page policy deliberately.
 - Windows/Linux container behaviour behind a real Nginx and a real browser CSP check is a deployment verification, not covered by the simulator tests.

@@ -123,6 +123,9 @@ internal static class ProductionHosting
                 var headers = context.Response.Headers;
                 headers.XContentTypeOptions = "nosniff";
                 headers["Referrer-Policy"] = "no-referrer";
+                headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
+                headers["Cross-Origin-Opener-Policy"] = "same-origin";
+                headers["Cross-Origin-Resource-Policy"] = "same-origin";
                 var path = context.Request.Path;
                 if (path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase))
                 {

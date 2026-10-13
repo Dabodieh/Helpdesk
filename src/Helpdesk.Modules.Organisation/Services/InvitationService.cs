@@ -171,7 +171,7 @@ internal sealed partial class InvitationService(
             await tx.CommitAsync(ct);
         }
 
-        var url = $"{baseUrl}/activate/{token}";
+        var url = $"{baseUrl}/activate#{token}";
         await SendAsync(invitation, department.Name, url, ct);
         return new InvitationIssuedDto(ToDto(invitation, new Dictionary<Guid, string> { [department.Id] = department.Name }), url);
     }
@@ -204,7 +204,7 @@ internal sealed partial class InvitationService(
             await tx.CommitAsync(ct);
         }
 
-        var url = $"{baseUrl}/activate/{token}";
+        var url = $"{baseUrl}/activate#{token}";
         await SendAsync(invitation, department.Name, url, ct);
         return new InvitationIssuedDto(ToDto(invitation, new Dictionary<Guid, string> { [department.Id] = department.Name }), url);
     }
@@ -245,38 +245,29 @@ internal sealed partial class InvitationService(
         }
 
         var now = clock.GetUtcNow();
-
-        // Claim it first so a second click or a second tab cannot use it again.
+        (string Role, bool AlreadyMember) member;
+        // Claim, membership and both audit events are one durable operation. Recheck the hash in case a resend replaced the link after lookup.
         await using (var tx = await db.Database.BeginTransactionAsync(ct))
         {
             var claimed = await db.Invitations
-                .Where(i => i.Id == invitation.Id && i.Status == InvitationStatuses.Pending && i.ExpiresAt > now)
+                .Where(i => i.Id == invitation.Id && i.TokenHash == invitation.TokenHash && i.Status == InvitationStatuses.Pending && i.ExpiresAt > now)
                 .ExecuteUpdateAsync(s => s.SetProperty(i => i.Status, InvitationStatuses.Accepted).SetProperty(i => i.AcceptedAt, now).SetProperty(i => i.AcceptedUserId, current.UserId).SetProperty(i => i.UpdatedAt, now), ct);
             if (claimed == 0)
             {
                 throw new NotFoundException();
             }
 
-            await audit.WriteAsync("invitation.accepted", "invitation", invitation.Id, invitation.DepartmentId, null, new { role = invitation.Role }, ct);
+            member = await memberships.AddInvitedMemberAsync(invitation.DepartmentId, current.UserId, invitation.Role, ct);
+            await audit.WriteAsync("invitation.accepted", "invitation", invitation.Id, invitation.DepartmentId, null, new { role = member.Role }, ct);
             await tx.CommitAsync(ct);
         }
 
-        var already = await db.DepartmentMemberships.AnyAsync(m => m.DepartmentId == invitation.DepartmentId && m.UserId == current.UserId, ct);
-        if (!already)
+        if (!member.AlreadyMember)
         {
-            try
-            {
-                await memberships.SetRoleAsync(invitation.DepartmentId, current.UserId, new SetRoleRequest(invitation.Role), ct);
-            }
-            catch
-            {
-                // Nothing was granted: give the link back so the person can try again once the cause (for example an inactive department) is dealt with.
-                await db.Invitations.Where(i => i.Id == invitation.Id).ExecuteUpdateAsync(s => s.SetProperty(i => i.Status, InvitationStatuses.Pending).SetProperty(i => i.AcceptedAt, (DateTimeOffset?)null).SetProperty(i => i.AcceptedUserId, (Guid?)null), CancellationToken.None);
-                throw;
-            }
+            await memberships.InvitationCommittedAsync(current.UserId);
         }
 
-        return new InvitationAcceptedDto(department.Id, department.Name, already ? (await db.DepartmentMemberships.AsNoTracking().SingleAsync(m => m.DepartmentId == department.Id && m.UserId == current.UserId, ct)).Role : invitation.Role, already);
+        return new InvitationAcceptedDto(department.Id, department.Name, member.Role, member.AlreadyMember);
     }
 
     private async Task<(Invitation Invitation, Department Department)> FindOpenAsync(string? token, CancellationToken ct)

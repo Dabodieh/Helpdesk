@@ -1,5 +1,9 @@
 # Security and compliance audit: 2026-10-09
 
+Remediation tracker (2026-10-13): [current status](SECURITY-REMEDIATION-STATUS-2026-10-13.md). F-10's missing headers are now implemented and covered by a passing focused host test; deployment evidence remains open. Original findings below are retained as the audit baseline.
+
+Follow-up (2026-10-12): F-07's new-link exposure is addressed by fragment URLs, tab-scoped storage through sign-in, and application request-path redaction. Legacy links still require upstream log redaction or resending. See `TARGETED-HARDENING-2026-10-12.md` for code and test evidence; the remaining production gates below are unchanged.
+
 Purpose: establish, with evidence, whether Helpdesk could be run self-hosted on premises with staff data, what stands in the way, and the order in which to clear it.
 
 **This is an engineering gap analysis, not a certification and not legal advice.** Nothing here makes the system "compliant" with UK GDPR, the Data Protection Act 2018 or ISO/IEC 27001. ISO standards are not laws: they are standards an organisation is assessed against, and ISO 27001 certifies an organisation's management system (policies, risk assessment, people, process), not a piece of software. The legal reading of UK GDPR belongs to your Data Protection Officer or legal adviser. What this report can do is show which technical controls exist, which are missing, and which decisions only your organisation can make.

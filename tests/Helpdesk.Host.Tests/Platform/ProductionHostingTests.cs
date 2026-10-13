@@ -145,6 +145,15 @@ public sealed class ProductionHostingTests(HelpdeskFixture fixture) : IClassFixt
             Assert.NotEqual(HttpStatusCode.OK, api.Status);
             Assert.DoesNotContain("<div id=root>", api.Body, StringComparison.Ordinal);
             Assert.Equal("default-src 'none'; frame-ancestors 'none'", api.Message.Headers.GetValues("Content-Security-Policy").Single());
+            // The shared middleware also protects assets, errors and the redirect through sign-in.
+            var login = (await client.GetAsync("/api/auth/dev-login?subject=headers&name=headers")).Expect(HttpStatusCode.Redirect);
+            foreach (var response in new[] { page.Message, asset.Message, api.Message, login.Message })
+            {
+                Assert.Equal("camera=(), microphone=(), geolocation=()", response.Headers.GetValues("Permissions-Policy").Single());
+                Assert.Equal("same-origin", response.Headers.GetValues("Cross-Origin-Opener-Policy").Single());
+                Assert.Equal("same-origin", response.Headers.GetValues("Cross-Origin-Resource-Policy").Single());
+            }
+
             (await client.GetAsync("/hubs/nothing")).Expect(HttpStatusCode.NotFound);
         }
         finally

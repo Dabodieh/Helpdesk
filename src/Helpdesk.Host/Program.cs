@@ -132,7 +132,14 @@ try
     app.UseSpaStaticFiles();
 
     app.UseExceptionHandler();
-    app.UseSerilogRequestLogging();
+    app.UseSerilogRequestLogging(o =>
+    {
+        o.Logger = app.Services.GetRequiredService<Serilog.ILogger>();
+        var properties = o.GetMessageTemplateProperties;
+        // Legacy invitation URLs can still arrive from old emails. Do not put their token in request logs.
+        o.GetMessageTemplateProperties = (context, path, elapsed, status) =>
+            properties(context, context.Request.Path.StartsWithSegments("/activate") ? "/activate" : path, elapsed, status);
+    });
 
     app.UseRealtimeOriginCheck();
     app.UseRouting();

@@ -1,5 +1,7 @@
 # Post-Refinement-10 remediation status
 
+Historical remediation tracker. Later delivery includes historical analytics, removal of Teams from active behaviour, account invitations and guided Entra setup. The current delivery overview is `../plans/DEVELOPMENT_PLAN.md`; dated rows below record evidence at the time of each workstream.
+
 Short tracker. Findings and decisions: `POST-REFINEMENT-10-MASTER-REPORT.md`, `../plans/POST-REFINEMENT-10-DECISIONS.md`. Test runs are targeted only; no full suites. SDK note: .NET 10 runs in the `hd-sdk` container.
 
 | WS | Status | Findings closed | Commits | Externally blocked / open | Tests run |

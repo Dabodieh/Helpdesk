@@ -7,6 +7,7 @@ import { createQueryClient, endSession } from './queryClient'
 import RequireAuth from './components/RequireAuth'
 import AnalyticsHome from './pages/AnalyticsHome'
 import AnalyticsReportPage from './pages/AnalyticsReportPage'
+import InvitationEntry from './components/InvitationEntry'
 import DashboardPage from './pages/DashboardPage'
 import DepartmentPage from './pages/DepartmentPage'
 import DepartmentsPage from './pages/DepartmentsPage'
@@ -69,7 +70,7 @@ export function AppRoutes() {
         <Route path="knowledge" element={<KnowledgeHome />} />
         <Route path="knowledge/:slug" element={<KnowledgeArticle />} />
       </Route>
-      <Route path="activate/:token" element={<RequireAuth layout="portal" />}>
+      <Route path="activate/:token?" element={<InvitationEntry />}>
         <Route index element={<ActivatePage />} />
       </Route>
       <Route element={<RequireAuth />}>
