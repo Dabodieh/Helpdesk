@@ -197,3 +197,50 @@ Checklist: `docs/guides/M365_TEST_TENANT_CHECKLIST.md` (entry criteria, tenant o
 | Frontend unit tests (sign-in message added) and typecheck | 200 passed, clean |
 | Real image, Production mode: DP guard refusals, healthy start, login failure response and log reference | verified in `helpdesk-pv` |
 | Not run | full backend suite, Playwright, image push; private stack left running on loopback without egress |
+
+## 13. Phase 4: certificate validation, readiness confirmation, M365 steps (2026-10-14)
+
+### 13.1 Data Protection certificate validation (disposable environment)
+
+Environment: a throw-away Postgres container and volume, an internal Docker network (no egress), the production image `helpdesk-host:pv` in Production mode, two disposable self-signed certificates (A, B) and a password file mounted read-only from a scratch folder. Two key rings in separate databases (one fresh with a certificate, one created without). Everything was removed afterwards; `helpdesk-pv`'s key ring was not touched.
+
+| Check | Result |
+|---|---|
+| Fresh ring with certificate A: key created on first use, stored encrypted (W3C `EncryptedData`, no plain `masterKey`) | PASS: 1 key, encrypted |
+| Antiforgery token issued, then accepted after **container restart** (same volume) | PASS (401 = signature accepted) |
+| Accepted after the container was **removed and recreated** with the same certificate | PASS, ring unchanged |
+| **Rotation**: certificate B current, A in `PreviousCertificatePaths` | PASS: token protected under A still accepted; ring readable |
+| **Wrong certificate** (B only, A not listed) with `RequireCertificate=true` | PASS: host refuses to start ("1 of 2 keys cannot be read… add the certificate to PreviousCertificatePaths"), ring unchanged |
+| Same, `RequireCertificate=false` | Starts, logs the warning, tokens protected under A are rejected (400), new sessions work on the key protected by B; nothing destroyed |
+| **Recovery**: A current, B previous | PASS: old and new tokens valid again |
+| `RequireCertificate=true` refusals: no path, path not mounted, wrong password, corrupt file, missing password file | PASS: all refused before any database access |
+| **Previously plain keys** (ring created without a certificate, then certificate A required) | Plain key stays, readable and unchanged (not migrated, not destroyed); old tokens still valid; only new keys are encrypted |
+| Secrets in container logs (PFX password, database password, PEM markers, PFX bytes) | none found in about 56 000 log characters |
+
+**Defect found and fixed in this phase:** with a certificate configured, the framework silently carried on when the ring held keys the configured certificates could not open, which signs users out and would leave the stored Entra secret unreadable, and every swap of configuration risked adding keys. A new start-up check (`KeyRingReadabilityCheck`) opens every key: with `RequireCertificate=true` the host now refuses to start; otherwise it logs a warning. It reads and writes nothing. Covered by a unit test and the disposable run above.
+
+**Findings to note:**
+- Previous certificates must share the current certificate's password (one password setting), so rotate to a new PFX protected with the same password, or re-export the old one.
+- Keys protected by the previous certificate keep needing it for as long as they or any backup that holds them may be restored.
+- Plain keys are replaced only as the ring rolls (90 days). A forced re-protection means revoking the ring (everyone signed out): needs approval.
+- Direct HTTP to the application (bypassing the proxy) returns 500 on `/api/csrf` ("antiforgery requires an SSL request"): by design, because production expects the TLS proxy; the proxy's `X-Forwarded-Proto` from a trusted address satisfies it. Not a defect, but worth knowing when testing without nginx.
+
+### 13.2 Are the proposed defaults technically supported?
+
+| Proposal | Supported? | Notes |
+|---|---|---|
+| 60-minute inactivity timeout | Yes | Cookie `ExpireTimeSpan` is 8 h sliding today; set to 60 min (sliding renewal after half the window, so effective inactivity is 30 to 60 min). One-line change plus a test; not made (policy). |
+| 12-hour absolute lifetime | Yes, with new code | Sliding renewal resets the ticket, so an absolute cap needs a sign-in time claim checked in a cookie validation event (roughly 30 lines plus tests). Not implemented (approval). |
+| `BIND_ADDRESS=127.0.0.1` | Yes | In the Windows example, validated by the tooling, verified on `helpdesk-pv` (published ports on 127.0.0.1 only). Compose default left at `0.0.0.0` for the Linux reference stack. |
+| Existing rate limits | Yes | Retained and tested (provisional). |
+| Entra consistent with ADR-037 | Yes | `ENTRA_*` required in production compose; wizard refuses when server settings exist (by design); sign-in failures now fail safely. |
+| Operational logs 30 days | Not by the application | The host writes to the console only. Docker's json-file driver rotates by size, not age; day-based retention needs a log shipper or a scheduled clean-up. |
+| Security logs 90 days | Not built | Security-relevant events are in `audit.audit_events` (append-only, no deletion tooling by design until D-09 is approved). A 90-day rule would be a retention feature. |
+
+### 13.3 Microsoft 365 preparation
+
+`docs/guides/M365_TEST_TENANT_CHECKLIST.md` now has the exact step-by-step (sections G and H): sign-in app registration with the redirect URI, mail app and credential, test shared mailboxes, Exchange RBAC scoping and its verification cmdlets, the single stack change (replace fake values, `NO_EGRESS` off, webhook reachability decision), the test order, and rollback commands for Exchange, Entra and the stack. Gaps it exposes: the compose file passes a Graph **secret** only (certificate credentials are supported by the application but not wired in compose); webhook tests need a public https name (D-19 undecided). No tenant was contacted; the no-egress configuration is unchanged.
+
+### 13.4 Decisions still open
+
+Certificate custody and enabling `RequireCertificate`; session policy values and absolute-lifetime implementation; log retention mechanism; polling-only vs reachable webhooks (D-19); compose `BIND_ADDRESS` default; choice of the test tenant; whether to wire a Graph certificate credential into compose.

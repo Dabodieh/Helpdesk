@@ -53,3 +53,75 @@ Fill the table in `GRAPH_TENANT_VALIDATION.md` section 3; mark E-1..E-38 confirm
 - [ ] Remove the test app registrations, mailboxes and role assignments, or record why they stay.
 - [ ] Turn egress off again; stop the stack; keep or destroy `helpdesk-pv_*` volumes deliberately.
 - [ ] Record which of F-04 (key encryption), F-08 (session policy) and F-09 (logs) the session informed.
+
+## G. Exact steps for the live session (run by the operator, in this order; nothing here has been executed)
+
+Replace `<tenant>` with the test tenant's domain, `<host>` with `PUBLIC_HOST` and `<suffix>` with `PUBLIC_PORT_SUFFIX` of the private stack. Record every object id you create in the results table so section H can remove them.
+
+### G1. Sign-in app registration (Microsoft Graph PowerShell, Application Administrator)
+
+```powershell
+Connect-MgGraph -Scopes "Application.ReadWrite.All" -TenantId <tenant>
+$signin = New-MgApplication -DisplayName "Helpdesk TEST sign-in" -SignInAudience AzureADMyOrg `
+  -Web @{ RedirectUris = @("https://<host><suffix>/api/auth/signin-oidc") }
+New-MgServicePrincipal -AppId $signin.AppId | Out-Null
+$secret = Add-MgApplicationPassword -ApplicationId $signin.Id -PasswordCredential @{ DisplayName = "validation"; EndDateTime = (Get-Date).AddDays(30) }
+# ENTRA_TENANT_ID = tenant id, ENTRA_CLIENT_ID = $signin.AppId, ENTRA_CLIENT_SECRET = $secret.SecretText (copy once into docker\windows\.env; never into chat, Git or a ticket)
+```
+
+Redirect URI: exactly the https URL above (the application builds it from the host the browser used; `http` is accepted by Entra only for `localhost`). Add no API permissions.
+
+### G2. Mail app registration and credential
+
+```powershell
+$mail = New-MgApplication -DisplayName "Helpdesk TEST mail" -SignInAudience AzureADMyOrg
+New-MgServicePrincipal -AppId $mail.AppId | Out-Null
+$mailSecret = Add-MgApplicationPassword -ApplicationId $mail.Id -PasswordCredential @{ DisplayName = "validation"; EndDateTime = (Get-Date).AddDays(30) }
+# GRAPH_TENANT_ID, GRAPH_CLIENT_ID = $mail.AppId, GRAPH_CLIENT_SECRET = $mailSecret.SecretText
+```
+
+A short-lived client secret is used for the first run because the Windows compose file passes `GRAPH_CLIENT_SECRET` only; certificate credentials are supported by the application (`Mail:Graph:CertificatePath`) but are not wired into the compose file yet (add a mounted PFX and the setting before any production use). Do **not** add Graph application permissions or grant admin consent in Entra for this app.
+
+### G3. Test shared mailboxes and scoping (Exchange Online PowerShell, Exchange Administrator)
+
+```powershell
+Connect-ExchangeOnline
+New-Mailbox -Shared -Name "Helpdesk Test A" -Alias helpdesk-test-a      # helpdesk-test-a@<tenant>
+New-Mailbox -Shared -Name "Helpdesk Test B" -Alias helpdesk-test-b
+New-Mailbox -Shared -Name "Helpdesk Test Outside" -Alias helpdesk-test-outside   # control, never registered
+Set-Mailbox helpdesk-test-a -CustomAttribute1 HelpdeskTest
+Set-Mailbox helpdesk-test-b -CustomAttribute1 HelpdeskTest
+New-ServicePrincipal -AppId <mail AppId> -ObjectId <mail service principal object id> -DisplayName "Helpdesk TEST mail"
+New-ManagementScope -Name "HelpdeskTestMailboxes" -RecipientRestrictionFilter "CustomAttribute1 -eq 'HelpdeskTest'"
+New-ManagementRoleAssignment -App <mail service principal object id> -Role "Application Mail.ReadWrite" -CustomResourceScope "HelpdeskTestMailboxes"
+New-ManagementRoleAssignment -App <mail service principal object id> -Role "Application Mail.Send"      -CustomResourceScope "HelpdeskTestMailboxes"
+Test-ServicePrincipalAuthorization -Identity <mail service principal object id> -Resource helpdesk-test-a@<tenant>        # InScope True
+Test-ServicePrincipalAuthorization -Identity <mail service principal object id> -Resource helpdesk-test-outside@<tenant>  # InScope False
+```
+
+Wait up to 2 hours for grants; the cmdlet bypasses the cache. Nothing in the tenant gives the application a mailbox password.
+
+### G4. Connect the private stack (the only configuration change to the stack)
+
+1. Stop the stack: `.\scripts\windows\helpdesk.ps1 stop`.
+2. In `docker\windows\.env`: replace the fake `ENTRA_*` and `GRAPH_*` values with G1/G2 values; set `BOOTSTRAP_PLATFORM_ADMIN_SUBJECT` to the test administrator's Entra **object id**; set `NO_EGRESS=` (empty); keep `BIND_ADDRESS=127.0.0.1`.
+3. For webhook tests only (decide D-19 first): the host must be reachable by Microsoft at a public https name with a CA-issued certificate (tunnel or reverse proxy in front); set `PUBLIC_HOST` and `PUBLIC_PORT_SUFFIX` to that name. Do not publish the loopback ports. Without it only the sign-in and outbound parts (D2, D5 without webhooks) can be run.
+4. `helpdesk.ps1 check`, `start`, `verify`; confirm `GET https://<host><suffix>/api/auth/providers` returns `{"entra":true}`.
+
+### G5. Verification order
+
+Run section D. Stop at the first unexpected result and record it; do not change tenant objects to make a test pass.
+
+### H. Rollback and clean-up (after the session, or at any stop)
+
+```powershell
+# Exchange
+Remove-ManagementRoleAssignment -Identity <assignment identities from Get-ManagementRoleAssignment -App <sp object id>> -Confirm:$false
+Remove-ManagementScope -Identity HelpdeskTestMailboxes -Confirm:$false
+Remove-ServicePrincipal -Identity <mail service principal object id>
+Remove-Mailbox helpdesk-test-a, helpdesk-test-b, helpdesk-test-outside -Confirm:$false
+# Entra
+Remove-MgApplication -ApplicationId <signin object id>; Remove-MgApplication -ApplicationId <mail object id>
+```
+
+Stack: `.\scripts\windows\helpdesk.ps1 stop`, restore `NO_EGRESS=true` and the fake values in `docker\windows\.env` (or delete the file), and remove the `helpdesk-pv_*` volumes only deliberately (`docker volume rm`, never `down -v`). If sign-in misbehaves during the session, the instant stop is: stop the stack, then disable the sign-in app (`Update-MgApplication -ApplicationId <id> -Web @{ RedirectUris = @() }`) or remove its secret.
