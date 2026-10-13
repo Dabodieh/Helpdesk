@@ -22,8 +22,24 @@ async function configure(data: Seed) {
   await lead.dispose()
   const platform = await Api.signIn({ subject: 'dev-admin', name: 'Dev Admin', email: 'dev@example.test' })
   await platform.send('PUT', `/api/departments/${data.departmentId}/members/${leadId}`, { role: 'DepartmentAdmin' })
+  // The portal serves a Department's forms only while it has a usable active default mailbox (PR10-D22).
+  await platform.send('POST', `/api/departments/${data.departmentId}/mailboxes`, { address: `portal-${data.departmentId.slice(-8)}@helpdesk.test`, displayName: 'E2E Portal Desk' })
   await platform.dispose()
   return Api.signIn(data.actor)
+}
+
+/**
+ * Tickets an agent creates for an email address are NOT owned by whoever later signs in with that address (email is not proof of ownership):
+ * a Department administrator links the requester to the account explicitly (requester identity resolution).
+ */
+async function linkRequester(admin: Api, data: Seed, user: TestUser) {
+  const account = await Api.signIn(user) // provisions the account on first sign-in
+  const userId = (await account.get<{ id: string }>('/api/me')).id
+  await account.dispose()
+  const cases = await admin.get<{ requesterId: string; email: string }[]>(`/api/departments/${data.departmentId}/requester-identities?q=${encodeURIComponent(user.email)}`)
+  const match = cases.find((c) => c.email.toLowerCase() === user.email.toLowerCase())
+  if (!match) throw new Error(`no unlinked requester for ${user.email}`)
+  await admin.send('POST', `/api/departments/${data.departmentId}/requester-identities/${match.requesterId}/link`, { userId })
 }
 
 test('a requester submits a request through a form, sees it in My requests, and it is routed and given an SLA on the agent side', async ({ page }) => {
@@ -95,8 +111,9 @@ test('a requester submits a request through a form, sees it in My requests, and 
   expect((await admin.get<{ policyName: string }>(`/api/tickets/${reference}/sla`)).policyName).toBe('Portal SLA')
 
   // An agent sees the type and the configured fields in the ticket details and records the agent-only value.
+  await page.setViewportSize({ width: 1440, height: 900 }) // the Details rail is docked from 1400 px
   await page.goto(devLoginPath(data.actor, `/tickets/${reference}`))
-  await page.locator('summary', { hasText: 'Details' }).click()
+  await expect(page.getByRole('region', { name: 'Details' })).toBeVisible() // always open on the ticket page since the Graphite redesign
   await expect(page.getByText('Asset tag').first()).toBeVisible()
   await page.getByRole('button', { name: 'Edit details' }).click()
   await page.getByLabel(/Internal cost centre/).fill('CC-77')
@@ -117,6 +134,7 @@ test('a requester sees the public conversation only, replies, and sees the agent
   })
   await admin.send('POST', `/api/tickets/${created.reference}/messages`, { kind: 'Public', body: 'Have you tried another cable?' })
   await admin.send('POST', `/api/tickets/${created.reference}/messages`, { kind: 'Internal', body: 'PRIVATE-NOTE probably the panel' })
+  await linkRequester(admin, data, emma)
 
   await page.goto(devLoginPath(emma, `/portal/requests/${created.reference}`))
   await expect(page.getByRole('heading', { name: 'Monitor flickers' })).toBeVisible()
@@ -183,7 +201,7 @@ test('knowledge: search finds published articles, drafts do not exist, and admin
 
   // Administration: ticketing (types, fields, forms) and knowledge with dialogs.
   await page.goto(devLoginPath(data.actor, `/admin/departments/${data.departmentId}`))
-  await page.getByRole('tab', { name: 'Ticketing' }).click()
+  await page.getByRole('tab', { name: 'Ticket settings' }).click() // the former "Ticketing" tab
   await page.getByRole('tab', { name: 'Ticket fields' }).click()
   await page.getByRole('button', { name: 'New ticket field' }).click()
   await page.getByRole('dialog').getByLabel('Label', { exact: true }).fill('Which system?')
@@ -191,7 +209,7 @@ test('knowledge: search finds published articles, drafts do not exist, and admin
   await page.getByRole('textbox', { name: 'Choice 1' }).fill('Email')
   await noSeriousViolations(page, 'ticket field dialog')
   await page.getByRole('button', { name: 'Save field' }).click()
-  await expect(page.getByText('Which system?')).toBeVisible()
+  await expect(page.locator('strong', { hasText: 'Which system?' })).toBeVisible()
   await page.getByRole('tab', { name: 'Ticket types' }).click()
   await page.getByRole('button', { name: 'New ticket type' }).click()
   await page.getByRole('dialog').getByLabel('Name').fill('Access request')
@@ -211,14 +229,14 @@ test('knowledge: search finds published articles, drafts do not exist, and admin
   await page.getByRole('button', { name: 'Save form' }).click()
   await expect(page.getByText(/Type Access request/)).toBeVisible()
 
-  await page.getByRole('tab', { name: 'Knowledge' }).click()
-  await expect(page.getByRole('cell', { name: new RegExp(`Reset your password ${token}`) })).toBeVisible()
+  await page.getByRole('tab', { name: 'Knowledge', exact: true }).click()
+  await expect(page.getByRole('cell', { name: new RegExp(`^Reset your password ${token}`) })).toBeVisible()
   await page.getByRole('button', { name: 'New article' }).click()
   await noSeriousViolations(page, 'article editor')
   await page.getByRole('dialog').getByLabel('Title').fill(`Edited by admin ${token}`)
   await page.getByRole('dialog').getByLabel('Article text').fill('Some **help**.')
   await page.getByRole('button', { name: 'Publish', exact: true }).click()
-  await expect(page.getByRole('cell', { name: new RegExp(`Edited by admin ${token}`) })).toBeVisible()
+  await expect(page.getByRole('cell', { name: new RegExp(`^Edited by admin ${token}`) })).toBeVisible()
   await admin.dispose()
 })
 
@@ -231,7 +249,8 @@ test('a requester cannot open another requester’s request and learns nothing a
     description: 'Owner only description',
     requester: { email: owner.email, displayName: owner.name },
   })
-  // The owner claims the request by signing in; the other employee then tries the reference directly.
+  // An administrator links the requester to the owner's account (signing in with the address alone never claims it); the other employee then tries the reference directly.
+  await linkRequester(admin, data, owner)
   await page.goto(devLoginPath(owner, '/portal/requests'))
   await expect(page.getByRole('link', { name: /Owner only subject/ })).toBeVisible()
 

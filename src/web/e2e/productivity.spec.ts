@@ -4,6 +4,9 @@ import { Api, devLoginPath, seed, type Seed } from './support'
 
 // Phase 4 flows against the real backend: canned responses, saved views, bulk actions, realtime and accessibility.
 
+// The ticket properties rail is docked open from 1400 px wide (behind the Properties button below that).
+test.use({ viewport: { width: 1440, height: 900 } })
+
 async function signIn(page: Page, data: Seed, path = '/queue/my') {
   await page.goto(devLoginPath(data.actor, path))
   await expect(page.getByRole('heading', { name: 'My Queue', level: 1 })).toBeVisible()
@@ -51,6 +54,7 @@ test('canned response is inserted into the draft, modes are explicit, and the re
 test('a saved view is pinned in the sidebar and survives a reload', async ({ page }) => {
   const data = await seed()
   await signIn(page, data)
+  await page.getByRole('search', { name: 'Filter tickets' }).getByText('Filters', { exact: true }).click() // the extra filters sit in a collapsed group
   await page.getByRole('combobox', { name: 'Priority', exact: true }).selectOption('Normal')
   await page.getByRole('button', { name: 'Views' }).click()
   const dialog = page.getByRole('dialog')
@@ -102,14 +106,15 @@ test('a change made in another session appears without reloading', async ({ page
 test('accessibility: queue, ticket workspace, dialogs and administration have no serious violations', async ({ page }) => {
   const data = await seed()
   await signIn(page, data)
-  await page.getByRole('link', { name: data.first.subject }).click()
-  await expect(page.getByRole('region', { name: 'Ticket' }).getByRole('heading', { name: data.first.subject, level: 2 })).toBeVisible()
-  await expectNoSeriousViolations(page, 'workspace')
-
+  await expectNoSeriousViolations(page, 'queue')
   await page.getByRole('button', { name: 'Views' }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
   await expectNoSeriousViolations(page, 'views dialog')
   await page.keyboard.press('Escape')
+
+  await page.getByRole('link', { name: data.first.subject }).click()
+  await expect(page.getByRole('region', { name: 'Ticket' }).getByRole('heading', { name: data.first.subject, level: 2 })).toBeVisible()
+  await expectNoSeriousViolations(page, 'workspace')
 
   await page.goto(`/admin/departments/${data.departmentId}`)
   await expect(page.getByRole('tab', { name: 'Members' })).toBeVisible()

@@ -2,6 +2,8 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
+const apiTarget = process.env.HELPDESK_API_PROXY ?? 'http://localhost:5080'
+
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -10,11 +12,12 @@ export default defineConfig({
     host: true,
     allowedHosts: ['helpdesk.amb-it.co.uk'],
     // Same-origin to the browser, so cookie auth + CSRF behave as in production.
+    // HELPDESK_API_PROXY points a second dev server at another backend (the isolated E2E stack, scripts/e2e); default is the normal dev API.
     proxy: {
-      '/api': 'http://localhost:5080',
-      '/health': 'http://localhost:5080',
+      '/api': apiTarget,
+      '/health': apiTarget,
       // SignalR (negotiate + WebSocket) for live ticket updates.
-      '/hubs': { target: 'http://localhost:5080', ws: true },
+      '/hubs': { target: apiTarget, ws: true },
     },
   },
   // Playwright specs live in e2e/ and run with `npm run e2e`, never under vitest.

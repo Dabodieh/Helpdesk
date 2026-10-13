@@ -10,6 +10,9 @@ async function noSeriousViolations(page: Page, label: string) {
   expect(serious.map((v) => `${label}: ${v.id} (${v.nodes.length}) ${v.help}`)).toEqual([])
 }
 
+// The ticket properties rail is docked open from 1400 px wide (behind the Properties button below that).
+test.use({ viewport: { width: 1440, height: 900 } })
+
 test('administrator configures hours, a policy and a routing rule; a new ticket gets its SLA and assignee; dry run explains', async ({ page }) => {
   const data = await seed()
   // Make the seeded lead a department administrator (as platform admin) so one signed-in person can configure and read tickets.
@@ -57,7 +60,7 @@ test('administrator configures hours, a policy and a routing rule; a new ticket 
   await rule.getByLabel('Action 1 value').selectOption({ label: data.actor.name })
   await noSeriousViolations(page, 'rule editor dialog')
   await rule.getByRole('button', { name: 'Save rule' }).click()
-  await expect(page.getByText('Network routing', { exact: true })).toBeVisible()
+  await expect(page.locator('strong', { hasText: 'Network routing' })).toBeVisible() // the row's edit button repeats the name for screen readers
   await expect(page.getByText(new RegExp(`Assign agent: ${data.actor.name}`))).toBeVisible()
 
   // A new ticket: SLA applied, assignee set by the rule.
@@ -76,8 +79,9 @@ test('administrator configures hours, a policy and a routing rule; a new ticket 
   await row.getByRole('link', { name: subject }).click()
   const ticket = page.getByRole('region', { name: 'Ticket', exact: true })
   await expect(ticket.getByRole('combobox', { name: 'Assignee', exact: true })).not.toHaveValue('')
-  await expect(ticket.getByText('Service level').first()).toBeVisible()
-  await ticket.getByRole('button', { name: 'Details' }).click()
+  // The service level lives in the properties rail (SlaPanel); the header strip it replaced is no longer rendered.
+  await expect(ticket.getByRole('region', { name: 'Service level' })).toBeVisible()
+  await ticket.getByRole('button', { name: 'SLA details' }).click()
   const details = page.getByRole('dialog')
   await expect(details.getByText('Standard support', { exact: true })).toBeVisible()
   await expect(details.getByText(/SLA applied/)).toBeVisible()
@@ -85,6 +89,8 @@ test('administrator configures hours, a policy and a routing rule; a new ticket 
   await page.keyboard.press('Escape')
 
   // SLA filter and sort in the queue
+  await page.goto('/queue/all')
+  await page.getByRole('search', { name: 'Filter tickets' }).getByText('Filters', { exact: true }).click() // the extra filters sit in a collapsed group
   await page.getByRole('combobox', { name: 'Service level', exact: true }).selectOption('duesoon')
   await page.getByRole('combobox', { name: 'Service level', exact: true }).selectOption('')
   await page.getByRole('combobox', { name: 'Sort', exact: true }).selectOption('sla_due_asc')

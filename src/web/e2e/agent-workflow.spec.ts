@@ -1,19 +1,24 @@
 import { expect, test } from '@playwright/test'
 import { devLoginPath, seed } from './support'
 
+// The properties rail is docked open from 1400 px wide (closed behind the Properties button below that), so use a typical desktop width.
+test.use({ viewport: { width: 1440, height: 900 } })
+
 // Critical flow of the agent workspace against the real backend and seeded data (see docs/DEVELOPMENT.md).
 test('agent signs in, works a ticket and moves to the next one with the keyboard', async ({ page }) => {
   const data = await seed()
   const ticket = page.getByRole('region', { name: 'Ticket' })
 
-  // Sign in through dev-login and land on My Queue.
+  // Sign in through dev-login: agents land on the dashboard (11f0f6b); My Queue is behind Tickets in the main navigation.
   await page.goto(devLoginPath(data.actor))
+  await expect(page).toHaveURL(/\/dashboard\//)
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Tickets' }).click()
   await expect(page).toHaveURL(/\/queue\/my/)
   await expect(page.getByRole('heading', { name: 'My Queue', level: 1 })).toBeVisible()
 
   // Open the first ticket and read the conversation.
   await page.getByRole('link', { name: data.first.subject }).click()
-  await expect(page).toHaveURL(new RegExp(`/queue/my/${data.first.reference}`))
+  await expect(page).toHaveURL(new RegExp(`/tickets/${data.first.reference}`))
   await expect(ticket.getByRole('heading', { name: data.first.subject, level: 2 })).toBeVisible()
   await expect(ticket.getByText(data.first.description)).toBeVisible()
 
@@ -45,12 +50,11 @@ test('agent signs in, works a ticket and moves to the next one with the keyboard
   await expect(ticket.getByText(/changed priority from Normal to High/)).toBeVisible()
   await ticket.getByRole('button', { name: 'Conversation' }).click()
 
-  // Keyboard: leave the composer, move to the other ticket and open it.
+  // Keyboard: leave the composer and move to the neighbouring ticket of the queue the agent came from ('[' previous, ']' next, on the ticket page). The queue lists the newer ticket first, so the seeded first ticket's neighbour above is the second.
   await page.keyboard.press('Escape')
-  // A focused button (the Conversation tab) would swallow Enter natively: drop focus first, as a user pressing Esc in the page would.
+  // A focused button (the Conversation tab) would swallow the shortcut natively: drop focus first, as a user pressing Esc in the page would.
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
-  await page.keyboard.press('j')
-  await page.keyboard.press('Enter')
-  await expect(page).toHaveURL(new RegExp(`/queue/my/${data.second.reference}`))
+  await page.keyboard.press('[')
+  await expect(page).toHaveURL(new RegExp(`/tickets/${data.second.reference}`))
   await expect(ticket.getByRole('heading', { name: data.second.subject, level: 2 })).toBeVisible()
 })

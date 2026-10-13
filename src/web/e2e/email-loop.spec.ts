@@ -20,6 +20,10 @@ test('email in, reply out from the department mailbox, requester answer threads 
   const dept = await admin.send<{ id: string }>('POST', '/api/departments', { key, name: `E2E Mail ${run}` })
   await admin.send('PUT', `/api/departments/${dept.id}/members/${agentId}`, { role: 'Agent' })
   await admin.send('POST', `/api/departments/${dept.id}/mailboxes`, { address, displayName: 'E2E Desk', signature: 'Regards,\nE2E Desk' })
+  // Signatures belong to the agent (per Department) and are applied only at the actual public send; mailboxes carry none.
+  const signer = await Api.signIn(agent)
+  await signer.send('PUT', `/api/departments/${dept.id}/signature/me`, { html: '<p>Regards,<br>E2E Desk</p>' })
+  await signer.dispose()
   await admin.send('POST', '/api/dev/mail/inbound', {
     mailbox: address,
     from: requester,
@@ -35,7 +39,8 @@ test('email in, reply out from the department mailbox, requester answer threads 
   const ticket = page.getByRole('region', { name: 'Ticket' })
   await expect(ticket.getByText('The scanner on floor 2 is offline again.')).toBeVisible()
   await expect(ticket.getByRole('link', { name: 'photo.png' })).toBeVisible()
-  await expect(ticket.getByText(address)).toBeVisible()
+  // Sender identity is a Department-administrator concern (TicketMailbox): a plain agent never sees the mailbox row or address.
+  await expect(ticket.getByText(address)).toHaveCount(0)
 
   // Reply: it is sent from the department's mailbox, and the page says so only once the provider accepted it.
   await ticket.getByRole('textbox', { name: 'Public reply' }).fill('We have booked an engineer for tomorrow.')
