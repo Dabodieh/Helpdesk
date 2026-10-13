@@ -12,4 +12,7 @@ internal static partial class SignInLog
 
     [LoggerMessage(EventId = 2, Level = LogLevel.Warning, Message = "Microsoft sign-in did not complete ({Reason}, reference {Reference})")]
     public static partial void Incomplete(ILogger logger, Exception? exception, string reason, string reference);
+
+    [LoggerMessage(EventId = 3, Level = LogLevel.Warning, Message = "{Message}")]
+    public static partial void KeyRingUnreadable(ILogger logger, string message);
 }

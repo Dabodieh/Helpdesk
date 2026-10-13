@@ -8,6 +8,8 @@ using Microsoft.AspNetCore.DataProtection.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Helpdesk.Modules.Identity.Authentication;
@@ -26,6 +28,8 @@ internal static class DataProtectionKeyStore
         ProtectKeysWithConfiguredCertificate(builder, configuration);
         services.AddSingleton<IConfigureOptions<KeyManagementOptions>>(sp =>
             new ConfigureOptions<KeyManagementOptions>(o => o.XmlRepository = new PostgresXmlRepository(sp.GetRequiredService<IServiceScopeFactory>())));
+        services.AddHostedService(sp => new KeyRingReadabilityCheck(
+            sp.GetRequiredService<IKeyManager>(), configuration, sp.GetRequiredService<ILoggerFactory>().CreateLogger(SignInLog.Category)));
     }
 
     /// <summary>
@@ -107,6 +111,56 @@ internal static class DataProtectionKeyStore
 
         return certificate;
     }
+}
+
+/// <summary>
+/// With a certificate configured, a key ring that holds keys this host cannot read (wrong or missing certificate, a rotated-away certificate not listed under
+/// <c>PreviousCertificatePaths</c>) is not a harmless condition: the framework silently continues and creates a new key, which signs everyone out and leaves the stored Entra
+/// secret unreadable, and every later change of configuration adds another key. This check counts stored versus readable keys at start and stops a host that runs with
+/// <c>DataProtection:RequireCertificate=true</c>; otherwise it logs a warning. It reads and writes nothing.
+/// </summary>
+internal sealed class KeyRingReadabilityCheck(IKeyManager keys, IConfiguration configuration, ILogger logger) : IHostedService
+{
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(configuration["DataProtection:CertificatePath"]))
+        {
+            return Task.CompletedTask;
+        }
+
+        // The framework lists a key whose protection it cannot open and fails only when the key is used: try to open each one.
+        var all = keys.GetAllKeys();
+        var unreadable = 0;
+        foreach (var key in all)
+        {
+            try
+            {
+                _ = key.CreateEncryptor();
+            }
+            catch (System.Security.Cryptography.CryptographicException)
+            {
+                unreadable++;
+            }
+        }
+
+        if (unreadable == 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        var stored = all.Count;
+        var message = $"DataProtection: {unreadable} of {stored} keys in the key ring cannot be read with the configured certificate(s). "
+            + "Add the certificate that protected them to DataProtection:PreviousCertificatePaths (or restore the right certificate) before starting.";
+        if (bool.TryParse(configuration["DataProtection:RequireCertificate"], out var require) && require)
+        {
+            throw new InvalidOperationException(message);
+        }
+
+        SignInLog.KeyRingUnreadable(logger, message);
+        return Task.CompletedTask;
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }
 
 internal sealed class PostgresXmlRepository(IServiceScopeFactory scopes) : IXmlRepository

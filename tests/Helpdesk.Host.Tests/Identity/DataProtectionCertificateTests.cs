@@ -4,6 +4,9 @@ using Helpdesk.Modules.Identity.Authentication;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.AspNetCore.DataProtection.KeyManagement;
+using Microsoft.Extensions.Options;
 
 namespace Helpdesk.Host.Tests.Identity;
 
@@ -120,5 +123,36 @@ public sealed class DataProtectionCertificateTests : IDisposable
         File.WriteAllText(secret, Canary + "\n");
         var protector = Provider(KeyFolder("filepw"), Config(("DataProtection:CertificatePath", pfx), ("DataProtection:CertificatePasswordFile", secret))).CreateProtector("t");
         Assert.Equal("x", protector.Unprotect(protector.Protect("x")));
+    }
+
+    private static KeyRingReadabilityCheck Check(string keyFolder, IConfiguration configuration)
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddDataProtection().SetApplicationName(DataProtectionKeyStore.ApplicationName).PersistKeysToFileSystem(new DirectoryInfo(keyFolder));
+        DataProtectionKeyStore.ProtectKeysWithConfiguredCertificate(builder, configuration);
+        var provider = services.BuildServiceProvider();
+        return new KeyRingReadabilityCheck(provider.GetRequiredService<IKeyManager>(), configuration, NullLogger.Instance);
+    }
+
+    [Fact]
+    public async Task A_ring_with_keys_the_configured_certificates_cannot_read_stops_a_host_that_requires_a_certificate()
+    {
+        var a = NewPfx("ra.pfx", "pw");
+        var b = NewPfx("rb.pfx", "pw");
+        var folder = KeyFolder("check");
+        Provider(folder, Config(("DataProtection:CertificatePath", a), ("DataProtection:CertificatePassword", "pw"))).CreateProtector("t").Protect("x");
+
+        // certificate A listed (current or previous): every key is readable
+        await Check(folder, Config(("DataProtection:CertificatePath", a), ("DataProtection:CertificatePassword", "pw"), ("DataProtection:RequireCertificate", "true"))).StartAsync(default);
+        await Check(folder, Config(("DataProtection:CertificatePath", b), ("DataProtection:CertificatePassword", "pw"), ("DataProtection:PreviousCertificatePaths:0", a), ("DataProtection:RequireCertificate", "true"))).StartAsync(default);
+
+        // only B: the key under A is unreadable
+        var wrong = Config(("DataProtection:CertificatePath", b), ("DataProtection:CertificatePassword", "pw"), ("DataProtection:RequireCertificate", "true"));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Check(folder, wrong).StartAsync(default));
+        Assert.Contains("PreviousCertificatePaths", ex.Message, StringComparison.Ordinal);
+
+        // not required: warns only, never throws
+        var lenient = Config(("DataProtection:CertificatePath", b), ("DataProtection:CertificatePassword", "pw"));
+        await Check(folder, lenient).StartAsync(default);
     }
 }
