@@ -10,6 +10,7 @@ internal static class MailAuditActions
     public const string MailboxUpdated = "mailbox.updated";
     public const string MailboxActivated = "mailbox.activated";
     public const string MailboxDeactivated = "mailbox.deactivated";
+    public const string SubscriptionRetried = "mailbox.subscription_retried";
     public const string TicketCreated = "mail.ticket_created";
     public const string Attached = "mail.attached";
     public const string Ignored = "mail.ignored";

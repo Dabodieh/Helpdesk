@@ -153,12 +153,15 @@ internal sealed class SubscriptionService(MailDbContext db, IMailProvider provid
         var expiry = now + TimeSpan.FromDays(settings.SubscriptionLifetimeDays);
         try
         {
-            if (sync.SubscriptionId is { } existing && sync.SubscriptionState == SubscriptionStates.Active)
+            // A subscription id we already hold (Active, or Failed after a transient error) is reconciled with Graph by renewing it first: a replacement is only created when
+            // Graph no longer knows it, so a retry never leaves a second subscription behind.
+            if (sync.SubscriptionId is { } existing && sync.SubscriptionState is SubscriptionStates.Active or SubscriptionStates.Failed)
             {
                 try
                 {
                     // Renewal is a PATCH of the expiry only (it also reauthorises, ADR-011).
                     sync.SubscriptionExpiresAt = await provider.RenewSubscriptionAsync(mref, existing, expiry, ct);
+                    sync.SubscriptionState = SubscriptionStates.Active;
                     sync.LastSyncError = null;
                     await db.SaveChangesAsync(ct);
                     return;

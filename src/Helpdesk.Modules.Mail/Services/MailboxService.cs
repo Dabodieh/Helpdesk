@@ -222,6 +222,31 @@ internal sealed partial class MailboxService(
         return await GetAsync(departmentId, mailbox.Id, ct);
     }
 
+    /// <summary>
+    /// Manual retry of the inbound subscription (the same <see cref="SubscriptionService.EnsureAsync"/> the automatic job uses). The mailbox is resolved by department first, so
+    /// another department's mailbox is simply not found. A healthy subscription is left alone and a held subscription id is renewed before anything is created (no duplicates).
+    /// The result is the mailbox as it now stands: its subscription state and last error are what the administrator sees.
+    /// </summary>
+    public async Task<MailboxDto> RetrySubscriptionAsync(Guid departmentId, Guid mailboxId, CancellationToken ct)
+    {
+        var mailbox = await FindAsync(departmentId, mailboxId, track: false, ct);
+        if (!mailbox.IsActive)
+        {
+            throw new RequestValidationException("mailbox", "Activate the mailbox before retrying its inbound subscription.");
+        }
+
+        var before = mailbox.Sync?.SubscriptionState ?? SubscriptionStates.None;
+        await subscriptions.EnsureAsync(mailboxId, ct);
+        db.ChangeTracker.Clear();
+        var result = await GetAsync(departmentId, mailboxId, ct);
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await audit.WriteAsync(
+            MailAuditActions.SubscriptionRetried, MailAudit.MailboxObject, mailboxId, departmentId,
+            new { state = before }, new { state = result.Subscription.State, error = result.LastSyncError }, ct);
+        await tx.CommitAsync(ct);
+        return result;
+    }
+
     public async Task<MailboxDto> UpdateAsync(Guid departmentId, Guid mailboxId, UpdateMailboxRequest request, CancellationToken ct)
     {
         var errors = new Dictionary<string, string[]>();

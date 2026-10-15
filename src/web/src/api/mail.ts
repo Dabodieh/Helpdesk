@@ -55,6 +55,9 @@ export const updateMailbox = (
   body: { version: string; displayName?: string; isActive?: boolean; isDefault?: boolean },
 ) => api('PATCH', `${base(departmentId)}/mailboxes/${encodeURIComponent(mailboxId)}`, { body, schema: mailboxSchema })
 
+export const retryMailboxSubscription = (departmentId: string, mailboxId: string) =>
+  api('POST', `${base(departmentId)}/mailboxes/${encodeURIComponent(mailboxId)}/subscription/retry`, { schema: mailboxSchema })
+
 export const listAttention = (departmentId: string, cursor: string | null) =>
   api('GET', `${base(departmentId)}/mail/attention${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { schema: attentionPageSchema })
 

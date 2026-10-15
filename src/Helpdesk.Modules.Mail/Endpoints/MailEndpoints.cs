@@ -50,6 +50,11 @@ internal static class MailEndpoints
                 TypedResults.Ok(await service.UpdateAsync(departmentId, mailboxId, body, ct)))
             .RequirePermission(PermissionCodes.DepartmentMailboxesManage);
 
+        // Same permission as the rest of mailbox administration; CSRF applies as to every state-changing request. Returns the mailbox with its resulting subscription state.
+        mailboxes.MapPost("{mailboxId:guid}/subscription/retry", async (Guid departmentId, Guid mailboxId, MailboxService service, CancellationToken ct) =>
+                TypedResults.Ok(await service.RetrySubscriptionAsync(departmentId, mailboxId, ct)))
+            .RequirePermission(PermissionCodes.DepartmentMailboxesManage);
+
         // Platform-level Microsoft 365 page. Platform administration only; read-only against the tenant (see Microsoft365Service).
         var m365 = app.MapGroup("/api/admin/microsoft-365").WithTags("Microsoft 365");
 

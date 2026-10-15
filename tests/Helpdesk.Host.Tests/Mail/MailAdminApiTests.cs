@@ -167,4 +167,40 @@ public sealed class MailAdminApiTests(HelpdeskFixture fixture) : IClassFixture<H
         Assert.Equal(JsonValueKind.Null, dto.Json.GetProperty("lastSyncError").ValueKind);
         Assert.Equal(0, dto.Json.GetProperty("attentionCount").GetInt32());
     }
+
+    [Fact]
+    public async Task Retrying_a_failed_subscription_is_permission_checked_department_scoped_and_never_duplicates()
+    {
+        var a = await fixture.NewDeptAsync();
+        var b = await fixture.NewDeptAsync();
+        var box = await fixture.CreateMailboxAsync(a);
+        var url = $"{a.Department.Url}/mailboxes/{box.Id}/subscription/retry";
+        var outsider = await fixture.NewUserAsync();
+
+        (await fixture.CreateAnonymousClient().PostAsync(url, new { })).Expect(HttpStatusCode.BadRequest); // no session: refused by the CSRF check before anything runs
+        (await outsider.Client.PostAsync(url, new { })).Expect(HttpStatusCode.NotFound);
+        (await b.Admin.Client.PostAsync(url, new { })).Expect(HttpStatusCode.NotFound);
+        foreach (var user in new[] { a.Viewer, a.Agent, a.Lead })
+        {
+            (await user.Client.PostAsync(url, new { })).Expect(HttpStatusCode.Forbidden);
+        }
+
+        // Failed, id still held (a failed renewal): the retry renews that id; it does not create a second subscription.
+        var held = await fixture.ScalarAsync<string>("SELECT subscription_id FROM mail.mailbox_sync WHERE mailbox_id = @m", TicketKit.P("m", box.Id));
+        Assert.False(string.IsNullOrEmpty(held));
+        await fixture.ExecuteAsync("UPDATE mail.mailbox_sync SET subscription_state = 'Failed', last_sync_error = 'graph_400' WHERE mailbox_id = @m", TicketKit.P("m", box.Id));
+        var renewed = (await a.Admin.Client.PostAsync(url, new { })).Expect(HttpStatusCode.OK);
+        Assert.Equal("Active", renewed.Json.GetProperty("subscription").Str("state"));
+        Assert.Equal(held, await fixture.ScalarAsync<string>("SELECT subscription_id FROM mail.mailbox_sync WHERE mailbox_id = @m", TicketKit.P("m", box.Id)));
+
+        // Failed with no subscription: one is created; a second retry on the now-healthy mailbox changes nothing.
+        await fixture.ExecuteAsync("UPDATE mail.mailbox_sync SET subscription_state = 'Failed', subscription_id = NULL, subscription_expires_at = NULL WHERE mailbox_id = @m", TicketKit.P("m", box.Id));
+        var created = (await a.Admin.Client.PostAsync(url, new { })).Expect(HttpStatusCode.OK);
+        Assert.Equal("Active", created.Json.GetProperty("subscription").Str("state"));
+        var id = await fixture.ScalarAsync<string>("SELECT subscription_id FROM mail.mailbox_sync WHERE mailbox_id = @m", TicketKit.P("m", box.Id));
+        Assert.False(string.IsNullOrEmpty(id));
+        (await a.Admin.Client.PostAsync(url, new { })).Expect(HttpStatusCode.OK);
+        Assert.Equal(id, await fixture.ScalarAsync<string>("SELECT subscription_id FROM mail.mailbox_sync WHERE mailbox_id = @m", TicketKit.P("m", box.Id)));
+        Assert.Equal(3, await fixture.CountAsync("SELECT count(*) FROM audit.audit_events WHERE action = 'mailbox.subscription_retried' AND object_id = @m", TicketKit.P("m", box.Id)));
+    }
 }

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { fieldErrors } from '../api/errors'
-import { createMailbox, listAttention, listMailboxes, releaseMail, retryMail, updateMailbox, type AttentionItem, type Mailbox } from '../api/mail'
+import { createMailbox, listAttention, listMailboxes, releaseMail, retryMail, retryMailboxSubscription, updateMailbox, type AttentionItem, type Mailbox } from '../api/mail'
 import { canInDepartment } from '../api/permissions'
 import type { Department } from '../api/schemas'
 import { useMe } from '../auth'
@@ -80,6 +80,8 @@ function MailboxRow({ departmentId, mailbox: m }: { departmentId: string; mailbo
     onSettled: refresh,
   })
   const server = fieldErrors(patch.error)
+  const resub = useMutation({ mutationFn: () => retryMailboxSubscription(departmentId, m.id), onSettled: refresh })
+  const needsResub = m.isActive && m.subscription.state !== 'Active'
   return (
     <>
       <tr>
@@ -104,6 +106,14 @@ function MailboxRow({ departmentId, mailbox: m }: { departmentId: string; mailbo
             {m.subscription.expiresAt ? <span className="muted small">Expires {formatDateTime(m.subscription.expiresAt)}</span> : <span className="muted small">No expiry recorded</span>}
           </details>
           {m.lastSyncError && <span className="field-error small"> ({m.lastSyncError})</span>}
+          {resub.isError && <ErrorNotice error={resub.error} />}
+          {resub.data && (
+            <div role="status" className={resub.data.subscription.state === 'Active' ? 'muted small' : 'field-error small'}>
+              {resub.data.subscription.state === 'Active'
+                ? `Subscription active${resub.data.subscription.expiresAt ? `, expires ${formatDateTime(resub.data.subscription.expiresAt)}` : ''}.`
+                : `Retry did not succeed: subscription ${resub.data.subscription.state}${resub.data.lastSyncError ? ` (${resub.data.lastSyncError})` : ''}.`}
+            </div>
+          )}
         </td>
         <td>{m.attentionCount > 0 ? <strong>{m.attentionCount} failed</strong> : 0}</td>
         <td className="row-actions">
@@ -118,6 +128,12 @@ function MailboxRow({ departmentId, mailbox: m }: { departmentId: string; mailbo
             {editing ? 'Close' : 'Edit'}
             <span className="sr-only"> {m.address}</span>
           </button>
+          {needsResub && (
+            <button type="button" disabled={resub.isPending} onClick={() => resub.mutate()}>
+              {resub.isPending ? 'Retrying…' : 'Retry subscription'}
+              <span className="sr-only"> {m.address}</span>
+            </button>
+          )}
           {m.isActive && !m.isDefault && (
             <button type="button" disabled={patch.isPending} onClick={() => patch.mutate({ isDefault: true })}>
               Make default<span className="sr-only"> {m.address}</span>
