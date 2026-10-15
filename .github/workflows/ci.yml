@@ -267,16 +267,16 @@ jobs:
           test -n "$user" && test "$user" != "root" && test "$user" != "0"
       - name: Dockerfile and configuration misconfiguration scan (HIGH and CRITICAL fail)
         run: >-
-          docker run --rm -v "$PWD:/src:ro" "$TRIVY_IMAGE" config --severity HIGH,CRITICAL --exit-code 1 --no-progress /src
+          docker run --rm -v "$PWD:/src:ro" "$TRIVY_IMAGE" config --quiet --severity HIGH,CRITICAL --exit-code 1 /src
       - name: SBOM (CycloneDX and SPDX)
         run: |
           mkdir -p sbom
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/sbom:/out" "$TRIVY_IMAGE" image --format cyclonedx --output /out/helpdesk-host.cdx.json --no-progress "$IMAGE"
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/sbom:/out" "$TRIVY_IMAGE" image --format spdx-json --output /out/helpdesk-host.spdx.json --no-progress "$IMAGE"
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/sbom:/out" "$TRIVY_IMAGE" image --quiet --format cyclonedx --output /out/helpdesk-host.cdx.json "$IMAGE"
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/sbom:/out" "$TRIVY_IMAGE" image --quiet --format spdx-json --output /out/helpdesk-host.spdx.json "$IMAGE"
       - name: Image vulnerabilities and embedded secrets (HIGH and CRITICAL fail; unfixed findings are not hidden)
         run: >-
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY_IMAGE" image
-          --scanners vuln,secret --severity HIGH,CRITICAL --exit-code 1 --no-progress "$IMAGE"
+          --quiet --scanners vuln,secret --severity HIGH,CRITICAL --exit-code 1 "$IMAGE"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
