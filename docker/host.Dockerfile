@@ -1,5 +1,5 @@
 # The SPA is built here and served by the host from /app/wwwroot (ADR-020): one deployable, no separate web-server image.
-FROM node:24-alpine AS web
+FROM node:25-alpine AS web
 WORKDIR /web
 COPY src/web/package.json src/web/package-lock.json ./
 RUN npm ci
