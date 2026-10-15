@@ -10,6 +10,13 @@ docker compose up -d                 # PostgreSQL 18 (5432); object storage is o
 dotnet run --project src/Helpdesk.Host   # http://localhost:5080  (Development config uses compose defaults)
 npm --prefix src/web ci && npm --prefix src/web run dev   # http://localhost:5173 (proxies /api and /health)
 ```
+### Windows: canonical Compose project
+On Windows, everything runs in one Docker Compose project, `helpdesk`: `web` (Vite with hot reload, 127.0.0.1:5173), `host` (Development backend, 127.0.0.1:5080) and `postgres` (127.0.0.1:5433, volume `helpdesk_pgdata`). Nothing runs on Windows outside Docker; do not start `npm run dev` there while `web` holds port 5173. Manage it with `scripts\windows\dev.ps1 start|stop|restart|update|status|logs [web|host|postgres]`:
+- `web` bind-mounts `src/web` and keeps `node_modules` in the `web_node_modules` volume (the Windows `node_modules` is never used). Dependencies install on first start; after changing `package-lock.json` run `docker compose exec web npm ci`. File watching uses polling (`HELPDESK_WEB_POLLING`) because Docker Desktop bind mounts deliver no change events. API calls are proxied to `http://host:8080` over the Compose network.
+- `stop` stops the three containers and removes nothing. `update` refuses unless `D:\DB Backup` (override with `HELPDESK_DEV_BACKUP_DIR`) holds a `helpdesk-*.dump.enc` with a `.sha256` newer than 24 hours (`-Force` skips), tags the running image `helpdesk-host:pre-<timestamp>` as the rollback point (retag it `local` and `docker compose up -d --no-deps host` to roll back), rebuilds `host` and recreates `host` and `web`. Development applies pending migrations when `host` starts. `postgres` is never recreated.
+- The object store is not part of normal development (opt-in: `docker compose --profile storage up -d objectstore`).
+- Development sign-in is on in this project: all published ports bind to 127.0.0.1; never expose 5173 or 5080 through a tunnel.
+
 In Development the host applies pending migrations on start (`Database:MigrateOnStartup`) and enables dev sign-in (see below). The `.env.example` Postgres password matches the Development connection string; override with `Database__ConnectionString` if you change it.
 
 Health: `GET /health/live` (process), `GET /health/ready` (PostgreSQL, the object store and migration state; a job backlog is a metric, not a readiness failure; see `docs/guides/OPERATIONS_RUNBOOK.md`). OpenAPI (Development): `/openapi/v1.json`.

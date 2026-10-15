@@ -244,3 +244,11 @@ Environment: a throw-away Postgres container and volume, an internal Docker netw
 ### 13.4 Decisions still open
 
 Certificate custody and enabling `RequireCertificate`; session policy values and absolute-lifetime implementation; log retention mechanism; polling-only vs reachable webhooks (D-19); compose `BIND_ADDRESS` default; choice of the test tenant; whether to wire a Graph certificate credential into compose.
+
+## 14. Public access preparation (2026-10-14)
+
+Configured, not activated. Details and IDs: `docs/guides/CLOUDFLARE_PUBLIC_ACCESS.md`.
+- Cloudflare Access application for `helpdesk.amb-it.co.uk` created with a deny-everyone placeholder policy, One-time PIN and an 8 h session; verified from outside (302 to the Access login on `/` and `/api/me`). No Allow or Bypass policy exists.
+- Tunnel `Helpdesk` has only the catch-all 404 ingress and no connector.
+- Production mode added to the single `helpdesk` Compose project (`app`, profile `production`): cannot run together with the Development `host`, own database `PROD_DB_NAME`, no published ports, certificate-protected key ring required, DevSignIn disabled, migrations only by explicit `prod-migrate`.
+- Open: allow-list emails, Entra and Graph registrations (tenant changes need approval), production secrets and certificates, bucket creation behaviour of the local object store (unverified), live Graph validation, malware scanning, retention policy, backup/restore evidence.
