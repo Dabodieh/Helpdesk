@@ -34,6 +34,7 @@ public static class IdentityModule
         services.AddScoped<CurrentUser>();
         services.AddScoped<ICurrentUser>(sp => sp.GetRequiredService<CurrentUser>());
         services.AddScoped<IUserProvisioner, UserProvisioner>();
+        services.AddScoped<IUserSessionValidator, UserSessionValidator>();
         services.AddScoped<IUserDirectory, UserDirectory>();
         services.AddScoped<PlatformUserService>();
         services.AddScoped<EntraSetupService>();

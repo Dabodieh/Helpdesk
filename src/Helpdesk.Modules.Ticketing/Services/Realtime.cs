@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Security.Claims;
+using Helpdesk.Modules.Identity.Contracts;
 using Helpdesk.Modules.Organisation.Contracts;
 using Helpdesk.SharedKernel.Authorization;
 using Helpdesk.SharedKernel.Security;
@@ -141,7 +142,7 @@ internal sealed class TicketHub(HubAccess access, PresenceService presence) : Hu
 
     public override async Task OnConnectedAsync()
     {
-        await access.ConnectedAsync(Context.ConnectionId, UserId(Context.User));
+        await access.ConnectedAsync(Context.ConnectionId, UserId(Context.User), Context);
         await base.OnConnectedAsync();
     }
 
@@ -159,9 +160,17 @@ internal sealed class TicketHub(HubAccess access, PresenceService presence) : Hu
 /// <summary>Tracks connections and keeps their group membership equal to the user's current access (no request context needed).</summary>
 internal sealed partial class HubAccess(IHubContext<TicketHub> hub, IServiceScopeFactory scopes, ILogger<HubAccess> log) : IAccessChangeListener, IDisposable
 {
-    private sealed class Connection(Guid userId)
+    private sealed class Connection(Guid userId, HubCallerContext? context, int? sessionVersion, DateTimeOffset? issuedAt)
     {
         public Guid UserId { get; } = userId;
+
+        /// <summary>Lets the server close the connection itself when its session is revoked or expires (SignalR authenticates only when the connection opens).</summary>
+        public HubCallerContext? Context { get; } = context;
+
+        /// <summary>Session stamp of the cookie the connection was opened with; a connection without one cannot prove its session and is treated as revoked.</summary>
+        public int? SessionVersion { get; } = sessionVersion;
+
+        public DateTimeOffset? IssuedAt { get; } = issuedAt;
 
         public HashSet<string> Groups { get; } = [];
     }
@@ -196,9 +205,12 @@ internal sealed partial class HubAccess(IHubContext<TicketHub> hub, IServiceScop
 
     public int ConnectionCount => _connections.Count;
 
-    public async Task ConnectedAsync(string connectionId, Guid userId)
+    public async Task ConnectedAsync(string connectionId, Guid userId, HubCallerContext? context = null)
     {
-        _connections[connectionId] = new Connection(userId);
+        int? version = int.TryParse(context?.User?.FindFirst(SessionClaimTypes.SessionVersion)?.Value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : null;
+        DateTimeOffset? issued = long.TryParse(context?.User?.FindFirst(SessionClaimTypes.IssuedAt)?.Value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var s)
+            ? DateTimeOffset.FromUnixTimeSeconds(s) : null;
+        _connections[connectionId] = new Connection(userId, context, version, issued);
         await RefreshConnectionAsync(connectionId, CancellationToken.None);
     }
 
@@ -238,6 +250,17 @@ internal sealed partial class HubAccess(IHubContext<TicketHub> hub, IServiceScop
         try
         {
             await using var scope = scopes.CreateAsyncScope();
+
+            // The session behind this connection must still be valid (account active, same session version, inside the absolute lifetime). If not, the connection loses
+            // EVERY group (department, notes, user, requester) and is closed by the server; nothing ever re-adds a revoked connection, so reactivation does not restore it.
+            if (connection.Context is not null
+                && !(connection.SessionVersion is { } version && connection.IssuedAt is { } issuedAt
+                     && await scope.ServiceProvider.GetRequiredService<IUserSessionValidator>().IsSessionValidAsync(connection.UserId, version, issuedAt, ct)))
+            {
+                await RevokeAsync(connectionId, connection, ct);
+                return;
+            }
+
             var organisation = scope.ServiceProvider.GetRequiredService<IOrganisationDirectory>();
             var readers = await organisation.GetDepartmentsWithPermissionAsync(connection.UserId, PermissionCodes.TicketsRead, ct);
             var noteReaders = await organisation.GetDepartmentsWithPermissionAsync(connection.UserId, PermissionCodes.TicketsNotesRead, ct);
@@ -273,6 +296,28 @@ internal sealed partial class HubAccess(IHubContext<TicketHub> hub, IServiceScop
         {
             RefreshFailed(log, ex.GetType().Name);
         }
+    }
+
+    private async Task RevokeAsync(string connectionId, Connection connection, CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct);
+        try
+        {
+            foreach (var group in connection.Groups.ToList())
+            {
+                await hub.Groups.RemoveFromGroupAsync(connectionId, group, ct);
+                connection.Groups.Remove(group);
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        _connections.TryRemove(connectionId, out _);
+        connection.Context?.Abort();
+        GroupsChanged?.Invoke(connectionId);
+        ConnectionClosed?.Invoke(connectionId);
     }
 
     public void Dispose() => _gate.Dispose();

@@ -16,10 +16,10 @@ internal static class HelpdeskPrincipal
     public const string ProviderClaim = "helpdesk:idp";
 
     /// <summary>The user's session version at sign-in; a session whose version is not the current one is revoked.</summary>
-    public const string SessionVersionClaim = "helpdesk:sv";
+    public const string SessionVersionClaim = SessionClaimTypes.SessionVersion;
 
     /// <summary>Sign-in time (Unix seconds). Sliding renewal never changes it, so it anchors the absolute session lifetime.</summary>
-    public const string IssuedAtClaim = "helpdesk:iat";
+    public const string IssuedAtClaim = SessionClaimTypes.IssuedAt;
 
     public static ClaimsPrincipal Create(ProvisionedUser user, string provider, DateTimeOffset issuedAt)
     {

@@ -259,6 +259,73 @@ public sealed class UserDeactivationTests(HelpdeskFixture fixture) : IClassFixtu
     }
 
     [Fact]
+    public async Task Concurrent_deactivation_of_the_only_two_administrators_always_leaves_one_active()
+    {
+        // Two administrators deactivate each other at the same moment. Without a transactional guard both would pass the "another administrator is active" count
+        // and the installation would be left with none. The check runs under an advisory lock inside the transaction, so exactly one request may win.
+        var a = await MakePlatformAdminAsync(fixture, "racea");
+        var b = await MakePlatformAdminAsync(fixture, "raceb");
+        await fixture.ExecuteAsync("UPDATE identity.users SET is_platform_admin = false WHERE is_platform_admin AND id NOT IN (@a, @b)",
+            new NpgsqlParameter("a", a.Id), new NpgsqlParameter("b", b.Id));
+
+        try
+        {
+            for (var round = 0; round < 6; round++)
+            {
+                await fixture.ExecuteAsync("UPDATE identity.users SET is_active = true WHERE id IN (@a, @b)", new NpgsqlParameter("a", a.Id), new NpgsqlParameter("b", b.Id));
+                var clientA = await fixture.SignInAsync(a.Subject);
+                var clientB = await fixture.SignInAsync(b.Subject);
+
+                var results = await Task.WhenAll(
+                    clientA.Client.PutAsync(Active(b.Id), new { value = false }),
+                    clientB.Client.PutAsync(Active(a.Id), new { value = false }));
+
+                Assert.Equal(1, results.Count(r => r.Status == HttpStatusCode.OK));
+                // The loser is refused by the last-administrator guard (409), or - when the winner revoked its session first - fails authentication (401) or, for an unsafe
+                // request whose anti-forgery token was bound to the now revoked session, the CSRF check (400).
+                Assert.All(results.Where(r => r.Status != HttpStatusCode.OK), r => Assert.Contains(r.Status, new[] { HttpStatusCode.Conflict, HttpStatusCode.Unauthorized, HttpStatusCode.BadRequest }));
+                Assert.Equal(1, await fixture.ScalarAsync<long>("SELECT count(*) FROM identity.users WHERE is_platform_admin AND is_active"));
+            }
+        }
+        finally
+        {
+            await fixture.ExecuteAsync("UPDATE identity.users SET is_active = true, is_platform_admin = (id IN (SELECT user_id FROM identity.external_identities WHERE subject = @s)) WHERE id IN (@a, @b) OR id IN (SELECT user_id FROM identity.external_identities WHERE subject = @s)",
+                new NpgsqlParameter("s", HelpdeskFactory.PlatformAdminSubject), new NpgsqlParameter("a", a.Id), new NpgsqlParameter("b", b.Id));
+        }
+    }
+
+    [Fact]
+    public async Task Concurrent_demotion_and_deactivation_cannot_remove_the_last_administrator_either()
+    {
+        var a = await MakePlatformAdminAsync(fixture, "mixa");
+        var b = await MakePlatformAdminAsync(fixture, "mixb");
+        await fixture.ExecuteAsync("UPDATE identity.users SET is_platform_admin = false WHERE is_platform_admin AND id NOT IN (@a, @b)",
+            new NpgsqlParameter("a", a.Id), new NpgsqlParameter("b", b.Id));
+        try
+        {
+            for (var round = 0; round < 6; round++)
+            {
+                await fixture.ExecuteAsync("UPDATE identity.users SET is_active = true, is_platform_admin = true WHERE id IN (@a, @b)", new NpgsqlParameter("a", a.Id), new NpgsqlParameter("b", b.Id));
+                var clientA = await fixture.SignInAsync(a.Subject);
+                var clientB = await fixture.SignInAsync(b.Subject);
+
+                // A demotes B while B deactivates A.
+                var results = await Task.WhenAll(
+                    clientA.Client.PutAsync($"/api/platform/users/{b.Id}/platform-admin", new { value = false }),
+                    clientB.Client.PutAsync(Active(a.Id), new { value = false }));
+
+                Assert.True(await fixture.ScalarAsync<long>("SELECT count(*) FROM identity.users WHERE is_platform_admin AND is_active") >= 1, $"no active administrator left in round {round}");
+                Assert.Contains(results, r => r.Status == HttpStatusCode.OK);
+            }
+        }
+        finally
+        {
+            await fixture.ExecuteAsync("UPDATE identity.users SET is_active = true, is_platform_admin = (id IN (SELECT user_id FROM identity.external_identities WHERE subject = @s)) WHERE id IN (@a, @b) OR id IN (SELECT user_id FROM identity.external_identities WHERE subject = @s)",
+                new NpgsqlParameter("s", HelpdeskFactory.PlatformAdminSubject), new NpgsqlParameter("a", a.Id), new NpgsqlParameter("b", b.Id));
+        }
+    }
+
+    [Fact]
     public async Task A_deactivated_platform_administrator_loses_the_privilege_and_the_session()
     {
         var root = await fixture.PlatformAdminAsync();

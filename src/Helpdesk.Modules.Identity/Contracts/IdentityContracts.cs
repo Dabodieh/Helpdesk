@@ -7,6 +7,23 @@ public sealed record ProvisionedUser(Guid UserId, string DisplayName, string? Em
 
 public sealed record UserSummary(Guid Id, string DisplayName, string? Email, bool IsActive, bool IsPlatformAdmin);
 
+/// <summary>Claim types of a signed-in session (the cookie principal), for long-lived connections that must re-check their session.</summary>
+public static class SessionClaimTypes
+{
+    public const string SessionVersion = "helpdesk:sv";
+    public const string IssuedAt = "helpdesk:iat";
+}
+
+/// <summary>
+/// Is a session that was issued at sign-in still valid NOW: the account exists and is active, its session version is the one stamped at sign-in (deactivation and
+/// reactivation increment it) and the session is younger than the absolute lifetime. The same rule the cookie middleware applies to every HTTP request; used by realtime
+/// connections, which authenticate once and would otherwise outlive their session.
+/// </summary>
+public interface IUserSessionValidator
+{
+    Task<bool> IsSessionValidAsync(Guid userId, int sessionVersion, DateTimeOffset issuedAt, CancellationToken cancellationToken = default);
+}
+
 public static class ExternalIdentityProviders
 {
     public const string Entra = "entra";
