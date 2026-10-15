@@ -33,6 +33,9 @@ RUN dotnet publish src/Helpdesk.Host -c Release -o /app --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
+ARG SOURCE_REVISION=unknown
+ARG IMAGE_VERSION=unknown
+LABEL org.opencontainers.image.revision=$SOURCE_REVISION org.opencontainers.image.version=$IMAGE_VERSION org.opencontainers.image.title=helpdesk-host
 COPY --from=build /app .
 COPY --from=web /web/dist ./wwwroot
 USER $APP_UID
