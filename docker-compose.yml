@@ -149,7 +149,8 @@ services:
   # Start only through `dev.ps1 tunnel-start`.
   cloudflared:
     profiles: [tunnel]
-    image: cloudflare/cloudflared:latest
+    # Pinned to the build the tunnel was validated with (2026.7.3, 2026-07-23): tag for readability, digest for immutability. Update deliberately, never `latest`.
+    image: cloudflare/cloudflared:2026.7.3@sha256:e39ee8da81ad5e05d77f38d2f51c60ca51bf2a8450ac3abab50c17fdb91d91bf
     command: tunnel --no-autoupdate run
     env_file:
       - path: .tunnel.env

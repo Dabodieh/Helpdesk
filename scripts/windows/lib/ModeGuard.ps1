@@ -8,8 +8,14 @@ $script:ActiveStates = @('running', 'restarting', 'paused')
 
 # One "service|state" row per container of the Compose project (stopped ones included). Fails closed: if Docker cannot answer, the mode is unknown and nothing may start.
 function Get-ComposeServiceRows([string]$Project = 'helpdesk') {
-    $rows = & docker ps -a --filter "label=com.docker.compose.project=$Project" --format '{{.Label "com.docker.compose.service"}}|{{.State}}' 2>$null
+    # JSON output needs no embedded quotes, so it behaves the same under Windows PowerShell 5.1 and PowerShell 7 (legacy argument passing strips them).
+    $lines = & docker ps -a --filter "label=com.docker.compose.project=$Project" --format '{{json .}}' 2>$null
     if ($LASTEXITCODE -ne 0) { throw 'cannot read the Docker container state; refusing to continue because the running mode is unknown' }
+    $rows = foreach ($l in @($lines | Where-Object { $_ })) {
+        $c = $l | ConvertFrom-Json
+        $service = ($c.Labels -split ',' | Where-Object { $_ -like 'com.docker.compose.service=*' } | Select-Object -First 1)
+        if ($service) { '{0}|{1}' -f $service.Substring('com.docker.compose.service='.Length), $c.State }
+    }
     return , @($rows | Where-Object { $_ })
 }
 
