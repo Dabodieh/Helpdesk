@@ -18,7 +18,8 @@ require_passphrase
 : "${CONFIG_PATHS:?semicolon-separated files and folders to include}"
 mkdir -p "$BACKUP_DIR"
 out="$BACKUP_DIR/$BACKUP_NAME_PREFIX-config-$(stamp_now).tar.enc"
-trap 'rc=$?; [ "$rc" -eq 0 ] || rm -f "$out" "$out.sha256"; rm -rf "${stage:-}"' EXIT
+cleanup() { local rc=$?; [ "$rc" -eq 0 ] || rm -f "$out" "$out.sha256"; rm -rf "${stage:-}"; }
+trap cleanup EXIT
 
 # Stage under one root with neutral names so the archive does not depend on the host's path layout.
 stage="$(mktemp -d)"

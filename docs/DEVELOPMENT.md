@@ -66,6 +66,9 @@ HELPDESK_DESIGN_DB="Host=localhost;Port=5432;Database=helpdesk;Username=helpdesk
 ```
 `HELPDESK_DESIGN_DB` is only read by EF tooling (design-time factories); it defaults to a connection-less placeholder that is enough to scaffold migrations. Migration classes are generated `public`; change them to `internal` (and keep any hand-written SQL, such as expression indexes, cross-schema foreign keys and triggers) before committing. The web host never migrates itself in production.
 
+## Continuous integration
+GitHub Actions (`.github/workflows/ci.yml`): build, tests, isolation, migrations, dependency and secret scanning, image scan and SBOM. See `docs/guides/CI.md`.
+
 ## Tests (targeted)
 ```bash
 dotnet test tests/Helpdesk.Host.Tests --filter "FullyQualifiedName~Organisation"   # integration + unit tests for the modules

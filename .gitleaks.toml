@@ -1,0 +1,15 @@
+# Secret scanning configuration (gitleaks). Default rules stay on; only two reviewed false positives are allowed, each pinned to a single file and rule.
+title = "helpdesk"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = ".env.example lists variable NAMES with empty values; the generic rule matches consecutive empty assignments"
+paths = ['''^\.env\.example$''']
+targetRules = ["generic-api-key"]
+
+[[allowlists]]
+description = "Synthetic mail-correlation token used as a unit-test fixture (not a credential)"
+paths = ['''^tests/Helpdesk\.GraphSpike\.Tests/CorrelationTests\.cs$''']
+targetRules = ["generic-api-key"]

@@ -1,0 +1,19 @@
+# Keeps pinned dependencies current. Updates arrive as pull requests that run the full CI before anything is merged; nothing is applied automatically.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+  - package-ecosystem: nuget
+    directory: /
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+  - package-ecosystem: npm
+    directory: /src/web
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+  - package-ecosystem: docker
+    directory: /docker
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 3

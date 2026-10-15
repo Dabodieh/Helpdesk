@@ -22,7 +22,8 @@ mkdir -p "$BACKUP_DIR"
 stamp="$(stamp_now)"
 out="$BACKUP_DIR/$BACKUP_NAME_PREFIX-$stamp.dump.enc"
 # A failed or interrupted run must not leave a partial file that looks like a backup.
-trap 'rc=$?; [ "$rc" -eq 0 ] || rm -f "$out" "$out.sha256" "$out.meta.json"' EXIT
+cleanup() { local rc=$?; [ "$rc" -eq 0 ] || rm -f "$out" "$out.sha256" "$out.meta.json"; }
+trap cleanup EXIT
 
 pg_exec pg_dump -U "$DB_USER" -d "$DB_NAME" --format=custom --no-owner --no-acl | enc > "$out"
 

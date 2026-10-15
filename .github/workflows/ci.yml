@@ -1,15 +1,40 @@
 name: ci
+
+# Build, test and security validation. Runs for every pull request and for pushes to main, release/** and the working branches (claude/**), so a future protected
+# main needs no change. Nothing here deploys, pushes an image or touches a live system; there are no secrets: every database is a disposable container and every
+# credential in a job is generated for that run.
 on:
-  pull_request:
   push:
-    branches: [main]
+    branches: [main, "release/**", "claude/**"]
+  pull_request:
+  workflow_dispatch:
+
+# Least privilege: jobs only read the repository. (No job needs to write contents, packages, issues or security events.)
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+  # Third-party tool images are pinned by digest (tag in the comment). Update them deliberately, through a pull request.
+  TRIVY_IMAGE: aquasec/trivy@sha256:2416d1f74045b57274df1a340eee6b510cacd73c66a6ccb8da092b117eb7d222 # 0.76.0
+  GITLEAKS_IMAGE: zricethezav/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f # v8.30.1
+  SHELLCHECK_IMAGE: koalaman/shellcheck@sha256:2097951f02e735b613f4a34de20c40f937a6c8f18ecb170612c88c34517221fb # v0.10.0
+
 jobs:
   backend:
+    name: backend (build, architecture, isolation, tests)
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     services:
-      # Integration tests create a uniquely named database per test fixture on this server (throwaway CI credentials).
+      # Integration tests create a uniquely named database per fixture on this server (throw-away CI credentials).
       postgres:
-        image: postgres:18
+        image: postgres:18.6
         env:
           POSTGRES_USER: helpdesk
           POSTGRES_PASSWORD: helpdesk_ci
@@ -19,23 +44,242 @@ jobs:
           --health-cmd "pg_isready -U helpdesk -d helpdesk"
           --health-interval 5s
           --health-timeout 3s
-          --health-retries 10
+          --health-retries 20
     env:
-      HELPDESK_TEST_DB: Host=localhost;Port=5432;Username=helpdesk;Password=helpdesk_ci
+      HELPDESK_TEST_DB: Host=localhost;Port=5432;Username=helpdesk;Password=helpdesk_ci;Maximum Pool Size=20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with: { global-json-file: global.json }
-      - run: dotnet build Helpdesk.slnx -c Release
-      - run: dotnet test Helpdesk.slnx -c Release --no-build
-  web:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      # TreatWarningsAsErrors is on, so a NuGet vulnerability advisory (NU190x) fails the build here as well.
+      - name: Restore and build (Release)
+        run: |
+          dotnet restore Helpdesk.slnx
+          dotnet build Helpdesk.slnx -c Release --no-restore
+      - name: Architecture tests (module boundaries, endpoint authorization metadata, department scope)
+        run: dotnet test tests/Helpdesk.ArchitectureTests -c Release --no-build --logger "trx;LogFileName=architecture.trx" --results-directory results
+      - name: Mail provider spike tests
+        run: dotnet test tests/Helpdesk.GraphSpike.Tests -c Release --no-build --logger "trx;LogFileName=graphspike.trx" --results-directory results
+      - name: Department and requester isolation tests (cross-department leakage is Critical)
+        run: >-
+          dotnet test tests/Helpdesk.Host.Tests -c Release --no-build
+          --filter "FullyQualifiedName~Isolation"
+          --logger "trx;LogFileName=isolation.trx" --results-directory results
+      - name: Backend integration and unit tests (everything else)
+        run: >-
+          dotnet test tests/Helpdesk.Host.Tests -c Release --no-build
+          --filter "FullyQualifiedName!~Isolation"
+          --logger "trx;LogFileName=backend.trx" --results-directory results
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: backend-test-results
+          path: results
+          retention-days: 14
+
+  migrations:
+    name: migrations and backup round trip (disposable PostgreSQL)
     runs-on: ubuntu-latest
-    defaults: { run: { working-directory: src/web } }
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm, cache-dependency-path: src/web/package-lock.json }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - name: Disposable PostgreSQL 18.6
+        run: |
+          docker run -d --name ci-postgres -e POSTGRES_USER=ci -e POSTGRES_PASSWORD=ci-throwaway -e POSTGRES_DB=ci -p 127.0.0.1:5432:5432 postgres:18.6
+          for _ in $(seq 1 40); do docker exec ci-postgres pg_isready -U ci -d ci >/dev/null 2>&1 && break; sleep 1; done
+          sleep 3
+      - name: Build (Release)
+        run: dotnet build Helpdesk.slnx -c Release
+      - name: Apply all migrations, verify history, idempotence and model/migration drift
+        env:
+          DB_CONNECTION: Host=localhost;Port=5432;Database=ci;Username=ci;Password=ci-throwaway
+          PSQL_CMD: docker exec -i ci-postgres psql -U ci -d ci -X
+        run: bash scripts/ci/check-migrations.sh
+      - name: Backup, verification and isolated restore round trip (portable tooling)
+        env:
+          PG_CONTAINER: ci-postgres
+          DB_NAME: ci
+          DB_USER: ci
+        run: bash scripts/ci/backup-roundtrip.sh
+
+  web:
+    name: web (typecheck, lint, unit tests, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: src/web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/web/package-lock.json
       - run: npm ci
-      - run: npm run lint
-      - run: npm test
-      - run: npm run build
+      - name: TypeScript
+        run: npx tsc -b
+      - name: Lint (errors fail the build)
+        run: npm run lint
+      - name: Unit tests (Vitest)
+        run: npm test
+      - name: Production build
+        run: npm run build
+
+  scripts:
+    name: operator scripts (Pester, PowerShell syntax)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Parse every PowerShell script
+        shell: pwsh
+        run: |
+          $bad = 0
+          Get-ChildItem scripts -Recurse -Filter *.ps1 | ForEach-Object {
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$errors)
+            if ($errors.Count) { $bad++; Write-Host "SYNTAX  $($_.FullName)"; $errors | ForEach-Object { Write-Host "  $($_.Message)" } }
+          }
+          if ($bad) { exit 1 }
+      - name: Pester 3.4.0 (the suite is written for it)
+        shell: powershell
+        run: |
+          Install-Module Pester -RequiredVersion 3.4.0 -Force -Scope CurrentUser -SkipPublisherCheck
+          Import-Module Pester -RequiredVersion 3.4.0
+          $r = Invoke-Pester -Path tests/Helpdesk.Scripts.Tests -PassThru
+          if ($r.FailedCount -gt 0 -or $r.PassedCount -eq 0) { exit 1 }
+
+  ops-scripts:
+    name: operations scripts (shell syntax and shellcheck)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: bash -n
+        run: for f in scripts/ops/*.sh scripts/ci/*.sh; do bash -n "$f" || exit 1; done
+      - name: shellcheck (backup, restore and CI scripts; warnings fail)
+        run: >-
+          docker run --rm -v "$PWD:/mnt:ro" -w /mnt "$SHELLCHECK_IMAGE" -S warning -x
+          scripts/ops/lib-backup.sh scripts/ops/backup-database.sh scripts/ops/verify-backup.sh scripts/ops/restore-database.sh
+          scripts/ops/restore-test.sh scripts/ops/restore-test-isolated.sh scripts/ops/backup-objects.sh scripts/ops/backup-config.sh
+          scripts/ops/backup-all.sh scripts/ops/check-backup-freshness.sh scripts/ci/check-migrations.sh scripts/ci/backup-roundtrip.sh
+
+  compose:
+    name: Docker Compose validation (no secrets)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Production and Development profiles, image pinning, ports, restart policy, roles
+        run: python3 scripts/ci/validate-compose.py
+
+  dependencies:
+    name: dependency vulnerabilities (.NET and npm)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/web/package-lock.json
+      - name: NuGet vulnerabilities (direct and transitive; any finding fails)
+        run: |
+          dotnet restore Helpdesk.slnx -p:NuGetAudit=false >/dev/null
+          dotnet list Helpdesk.slnx package --vulnerable --include-transitive --no-restore 2>&1 | tee nuget-vulnerable.txt
+          if grep -q "has the following vulnerable packages" nuget-vulnerable.txt; then echo "::error::vulnerable NuGet packages found"; exit 1; fi
+      - name: NuGet deprecated packages (informational)
+        run: dotnet list Helpdesk.slnx package --deprecated --no-restore 2>&1 | tee nuget-deprecated.txt || true
+      - name: npm audit (production dependencies; high and critical fail)
+        working-directory: src/web
+        run: |
+          npm ci --ignore-scripts
+          npm audit --omit=dev --audit-level=high
+      - name: npm audit (all dependencies; informational)
+        working-directory: src/web
+        run: npm audit --audit-level=critical || true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: dependency-reports
+          path: nuget-*.txt
+          retention-days: 14
+
+  secrets:
+    name: secret scanning (full history)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: gitleaks (default rules; two reviewed allowlist entries in .gitleaks.toml)
+        run: >-
+          docker run --rm -v "$PWD:/repo:ro" "$GITLEAKS_IMAGE" detect --source /repo --config /repo/.gitleaks.toml
+          --redact --no-banner --exit-code 1 --log-level warn
+
+  image:
+    name: release image (build, vulnerability scan, secret scan, SBOM)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      IMAGE: helpdesk-host:ci-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the production image (labelled with the source revision)
+        run: >-
+          docker build -f docker/host.Dockerfile -t "$IMAGE"
+          --build-arg SOURCE_REVISION="$GITHUB_SHA" --build-arg IMAGE_VERSION="ci-$GITHUB_SHA" .
+      - name: Revision label equals the commit
+        run: |
+          label="$(docker image inspect "$IMAGE" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
+          test "$label" = "$GITHUB_SHA"
+      - name: Image runs as a non-root user
+        run: |
+          user="$(docker image inspect "$IMAGE" --format '{{.Config.User}}')"
+          echo "image user: $user"
+          test -n "$user" && test "$user" != "root" && test "$user" != "0"
+      - name: Dockerfile and configuration misconfiguration scan (HIGH and CRITICAL fail)
+        run: >-
+          docker run --rm -v "$PWD:/src:ro" "$TRIVY_IMAGE" config --severity HIGH,CRITICAL --exit-code 1 --no-progress /src
+      - name: SBOM (CycloneDX and SPDX)
+        run: |
+          mkdir -p sbom
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/sbom:/out" "$TRIVY_IMAGE" image --format cyclonedx --output /out/helpdesk-host.cdx.json --no-progress "$IMAGE"
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/sbom:/out" "$TRIVY_IMAGE" image --format spdx-json --output /out/helpdesk-host.spdx.json --no-progress "$IMAGE"
+      - name: Image vulnerabilities and embedded secrets (HIGH and CRITICAL fail; unfixed findings are not hidden)
+        run: >-
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY_IMAGE" image
+          --scanners vuln,secret --severity HIGH,CRITICAL --exit-code 1 --no-progress "$IMAGE"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: sbom-${{ github.sha }}
+          path: sbom
+          retention-days: 90

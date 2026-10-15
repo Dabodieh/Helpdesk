@@ -23,7 +23,8 @@ if [ -n "${OBJECT_VOLUME:-}" ]; then
   image="${OBJECT_TAR_IMAGE:-alpine:latest}"
   docker volume inspect "$OBJECT_VOLUME" >/dev/null 2>&1 || { echo "object volume '$OBJECT_VOLUME' not found" >&2; exit 1; }
   out="$BACKUP_DIR/$BACKUP_NAME_PREFIX-objects-$(stamp_now).tar.enc"
-  trap 'rc=$?; [ "$rc" -eq 0 ] || rm -f "$out" "$out.sha256"' EXIT
+  cleanup() { local rc=$?; [ "$rc" -eq 0 ] || rm -f "$out" "$out.sha256"; }
+  trap cleanup EXIT
   docker run --rm -v "$OBJECT_VOLUME":/data:ro "$image" tar cf - -C /data . | enc > "$out"
   [ "$(file_size "$out")" -gt 64 ] || { echo "object backup is implausibly small; removed" >&2; exit 1; }
   # Verification: it decrypts and the tar lists; report the member count (0 files is legitimate while attachments are disabled).
