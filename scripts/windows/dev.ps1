@@ -14,7 +14,7 @@
 param(
     [Parameter(Position = 0)][ValidateSet('start', 'stop', 'restart', 'update', 'status', 'logs',
         'prod-check', 'prod-migrate', 'prod-start', 'prod-stop', 'tunnel-start', 'tunnel-stop', 'help')][string]$Command = 'help',
-    [Parameter(Position = 1)][ValidateSet('web', 'host', 'app', 'postgres', 'objectstore-prod', 'cloudflared', '')][string]$Service = '',
+    [Parameter(Position = 1)][ValidateSet('web', 'host', 'app', 'postgres', 'postgres-prod', 'objectstore-prod', 'cloudflared', '')][string]$Service = '',
     [switch]$Force,
     [switch]$ConfirmPublic
 )
@@ -61,7 +61,7 @@ function Assert-RecentBackup {
 function Get-ProductionGaps {
     $e = Get-EnvFile
     $gaps = New-Object System.Collections.Generic.List[string]
-    foreach ($k in 'POSTGRES_PASSWORD', 'PROD_S3_ACCESS_KEY', 'PROD_S3_SECRET_KEY', 'ENTRA_TENANT_ID', 'ENTRA_CLIENT_ID', 'ENTRA_CLIENT_SECRET', 'BOOTSTRAP_PLATFORM_ADMIN_SUBJECT',
+    foreach ($k in 'PROD_PG_ADMIN_PASSWORD', 'PROD_APP_DB_PASSWORD', 'PROD_S3_ACCESS_KEY', 'PROD_S3_SECRET_KEY', 'ENTRA_TENANT_ID', 'ENTRA_CLIENT_ID', 'ENTRA_CLIENT_SECRET', 'BOOTSTRAP_PLATFORM_ADMIN_SUBJECT',
         'GRAPH_TENANT_ID', 'GRAPH_CLIENT_ID', 'SECRETS_DIR', 'DP_CERT_PATH', 'DP_CERT_PASSWORD_FILE') {
         if (-not $e[$k]) { $gaps.Add($k) }
     }
@@ -96,7 +96,7 @@ switch ($Command) {
     }
     'status'  { Show-Status }
     'logs'    {
-        $prof = if ($Service -in 'app', 'objectstore-prod') { 'production' } elseif ($Service -eq 'cloudflared') { @('production', 'tunnel') } else { 'development' }
+        $prof = if ($Service -in 'app', 'postgres-prod', 'objectstore-prod') { 'production' } elseif ($Service -eq 'cloudflared') { @('production', 'tunnel') } else { 'development' }
         if ($Service) { Invoke-Compose $prof @('logs', '--tail', '100', $Service) } else { Dev @('logs', '--tail', '60') }
     }
     'prod-check' {
@@ -106,21 +106,20 @@ switch ($Command) {
         Invoke-Compose @('production') @('config', '-q'); Write-Host 'compose (production profile) valid'
     }
     'prod-migrate' {
-        # Explicit, one-off. Creates PROD_DB_NAME on the existing server if missing (never touches the development database), then migrates it.
-        # Only what the migration needs (database, secrets folder, key-ring certificate); sign-in and mail values are not required to migrate.
-        $g = @(Get-ProductionGaps | Where-Object { $_ -match '^(POSTGRES_PASSWORD|SECRETS_DIR|DP_CERT|PROD_DB_NAME|PROD_S3)' })
+        # Explicit, one-off. Runs the module migrations as the Production administrator role against the Production-only PostgreSQL (postgres-prod, own volume).
+        # The database itself is created by that container on first start; the Development database server is never involved.
+        # Only what the migration needs (database credentials, secrets folder, key-ring certificate); sign-in and mail values are not required to migrate.
+        $g = @(Get-ProductionGaps | Where-Object { $_ -match '^(PROD_PG_ADMIN_PASSWORD|PROD_APP_DB_PASSWORD|SECRETS_DIR|DP_CERT|PROD_DB_NAME|PROD_S3)' })
         if ($g.Count -gt 0) { throw "migration prerequisites missing/invalid: $($g -join ', ')" }
-        $e = Get-EnvFile
-        $db = if ($e['PROD_DB_NAME']) { $e['PROD_DB_NAME'] } else { 'helpdesk_prod' }
-        Invoke-Compose @('production') @('up', '-d', '--no-deps', '--wait', 'postgres')
-        $exists = & docker exec helpdesk-postgres-1 psql -U helpdesk -d postgres -Atc "select 1 from pg_database where datname='$db'"
-        if (-not $exists) { & docker exec helpdesk-postgres-1 psql -U helpdesk -d postgres -qc "create database $db"; if ($LASTEXITCODE -ne 0) { throw 'create database failed' } }
-        Invoke-Compose @('production-migrate') @('run', '--rm', 'migrate')
+        Invoke-Compose @('production') @('up', '-d', '--no-deps', '--wait', 'postgres-prod')
+        Invoke-Compose @('production-migrate') @('run', '--rm', '--no-deps', 'migrate')
     }
     'prod-start' {
         Assert-ProductionReady
         Assert-NoOtherMode 'Production'
-        Invoke-Compose @('production') @('up', '-d', '--no-build', 'app')
+        # postgres-prod first (own container and volume), then the application alone: --no-deps never recreates the database.
+        Invoke-Compose @('production') @('up', '-d', '--no-build', '--wait', 'postgres-prod')
+        Invoke-Compose @('production') @('up', '-d', '--no-build', '--no-deps', 'app')
         Wait-Healthy $backendName
         Show-Status
         Write-Host 'Production app is up with NO published port. Public access needs tunnel-start (separately approved).'

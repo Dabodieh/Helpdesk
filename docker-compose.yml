@@ -80,12 +80,13 @@ services:
       retries: 3
       start_period: 40s
     depends_on:
-      postgres: { condition: service_healthy }
+      postgres-prod: { condition: service_healthy }
       objectstore-prod: { condition: service_started }
     environment: &app-env
       ASPNETCORE_ENVIRONMENT: Production
       Urls: http://+:8080
-      Database__ConnectionString: Host=postgres;Port=5432;Database=${PROD_DB_NAME:-helpdesk_prod};Username=${POSTGRES_USER:-helpdesk};Password=${POSTGRES_PASSWORD:?copy .env.example to .env}
+      # Production has its OWN PostgreSQL (postgres-prod) and the least-privilege application role; migrations use the administrator role (migrate service below).
+      Database__ConnectionString: Host=postgres-prod;Port=5432;Database=${PROD_DB_NAME:-helpdesk_prod};Username=${PROD_APP_DB_USER:-helpdesk_app};Password=${PROD_APP_DB_PASSWORD:?copy .env.example to .env}
       Database__MigrateOnStartup: "false"
       Authentication__DevSignIn__Enabled: "false"
       AllowedHosts: ${PUBLIC_HOST:-helpdesk.amb-it.co.uk}
@@ -129,8 +130,10 @@ services:
     command: ["migrate"]
     restart: "no"
     depends_on:
-      postgres: { condition: service_healthy }
-    environment: *app-env
+      postgres-prod: { condition: service_healthy }
+    environment:
+      <<: *app-env
+      Database__ConnectionString: Host=postgres-prod;Port=5432;Database=${PROD_DB_NAME:-helpdesk_prod};Username=${PROD_PG_ADMIN_USER:-helpdesk_prod_admin};Password=${PROD_PG_ADMIN_PASSWORD:?copy .env.example to .env}
     volumes:
       - type: bind
         source: ${SECRETS_DIR:-/helpdesk-secrets-dir-not-set}
@@ -169,6 +172,25 @@ services:
       - "127.0.0.1:${S3_PORT:-8333}:8333"
     volumes: ["objectdata:/data"]
 
+  # Production PostgreSQL (profile `production`): its own PostgreSQL 18.6 container, volume (pgdata_prod), administrator and application roles. Nothing is shared with the
+  # development `postgres` (database `helpdesk`). No published port: reachable only from `app` and `migrate` over the Compose network. Database and roles are created on
+  # first start (empty volume); the data was moved in with pg_dump/pg_restore (docs/reports/PRE-PRODUCTION-MASTER-AUDIT-2026-10-15.md, step C).
+  postgres-prod:
+    profiles: [production, production-migrate]
+    image: postgres:18.6
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${PROD_DB_NAME:-helpdesk_prod}
+      POSTGRES_USER: ${PROD_PG_ADMIN_USER:-helpdesk_prod_admin}
+      POSTGRES_PASSWORD: ${PROD_PG_ADMIN_PASSWORD:?copy .env.example to .env}
+    volumes: ["pgdata_prod:/var/lib/postgresql"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
   # Production object store: its own SeaweedFS and its own volume (objectdata_prod); nothing shared with the development `objectstore`/objectdata,
   # the E2E stack or helpdesk-pv. No published port: reachable only from `app` over the Compose network. The bucket is created by the app on first use.
   objectstore-prod:
@@ -185,4 +207,5 @@ volumes:
   pgdata:
   objectdata:
   objectdata_prod:
+  pgdata_prod:
   web_node_modules:
