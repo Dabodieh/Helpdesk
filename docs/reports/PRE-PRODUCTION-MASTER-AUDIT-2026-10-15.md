@@ -375,3 +375,19 @@ Approved by the owner; executed exactly as in section 13 step A, except that no 
 Remaining: Cloudflare tunnel stopped on purpose (production not publicly reachable; Access/webhook path currently returns 530); `postgres` still has restart policy `no` and Docker Desktop `AutoStart=False` (steps C/D); the new dump exists only on `C:` (no off-PC copy yet, M-D2); the throw-away test container was removed.
 
 **Decision M-D7 (2026-10-15, owner):** `I:\pw.txt` stays where it is, unopened and unmodified. The risk that it may hold a backup passphrase beside encrypted backups is explicitly accepted for this pilot and is not to be raised again as a blocker.
+
+## 15. Steps G and B execution record (2026-10-15)
+
+| Item | Result |
+|---|---|
+| Backup copy | `helpdesk-prod-20261015T093532Z.dump.enc` + `.sha256` copied to `I:\HelpdeskBackups\prod`; copy hash equals the sidecar and the source; nothing overwritten; `I:\pw.txt` untouched (accepted pilot risk, M-D7). |
+| NU1903 | Seven PackageVersion entries 10.0.12 to 10.0.13 (EF Core x3, OpenIdConnect, SignalR.Client, OpenApi, Mvc.Testing). Release build 0 warnings / 0 errors; `dotnet list package --vulnerable --include-transitive`: none in any project; SignalR.Common resolves to 10.0.13. |
+| Tests (no NU1903 override) | Host.Tests Mail + Identity namespaces 264 passed; architecture 76 passed. Full suite not re-run (targeted per scope). |
+| Commits | `099653e` deps; `fdbe6e6` mail subscription retry; `f7e7f77` Windows Production tooling (hard-coded tenant/app/tunnel ids and a personal mailbox replaced by values from the git-ignored `.env`: `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `CLOUDFLARE_TUNNEL_ID`, `GRAPH_CHECK_MAILBOXES`); `49bbb31` docs (identifiers redacted); `315c605` image revision labels. Not pushed. |
+| Secret scan | No credentials in any changed or untracked file (one placeholder `SECRET_KEY=change-me-local-only` in `.env.example`). |
+| Rollback image | `helpdesk-host:rollback-20261015-3509b9cd` = `sha256:3509b9cdef6a9630a903fe15d71d9ea31b16f82addfa652176a265956e75ea5b` (the image running in Production). |
+| New image | `helpdesk-host:1.0.0-rc1-315c605`, id/digest `sha256:d9244686644c5d6003fae4c2dd7af9344b549c9247b8018ed27416e7ff917206`, label revision `315c60598cd7a5446624ef0feeaf4c809d829e3a`, version `1.0.0-rc1`, 105 MB. Built from a clean tree. Contains `RetrySubscriptionAsync`, EF Core and OpenIdConnect 10.0.13. Later commits are documentation only. |
+| Isolated verification | Throw-away Postgres on an `--internal` network, no live database. `migrate` applied all modules; Production-mode boot: live 200, `/api/auth/providers` 200, `/api/auth/dev-login` 404, `/api/me` 401, SPA served with CSP/X-Frame-Options; Mail:Provider=Fake correctly refused in Production. `/health/ready` 503 only because the object store was deliberately unreachable. Containers and network removed. |
+| Production | Not touched: `helpdesk-backend` still on the rollback image, healthy; Postgres healthy; tunnel stopped. |
+
+Note: `local` still points at the old image; Compose must be given `HELPDESK_VERSION=1.0.0-rc1-315c605` at deploy time.
