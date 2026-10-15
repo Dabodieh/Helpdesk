@@ -1,11 +1,10 @@
 name: ci
 
-# Build, test and security validation. Runs for every pull request and for pushes to main, release/** and the working branches (claude/**), so a future protected
-# main needs no change. Nothing here deploys, pushes an image or touches a live system; there are no secrets: every database is a disposable container and every
+# Build, test and security validation. Runs for every pull request and for pushes to master (the repository's only branch), and by hand. Nothing here deploys, pushes an image or touches a live system; there are no secrets: every database is a disposable container and every
 # credential in a job is generated for that run.
 on:
   push:
-    branches: [main, "release/**", "claude/**"]
+    branches: [master]
   pull_request:
   workflow_dispatch:
 

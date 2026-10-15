@@ -1,8 +1,8 @@
 # Continuous integration and security validation
 
-Workflow: `.github/workflows/ci.yml`. It runs on pull requests, on pushes to `main`, `release/**` and `claude/**`, and by hand (`workflow_dispatch`). A protected `main`
-needs no change to the workflow: make these jobs the required status checks of the branch protection rule. The workflow has `permissions: contents: read`, uses no
-secrets, never deploys and never pushes an image. Third-party actions are pinned to commit SHAs and scanner images to digests; Dependabot proposes updates as pull requests.
+Workflow: `.github/workflows/ci.yml`. It runs on pull requests, on pushes to `master` (the repository's only branch) and by hand (`workflow_dispatch`). `master` is protected
+against force pushes and deletion only; make these jobs required status checks later if pull requests become the workflow. The workflow has `permissions: contents: read`, uses no
+secrets, never deploys and never pushes an image. Third-party actions are pinned to commit SHAs and scanner images to digests. Automatic dependency pull requests (Dependabot) are switched off; the `dependencies` job still fails on any known vulnerability.
 
 ## Jobs
 
@@ -37,5 +37,5 @@ docker run --rm -v "$PWD:/repo:ro" zricethezav/gitleaks:v8.30.1 detect --source 
   GitHub. Expect the first run to need small fixes (runner image differences, action input names, Windows PowerShell module availability for Pester).
 - Browser end-to-end tests (Playwright) need a running stack and are not in CI; run `scripts/e2e/e2e.ps1` locally before releases.
 - Live Microsoft Graph, Entra and Cloudflare behaviour, restore of a real Production backup, and restart/recovery behaviour are manual (see `PRODUCTION_RECOVERY.md`).
-- Image vulnerability findings are a point in time; the SBOM lets them be re-evaluated later. Re-run the `image` job (or Dependabot) regularly, not only on change.
+- Image vulnerability findings are a point in time; the SBOM lets them be re-evaluated later. Re-run the `image` job regularly, not only on change.
 - Branch protection, required reviews and who may push are GitHub settings, not repository files.
