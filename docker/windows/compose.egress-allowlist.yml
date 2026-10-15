@@ -1,0 +1,23 @@
+# Optional overlay for the integration-validation stack (EGRESS_ALLOWLIST=true, together with NO_EGRESS=true): the application has NO direct route out; its only way
+# to the internet is a forward proxy that allows CONNECT to login.microsoftonline.com and graph.microsoft.com on 443 and nothing else (docker/windows/egress/squid.conf).
+# .NET honours HTTPS_PROXY, so the OpenID Connect metadata, token and Graph calls go through it. Pin EGRESS_PROXY_IMAGE to a digest in the env file.
+services:
+  egressproxy:
+    image: ${EGRESS_PROXY_IMAGE:-ubuntu/squid:latest}
+    restart: unless-stopped
+    volumes:
+      - ../windows/egress/squid.conf:/etc/squid/squid.conf:ro
+    networks: [internal, edge]
+  helpdesk:
+    depends_on:
+      egressproxy: { condition: service_started }
+    environment:
+      HTTPS_PROXY: http://egressproxy:3128
+      NO_PROXY: postgres,objectstore,localhost,127.0.0.1
+  migrate:
+    environment:
+      HTTPS_PROXY: http://egressproxy:3128
+      NO_PROXY: postgres,objectstore,localhost,127.0.0.1
+
+networks:
+  edge: {}

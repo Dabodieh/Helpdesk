@@ -11,6 +11,8 @@ export default defineConfig({
     // Reachable from the Cloudflare tunnel on this machine (it connects to the LAN address); only this public hostname is accepted besides localhost.
     host: true,
     allowedHosts: ['helpdesk.amb-it.co.uk'],
+    // Bind mounts from Windows Docker Desktop deliver no file-change events, so the Compose web service sets HELPDESK_WEB_POLLING to poll instead.
+    watch: process.env.HELPDESK_WEB_POLLING ? { usePolling: true, interval: 300 } : undefined,
     // Same-origin to the browser, so cookie auth + CSRF behave as in production.
     // HELPDESK_API_PROXY points a second dev server at another backend (the isolated E2E stack, scripts/e2e); default is the normal dev API.
     proxy: {

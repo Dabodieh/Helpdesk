@@ -21,3 +21,6 @@ docker/staging/tls/
 
 # Windows deployment TLS material
 docker/windows/tls/
+
+# Cloudflare tunnel token for the optional tunnel Compose profile (never commit)
+.tunnel.env

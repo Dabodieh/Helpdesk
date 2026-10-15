@@ -7,6 +7,8 @@ $script:Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 $script:ComposeFile = Join-Path $script:Root 'docker\production\compose.yml'
 $script:ObjectStoreFile = Join-Path $script:Root 'docker\windows\compose.objectstore.yml'
 $script:NoEgressFile = Join-Path $script:Root 'docker\windows\compose.no-egress.yml'
+$script:SecretsFile = Join-Path $script:Root 'docker\windows\compose.secrets.yml'
+$script:EgressAllowlistFile = Join-Path $script:Root 'docker\windows\compose.egress-allowlist.yml'
 $script:EnvFile = if ($env:HELPDESK_ENV_FILE) { $env:HELPDESK_ENV_FILE } else { Join-Path $script:Root 'docker\windows\.env' }
 $script:ReservedProjects = @('helpdesk')   # the local development stack's project name: its volumes hold development data
 
@@ -45,6 +47,8 @@ function Get-ComposeBaseArgs([string]$Project, [hashtable]$Settings) {
     $a = @('compose', '-p', $Project, '-f', $script:ComposeFile)
     if ((Get-Setting $Settings 'LOCAL_OBJECT_STORE') -eq 'true') { $a += @('-f', $script:ObjectStoreFile) }
     if ((Get-Setting $Settings 'NO_EGRESS') -eq 'true') { $a += @('-f', $script:NoEgressFile) }
+    if ((Get-Setting $Settings 'EGRESS_ALLOWLIST') -eq 'true') { $a += @('-f', $script:EgressAllowlistFile) }
+    if ((Get-Setting $Settings 'SECRETS_DIR') -ne '') { $a += @('-f', $script:SecretsFile) }
     return $a + @('--env-file', $script:EnvFile)
 }
 
@@ -127,10 +131,15 @@ function Test-HelpdeskConfig([switch]$ForRunning) {
     $project = Get-Project $s
     $problems = @()
     foreach ($k in 'PUBLIC_HOST', 'POSTGRES_PASSWORD', 'ENTRA_TENANT_ID', 'ENTRA_CLIENT_ID', 'ENTRA_CLIENT_SECRET', 'BOOTSTRAP_PLATFORM_ADMIN_SUBJECT',
-                   'GRAPH_TENANT_ID', 'GRAPH_CLIENT_ID', 'GRAPH_CLIENT_SECRET', 'S3_ENDPOINT', 'S3_BUCKET', 'S3_ACCESS_KEY', 'S3_SECRET_KEY',
+                   'GRAPH_TENANT_ID', 'GRAPH_CLIENT_ID', 'S3_ENDPOINT', 'S3_BUCKET', 'S3_ACCESS_KEY', 'S3_SECRET_KEY',
                    'INTERNAL_SUBNET', 'PROXY_IP', 'HTTP_PORT', 'HTTPS_PORT', 'TLS_DIR', 'BACKUP_DIR') {
         if ((Get-Setting $s $k) -eq '') { $problems += "MISSING  $k" }
     }
+    # Graph credential: a certificate (preferred) or a secret, one of the two.
+    if ((Get-Setting $s 'GRAPH_CERT_PATH') -eq '' -and (Get-Setting $s 'GRAPH_CLIENT_SECRET') -eq '') { $problems += 'MISSING  GRAPH_CERT_PATH (preferred) or GRAPH_CLIENT_SECRET' }
+    if ((Get-Setting $s 'GRAPH_CERT_PATH') -ne '' -and (Get-Setting $s 'SECRETS_DIR') -eq '') { $problems += 'MISSING  SECRETS_DIR (the folder holding the certificate files, mounted read-only into the application)' }
+    $secretsDir = Get-Setting $s 'SECRETS_DIR'
+    if ($secretsDir -ne '' -and -not (Test-Path -LiteralPath $secretsDir -PathType Container)) { $problems += 'MISSING  SECRETS_DIR folder does not exist' }
     $bind = Get-Setting $s 'BIND_ADDRESS'
     $ip = $null
     if ($bind -ne '' -and -not [System.Net.IPAddress]::TryParse($bind, [ref]$ip)) { $problems += 'INVALID  BIND_ADDRESS must be an IP address (127.0.0.1 keeps the proxy private to this PC)' }

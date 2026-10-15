@@ -1,4 +1,4 @@
-# Local development dependencies. The API and web app run on the host (see docs/DEVELOPMENT.md).
+# Canonical local project ("helpdesk"). Profiles: development (host + web, the default via dev.ps1), production (app + objectstore-prod), production-migrate, tunnel, storage. postgres is shared. Manage with scripts/windows/dev.ps1 (docs/DEVELOPMENT.md).
 services:
   postgres:
     image: postgres:18.6
@@ -14,6 +14,147 @@ services:
       timeout: 3s
       retries: 10
 
+  # Development backend (Development environment, dev sign-in) in the canonical "helpdesk" project. Published on 127.0.0.1 only; never put a tunnel in front of it.
+  # Backend bound to 127.0.0.1 only. The web service below proxies to it over the Compose network; scripts/windows/dev.ps1 manages the project.
+  host:
+    profiles: [development]
+    # Same fixed name as the Production `app` service below: Docker refuses to run both, so Development and Production cannot be up together.
+    container_name: helpdesk-backend
+    image: helpdesk-host:${HELPDESK_VERSION:-local}
+    build:
+      context: .
+      dockerfile: docker/host.Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      Urls: http://+:8080
+      Database__ConnectionString: Host=postgres;Port=5432;Database=${POSTGRES_DB:-helpdesk};Username=${POSTGRES_USER:-helpdesk};Password=${POSTGRES_PASSWORD:?copy .env.example to .env}
+    ports: ["127.0.0.1:${HOST_PORT:-5080}:8080"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Vite dev server (hot module replacement) in Docker. Source is bind-mounted; node_modules lives in a container-managed volume so the
+  # Windows node_modules is never used. The container listens on 0.0.0.0 but is published on 127.0.0.1 only. API requests are proxied to the
+  # `host` service over the Compose network (not localhost, which would be this container).
+  web:
+    profiles: [development]
+    image: node:24-alpine
+    working_dir: /app
+    command:
+      - sh
+      - -c
+      - '[ -x node_modules/.bin/vite ] || npm ci --no-audit --no-fund; exec npm run dev -- --host 0.0.0.0 --port 5173 --strictPort'
+    environment:
+      HELPDESK_API_PROXY: http://host:8080
+      HELPDESK_WEB_POLLING: "1"
+    ports: ["127.0.0.1:${WEB_PORT:-5173}:5173"]
+    volumes:
+      - ./src/web:/app
+      - web_node_modules:/app/node_modules
+    depends_on: [host]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:5173/ || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 30
+      start_period: 120s
+
+  # PRODUCTION MODE (profile `production`, never started by `dev.ps1 start`). Same image, same project, same PostgreSQL server, but:
+  # ASPNETCORE_ENVIRONMENT=Production (dev sign-in refused), the SPA is served by the host from compiled assets (no Vite), no published
+  # ports (only `cloudflared` reaches it over the Compose network), Entra OIDC, Secure cookies, forwarded headers trusted only from private
+  # Docker ranges, Graph mail, S3 storage, no migrations on start, attachments off until a malware scanner exists (D-08).
+  # It uses its OWN database (PROD_DB_NAME, default helpdesk_prod) on the existing server and volume, never the development database.
+  # Every setting comes from the git-ignored root `.env` (see .env.example); unset secrets are empty and the host fails closed.
+  # Run via `scripts/windows/dev.ps1 prod-*`, never `compose --profile production up` without service names.
+  app:
+    profiles: [production]
+    container_name: helpdesk-backend
+    image: helpdesk-host:${HELPDESK_VERSION:-local}
+    restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health/live HTTP/1.0\r\nHost: ${PUBLIC_HOST:-helpdesk.amb-it.co.uk}\r\n\r\n' >&3 && head -n 1 <&3 | grep -q ' 200 '"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      postgres: { condition: service_healthy }
+      objectstore-prod: { condition: service_started }
+    environment: &app-env
+      ASPNETCORE_ENVIRONMENT: Production
+      Urls: http://+:8080
+      Database__ConnectionString: Host=postgres;Port=5432;Database=${PROD_DB_NAME:-helpdesk_prod};Username=${POSTGRES_USER:-helpdesk};Password=${POSTGRES_PASSWORD:?copy .env.example to .env}
+      Database__MigrateOnStartup: "false"
+      Authentication__DevSignIn__Enabled: "false"
+      AllowedHosts: ${PUBLIC_HOST:-helpdesk.amb-it.co.uk}
+      Realtime__AllowedOrigins__0: https://${PUBLIC_HOST:-helpdesk.amb-it.co.uk}
+      # Only cloudflared (same Compose network, nothing else published) can reach the app; its address is dynamic, so trust the private Docker ranges.
+      Proxy__KnownNetworks__0: 172.16.0.0/12
+      Authentication__Entra__TenantId: ${ENTRA_TENANT_ID:-}
+      Authentication__Entra__ClientId: ${ENTRA_CLIENT_ID:-}
+      Authentication__Entra__ClientSecret: ${ENTRA_CLIENT_SECRET:-}
+      Authentication__BootstrapPlatformAdminSubjects__0: ${BOOTSTRAP_PLATFORM_ADMIN_SUBJECT:-}
+      Mail__Provider: Graph
+      Mail__NotificationBaseUrl: https://${PUBLIC_HOST:-helpdesk.amb-it.co.uk}
+      Mail__Graph__TenantId: ${GRAPH_TENANT_ID:-}
+      Mail__Graph__ClientId: ${GRAPH_CLIENT_ID:-}
+      Mail__Graph__ClientSecret: ${GRAPH_CLIENT_SECRET:-}
+      Mail__Graph__CertificatePath: ${GRAPH_CERT_PATH:-}
+      Mail__Graph__CertificatePassword: ${GRAPH_CERT_PASSWORD:-}
+      Storage__Provider: S3
+      Storage__S3__Endpoint: http://objectstore-prod:8333
+      Storage__S3__Bucket: ${S3_BUCKET:-helpdesk}
+      Storage__S3__AccessKey: ${PROD_S3_ACCESS_KEY:-}
+      Storage__S3__SecretKey: ${PROD_S3_SECRET_KEY:-}
+      DataProtection__CertificatePath: ${DP_CERT_PATH:-}
+      DataProtection__CertificatePasswordFile: ${DP_CERT_PASSWORD_FILE:-}
+      DataProtection__RequireCertificate: "true"
+      Attachments__RequireCleanScan: "true"
+      Attachments__Enabled: "false"
+    volumes:
+      # Certificates and password files live OUTSIDE the repository. A missing folder stops the container (fail closed); nothing is created.
+      - type: bind
+        source: ${SECRETS_DIR:-/helpdesk-secrets-dir-not-set}
+        target: /run/helpdesk-secrets
+        read_only: true
+        bind:
+          create_host_path: false
+
+  # One-off, explicit: `dev.ps1 prod-migrate`. Applies the module migrations to PROD_DB_NAME, then exits.
+  migrate:
+    profiles: [production-migrate]
+    image: helpdesk-host:${HELPDESK_VERSION:-local}
+    command: ["migrate"]
+    restart: "no"
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment: *app-env
+    volumes:
+      - type: bind
+        source: ${SECRETS_DIR:-/helpdesk-secrets-dir-not-set}
+        target: /run/helpdesk-secrets
+        read_only: true
+        bind:
+          create_host_path: false
+
+  # Cloudflare tunnel: OPTIONAL and OFF by default (profile `tunnel`; `dev.ps1 start` never starts it). It publishes whatever origin the
+  # tunnel's public hostname points at in the Cloudflare dashboard. It depends on the Production `app` (never on `host`/`web`), the
+  # tunnel's ingress is the catch-all 404 until a route to http://app:8080 is added deliberately, and the hostname sits behind Cloudflare
+  # Access. The tunnel token is read from the gitignored `.tunnel.env` (TUNNEL_TOKEN=...); never put it in this file or .env.
+  # Start only through `dev.ps1 tunnel-start`.
+  cloudflared:
+    profiles: [tunnel]
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    env_file:
+      - path: .tunnel.env
+        required: false
+    restart: "no"
+    depends_on:
+      app: { condition: service_healthy }
+
   # S3-compatible object storage for LOCAL DEVELOPMENT only (SeaweedFS). Not needed before Phase 3 (attachments), so opt-in:
   # `docker compose --profile storage up -d`. The application only knows "an S3-compatible endpoint" (never SeaweedFS-specific APIs);
   # production storage is deployment-configurable (D-17).
@@ -28,6 +169,20 @@ services:
       - "127.0.0.1:${S3_PORT:-8333}:8333"
     volumes: ["objectdata:/data"]
 
+  # Production object store: its own SeaweedFS and its own volume (objectdata_prod); nothing shared with the development `objectstore`/objectdata,
+  # the E2E stack or helpdesk-pv. No published port: reachable only from `app` over the Compose network. The bucket is created by the app on first use.
+  objectstore-prod:
+    profiles: [production]
+    image: chrislusf/seaweedfs:4.48
+    command: server -dir=/data -s3 -s3.port=8333 -master.volumeSizeLimitMB=256
+    environment:
+      AWS_ACCESS_KEY_ID: ${PROD_S3_ACCESS_KEY:-}
+      AWS_SECRET_ACCESS_KEY: ${PROD_S3_SECRET_KEY:-}
+    volumes: ["objectdata_prod:/data"]
+    restart: unless-stopped
+
 volumes:
   pgdata:
   objectdata:
+  objectdata_prod:
+  web_node_modules:

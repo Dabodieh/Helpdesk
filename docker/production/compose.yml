@@ -37,7 +37,7 @@ services:
     security_opt: ["no-new-privileges:true"]
     # The runtime image has no curl or wget: a plain TCP request to the liveness endpoint from bash (not sh: dash has no /dev/tcp). Unhealthy never restarts the container on its own (single instance).
     healthcheck:
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health/live HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 && head -n 1 <&3 | grep -q ' 200 '"]
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health/live HTTP/1.0\r\nHost: ${PUBLIC_HOST}\r\n\r\n' >&3 && head -n 1 <&3 | grep -q ' 200 '"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -60,7 +60,11 @@ services:
       Mail__NotificationBaseUrl: https://${PUBLIC_HOST}${PUBLIC_PORT_SUFFIX:-}
       Mail__Graph__TenantId: ${GRAPH_TENANT_ID:?set in .env}
       Mail__Graph__ClientId: ${GRAPH_CLIENT_ID:?set in .env}
-      Mail__Graph__ClientSecret: ${GRAPH_CLIENT_SECRET:?set in .env}
+      # A certificate (GRAPH_CERT_PATH, a PFX mounted read-only; password in GRAPH_CERT_PASSWORD) is preferred; a secret is for short-lived tests. One of the two is required
+      # and the host refuses to start with neither.
+      Mail__Graph__ClientSecret: ${GRAPH_CLIENT_SECRET:-}
+      Mail__Graph__CertificatePath: ${GRAPH_CERT_PATH:-}
+      Mail__Graph__CertificatePassword: ${GRAPH_CERT_PASSWORD:-}
       Storage__Provider: S3
       Storage__S3__Endpoint: ${S3_ENDPOINT:?set in .env}
       Storage__S3__Bucket: ${S3_BUCKET:-helpdesk}

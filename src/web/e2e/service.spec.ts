@@ -75,7 +75,7 @@ test('administrator configures hours, a policy and a routing rule; a new ticket 
 
   await page.goto('/queue/all')
   const row = page.getByRole('row').filter({ hasText: subject })
-  await expect(row.getByText(/On track|Due soon/).first()).toBeAttached()
+  await expect(row.getByText(/On track|Near deadline|Due soon/).first()).toBeAttached()
   await row.getByRole('link', { name: subject }).click()
   const ticket = page.getByRole('region', { name: 'Ticket', exact: true })
   await expect(ticket.getByRole('combobox', { name: 'Assignee', exact: true })).not.toHaveValue('')
