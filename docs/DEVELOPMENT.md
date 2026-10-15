@@ -30,6 +30,8 @@ ASP.NET options pattern; environment variables override JSON (`Database__Connect
 | `Database:MigrateOnStartup` | Apply pending migrations when the web host starts. Default `false`; `true` only in `appsettings.Development.json`. Production uses the `migrate` command. |
 | `Authentication:Entra:TenantId` / `ClientId` / `ClientSecret` | Single-tenant Entra ID app registration (code flow + PKCE). Either all three are set (GUIDs, secret non-empty) or none. The secret comes from user-secrets or the environment, never from a committed file. |
 | `Authentication:DevSignIn:Enabled` | Development sign-in (see below). Startup fails if it is `true` outside the `Development` and `Testing` environments. |
+| `Authentication:Session:AbsoluteLifetimeHours` | Hard limit on a session from sign-in, 1 to 168 (default 12). Sliding renewal never extends it. |
+| `Authentication:Session:IdleTimeoutMinutes` | Sliding idle timeout, 5 to 1440 and not above the absolute lifetime (default 480). |
 | `Authentication:BootstrapPlatformAdminSubjects` | List of Entra object ids (`oid`) that become platform admins when first provisioned, or at sign-in when no active platform admin exists (recovery). Every grant is audited (`source: bootstrap`). Afterwards platform admins are managed through the API. |
 
 Options are validated at startup: partial or malformed server Entra settings stop the host. With no Entra configuration, the app starts but Microsoft sign-in is unavailable (ADR-037). Initial production bootstrap still requires server settings; an authenticated platform administrator can subsequently manage database-backed setup from Administration > Microsoft 365. Development sign-in is never permitted in production.

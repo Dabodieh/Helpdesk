@@ -5,6 +5,8 @@ using Helpdesk.SharedKernel.Errors;
 using Helpdesk.SharedKernel.Paging;
 using Helpdesk.SharedKernel.Security;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
 
 namespace Helpdesk.Modules.Identity.Services;
 
@@ -14,8 +16,17 @@ internal sealed record UserLookupDto(Guid Id, string DisplayName, string? Email)
 
 internal sealed record PlatformUserPage(IReadOnlyList<PlatformUserDto> Items, string? NextCursor);
 
-internal sealed class PlatformUserService(IdentityDbContext db, IAuditWriter audit, ICurrentUser current, TimeProvider clock)
+internal sealed partial class PlatformUserService(
+    IdentityDbContext db,
+    IAuditWriter audit,
+    ICurrentUser current,
+    TimeProvider clock,
+    IEnumerable<IUserDeactivationListener> deactivationListeners,
+    IEnumerable<IAccessChangeListener> accessListeners,
+    ILogger<PlatformUserService> log)
 {
+    public const int ReasonMaxLength = 200;
+
     public const int LookupMinLength = 3;
     public const int LookupMaxResults = 20;
     private const int DefaultLimit = 50;
@@ -107,6 +118,98 @@ internal sealed class PlatformUserService(IdentityDbContext db, IAuditWriter aud
         await tx.CommitAsync(ct);
         return new PlatformUserDto(user.Id, user.DisplayName, user.Email, user.IsPlatformAdmin, user.IsActive);
     }
+
+    /// <summary>
+    /// Deactivates or reactivates an account (platform administrators only; the caller's permission is declared on the endpoint). Deactivation: refuses the caller's own
+    /// account and the last active platform administrator; increments the session version (every session issued so far is revoked for good, even after reactivation);
+    /// releases the user's assigned tickets in the same transaction (listeners); audits. Reactivation: explicit and audited; old sessions stay revoked, the person
+    /// signs in again. Memberships, tickets, messages, audit history and requester records are never changed. Repeating the current state is a no-op.
+    /// </summary>
+    public async Task<PlatformUserDto> SetActiveAsync(Guid userId, bool value, string? reason, CancellationToken ct)
+    {
+        reason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+        if (reason is { Length: > ReasonMaxLength })
+        {
+            throw new RequestValidationException("reason", $"reason must be at most {ReasonMaxLength} characters.");
+        }
+
+        if (!value && userId == current.UserId)
+        {
+            throw new ConflictException("You cannot deactivate your own account.", ProblemCodes.SelfDeactivation);
+        }
+
+        bool changed;
+        PlatformUserDto result;
+        await using (var tx = await db.Database.BeginTransactionAsync(ct))
+        {
+            await db.Database.ExecuteSqlAsync($"SELECT pg_advisory_xact_lock({PlatformAdminLockKey})", ct);
+            var user = await db.Users.SingleOrDefaultAsync(u => u.Id == userId, ct) ?? throw new NotFoundException();
+            changed = user.IsActive != value;
+            if (changed)
+            {
+                if (!value && user.IsPlatformAdmin)
+                {
+                    var otherActiveAdmins = await db.Users.CountAsync(u => u.IsPlatformAdmin && u.IsActive && u.Id != userId, ct);
+                    if (otherActiveAdmins == 0)
+                    {
+                        throw new ConflictException("The last active platform administrator cannot be deactivated.", ProblemCodes.LastAdmin);
+                    }
+                }
+
+                user.IsActive = value;
+                user.SessionVersion++;
+                user.UpdatedAt = clock.GetUtcNow();
+                await db.SaveChangesAsync(ct);
+                await audit.WriteAsync(new AuditEntry(
+                    AuditCategories.Identity, value ? "user.reactivated" : "user.deactivated", "user", user.Id, null, current.UserId, current.DisplayName,
+                    Previous: new { isActive = !value },
+                    Next: new { isActive = value, sessionsRevoked = true, sessionVersion = user.SessionVersion, reason }), db, ct);
+
+                if (!value)
+                {
+                    var dbTransaction = tx.GetDbTransaction();
+                    foreach (var listener in deactivationListeners)
+                    {
+                        await listener.UserDeactivatingAsync(userId, UserAssignmentEndReasons.UserDeactivated, dbTransaction, ct);
+                    }
+                }
+            }
+
+            await tx.CommitAsync(ct);
+            result = new PlatformUserDto(user.Id, user.DisplayName, user.Email, user.IsPlatformAdmin, user.IsActive);
+        }
+
+        if (changed && !value)
+        {
+            // After commit, best effort: drop the user's realtime groups at once instead of at the next periodic re-check.
+            foreach (var listener in deactivationListeners)
+            {
+                await Safely(() => listener.UserDeactivatedAsync(userId, ct), listener.GetType().Name);
+            }
+
+            foreach (var listener in accessListeners)
+            {
+                await Safely(() => listener.AccessChangedAsync(userId, ct), listener.GetType().Name);
+            }
+        }
+
+        return result;
+    }
+
+    private async Task Safely(Func<Task> action, string name)
+    {
+        try
+        {
+            await action();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            FollowUpFailed(log, name, ex.GetType().Name);
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Follow-up after user deactivation failed in {Listener} ({Error})")]
+    private static partial void FollowUpFailed(ILogger logger, string listener, string error);
 
     private static string LikePattern(string term) =>
         string.Create(CultureInfo.InvariantCulture, $"%{term.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("%", "\\%", StringComparison.Ordinal).Replace("_", "\\_", StringComparison.Ordinal)}%");

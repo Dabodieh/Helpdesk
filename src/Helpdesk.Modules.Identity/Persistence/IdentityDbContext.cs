@@ -55,6 +55,7 @@ internal sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> opti
             e.Property(x => x.Email).HasColumnName("email").HasMaxLength(320);
             e.Property(x => x.IsActive).HasColumnName("is_active");
             e.Property(x => x.IsPlatformAdmin).HasColumnName("is_platform_admin");
+            e.Property(x => x.SessionVersion).HasColumnName("session_version").HasDefaultValue(0);
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
             e.Property(x => x.LastSignInAt).HasColumnName("last_sign_in_at");

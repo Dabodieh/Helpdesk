@@ -9,6 +9,7 @@ public static class ProblemCodes
     public const string Conflict = "conflict";
     public const string Duplicate = "duplicate";
     public const string LastAdmin = "last_admin";
+    public const string SelfDeactivation = "self_deactivation";
     public const string Inactive = "inactive";
     public const string InvalidState = "invalid_state";
     public const string CsrfInvalid = "csrf_invalid";

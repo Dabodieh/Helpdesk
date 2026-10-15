@@ -3,7 +3,7 @@ namespace Helpdesk.Modules.Identity.Contracts;
 /// <summary>An external (OIDC or development) identity as presented at sign-in. Email/name are mutable attributes, never keys.</summary>
 public sealed record ExternalIdentityClaims(string Provider, string IssuerTenant, string Subject, string DisplayName, string? Email);
 
-public sealed record ProvisionedUser(Guid UserId, string DisplayName, string? Email, bool IsActive, bool IsPlatformAdmin, bool IsNewUser);
+public sealed record ProvisionedUser(Guid UserId, string DisplayName, string? Email, bool IsActive, bool IsPlatformAdmin, bool IsNewUser, int SessionVersion = 0);
 
 public sealed record UserSummary(Guid Id, string DisplayName, string? Email, bool IsActive, bool IsPlatformAdmin);
 

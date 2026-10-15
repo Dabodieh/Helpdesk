@@ -24,6 +24,20 @@ internal sealed class CurrentUser(IdentityDbContext db) : ICurrentUser
 
     public bool IsPlatformAdmin => (_snapshot ?? throw NotAuthenticated()).IsPlatformAdmin;
 
+    /// <summary>
+    /// Is the session behind <paramref name="principal"/> still valid for the loaded user? It must carry the session version and sign-in time stamped at sign-in
+    /// (a session without them predates this check and is refused), the version must be the account's current one, and it must be younger than the absolute lifetime.
+    /// </summary>
+    public bool IsSessionValid(ClaimsPrincipal? principal, DateTimeOffset now, TimeSpan absoluteLifetime)
+    {
+        if (_snapshot is null || !HelpdeskPrincipal.TryGetSession(principal, out var version, out var issuedAt))
+        {
+            return false;
+        }
+
+        return version == _snapshot.SessionVersion && issuedAt <= now.AddMinutes(5) && now - issuedAt <= absoluteLifetime;
+    }
+
     /// <summary>Loads the user for the principal. Returns false (and stays unauthenticated) when unknown or inactive.</summary>
     public async Task<bool> LoadAsync(ClaimsPrincipal? principal, CancellationToken cancellationToken)
     {
@@ -34,12 +48,12 @@ internal sealed class CurrentUser(IdentityDbContext db) : ICurrentUser
 
         _snapshot = await db.Users.AsNoTracking()
             .Where(u => u.Id == id && u.IsActive)
-            .Select(u => new Snapshot(u.Id, u.DisplayName, u.Email, u.IsPlatformAdmin))
+            .Select(u => new Snapshot(u.Id, u.DisplayName, u.Email, u.IsPlatformAdmin, u.SessionVersion))
             .SingleOrDefaultAsync(cancellationToken);
         return _snapshot is not null;
     }
 
     private static InvalidOperationException NotAuthenticated() => new("There is no authenticated user for this request.");
 
-    private sealed record Snapshot(Guid Id, string DisplayName, string? Email, bool IsPlatformAdmin);
+    private sealed record Snapshot(Guid Id, string DisplayName, string? Email, bool IsPlatformAdmin, int SessionVersion);
 }

@@ -83,7 +83,7 @@ internal static class AuthEndpoints
                         return Results.Problem(statusCode: StatusCodes.Status403Forbidden, title: "Forbidden");
                     }
 
-                    await http.SignInAsync(AuthSchemes.Cookie, HelpdeskPrincipal.Create(user, ExternalIdentityProviders.Dev));
+                    await http.SignInAsync(AuthSchemes.Cookie, HelpdeskPrincipal.Create(user, ExternalIdentityProviders.Dev, http.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow()));
                     return Results.LocalRedirect(ReturnUrl.Sanitize(returnUrl));
                 })
                 .AllowAnonymous()

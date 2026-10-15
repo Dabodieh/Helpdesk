@@ -3,6 +3,8 @@ import { useState, type FormEvent } from 'react'
 import { createInvitation, listInvitations, resendInvitation, revokeInvitation, type Invitation, type IssuedInvitation } from '../api/invitations'
 import { fieldErrors } from '../api/errors'
 import { listDepartments } from '../api/organisation'
+import { listPlatformUsers, setUserActive, type PlatformUser } from '../api/users'
+import { useMe } from '../auth'
 import { ROLE_LABEL, ROLES } from '../api/schemas'
 import { ErrorNotice, Field, Loading, PageHeader, StatusBadge, type Tone } from '../components/common'
 import { formatDateTime } from '../lib/format'
@@ -146,6 +148,106 @@ function Row({ i, onIssued }: { i: Invitation; onIssued: (i: IssuedInvitation) =
   )
 }
 
+function AccountRow({ u, isSelf }: { u: PlatformUser; isSelf: boolean }) {
+  const qc = useQueryClient()
+  const [confirming, setConfirming] = useState(false)
+  const change = useMutation({
+    mutationFn: (value: boolean) => setUserActive(u.id, value),
+    onSuccess: () => {
+      setConfirming(false)
+      void qc.invalidateQueries({ queryKey: ['platform-users'] })
+    },
+  })
+  return (
+    <>
+      <tr>
+        <td>{u.displayName}</td>
+        <td>{u.email ?? ''}</td>
+        <td>
+          <StatusBadge tone={u.isActive ? 'ok' : 'off'}>{u.isActive ? 'Active' : 'Deactivated'}</StatusBadge>
+          {u.isPlatformAdmin && <span className="muted small"> Platform administrator</span>}
+        </td>
+        <td className="people-actions">
+          {u.isActive && !isSelf && !confirming && (
+            <button type="button" onClick={() => setConfirming(true)}>
+              Deactivate
+            </button>
+          )}
+          {u.isActive && confirming && (
+            <>
+              <button type="button" className="primary" disabled={change.isPending} onClick={() => change.mutate(false)}>
+                Confirm deactivation
+              </button>
+              <button type="button" disabled={change.isPending} onClick={() => setConfirming(false)}>
+                Cancel
+              </button>
+            </>
+          )}
+          {!u.isActive && (
+            <button type="button" disabled={change.isPending} onClick={() => change.mutate(true)}>
+              Reactivate
+            </button>
+          )}
+        </td>
+      </tr>
+      {confirming && (
+        <tr>
+          <td colSpan={4} className="muted small">
+            Signs {u.displayName} out everywhere now and unassigns their tickets. Their history is kept. Reactivating later requires them to sign in again.
+          </td>
+        </tr>
+      )}
+      {change.error && (
+        <tr>
+          <td colSpan={4}>
+            <ErrorNotice error={change.error} />
+          </td>
+        </tr>
+      )}
+    </>
+  )
+}
+
+function Accounts() {
+  const me = useMe()
+  const [search, setSearch] = useState('')
+  const q = useQuery({ queryKey: ['platform-users', search], queryFn: () => listPlatformUsers(search.trim()) })
+  return (
+    <>
+      <h2>Accounts</h2>
+      <div className="people-form">
+        <Field label="Search accounts">
+          {(p) => <input {...p} type="search" value={search} maxLength={100} onChange={(e) => setSearch(e.target.value)} />}
+        </Field>
+      </div>
+      {q.isPending && <Loading label="Loading accounts" />}
+      {q.isError && <ErrorNotice error={q.error} onRetry={() => void q.refetch()} />}
+      {q.data && q.data.items.length === 0 && <p className="empty small">No accounts match.</p>}
+      {q.data && q.data.items.length > 0 && (
+        <div className="table-wrap">
+          <table className="grid compact">
+            <thead>
+              <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Email</th>
+                <th scope="col">Status</th>
+                <th scope="col">
+                  <span className="sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {q.data.items.map((u) => (
+                <AccountRow key={u.id} u={u} isSelf={u.id === me.id} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  )
+}
+
 /** Platform administration: invite a person to a department. They activate by opening the emailed link and signing in with Microsoft 365. */
 export default function PeoplePage() {
   const q = useQuery({ queryKey: ['invitations'], queryFn: listInvitations })
@@ -184,6 +286,7 @@ export default function PeoplePage() {
           </table>
         </div>
       )}
+      <Accounts />
     </section>
   )
 }

@@ -91,12 +91,15 @@ public sealed class ClaimsAndReturnUrlTests
     public void Cookie_principal_has_the_internal_user_id_and_no_external_secrets()
     {
         var id = Guid.NewGuid();
-        var principal = HelpdeskPrincipal.Create(new ProvisionedUser(id, "Ada", "ada@x.test", true, false, true), ExternalIdentityProviders.Entra);
+        var principal = HelpdeskPrincipal.Create(new ProvisionedUser(id, "Ada", "ada@x.test", true, false, true, 7), ExternalIdentityProviders.Entra, new DateTimeOffset(2026, 10, 15, 8, 0, 0, TimeSpan.Zero));
 
         Assert.True(HelpdeskPrincipal.TryGetUserId(principal, out var parsed));
         Assert.Equal(id, parsed);
         Assert.Equal(id.ToString(), principal.FindFirst(ClaimTypes.NameIdentifier)?.Value);
         Assert.True(principal.Identity!.IsAuthenticated);
+        Assert.True(HelpdeskPrincipal.TryGetSession(principal, out var version, out var issuedAt));
+        Assert.Equal(7, version);
+        Assert.Equal(new DateTimeOffset(2026, 10, 15, 8, 0, 0, TimeSpan.Zero), issuedAt);
         Assert.DoesNotContain(principal.Claims, c => c.Type is "tid" or "oid" or "access_token" or "id_token");
     }
 }

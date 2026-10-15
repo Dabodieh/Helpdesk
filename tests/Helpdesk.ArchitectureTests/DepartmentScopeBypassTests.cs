@@ -26,6 +26,9 @@ public sealed class DepartmentScopeBypassTests
             // Reviewed during the post-Refinement-10 remediation (already in place since the notification, presence and identity work): each names an explicit department and
             // authorises per row (notification recipients by permission, presence by ticket read, the caller's own requester links).
             typeof(NotificationRecorder), typeof(PresenceService), typeof(Helpdesk.Modules.Ticketing.Portal.RequesterIdentityService),
+            // S-01 user deactivation: releases the tickets assigned to the account in EVERY department, inside the Identity transaction, one explicit department per audit
+            // entry; initiated only by a platform administrator (platform.users.manage). Mirrors the reviewed MembershipRemovalHandler.
+            typeof(Helpdesk.Modules.Ticketing.Services.UserDeactivationHandler),
         ];
 
     private static readonly BindingFlags AllMembers =

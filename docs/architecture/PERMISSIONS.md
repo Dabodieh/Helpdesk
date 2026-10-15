@@ -73,3 +73,8 @@ Policy-style authorization handlers sit behind `IAuthorizer`; endpoint filters m
 ## Department boundary (security refinement 1)
 Department is the hard security boundary. There are no teams (ADR-034). Followers, links, merges, saved views and search never widen scope: they all run through the department-scoped query filters and `IAuthorizer`, and a foreign object answers like a missing one. See SECURITY.md for the baseline, the intentional self-service exceptions and the verifying tests.
 
+## User deactivation and sessions (S-01)
+- Only `platform.users.manage` (platform administrators) can deactivate or reactivate an account; department roles, including Department admin, never can. Self-deactivation and deactivating the last active platform administrator are refused.
+- Every request loads the account: inactive, unknown, a changed session version or a session older than the absolute lifetime (`Authentication:Session:AbsoluteLifetimeHours`, default 12) is refused and signed out. Deactivation and reactivation increment the session version, so sessions issued before a deactivation never become valid again.
+- Privilege changes (platform administrator flag, department membership and role) need no session invalidation: permissions are read from the database on every request and take effect on the next one.
+- Deactivation releases the account's assigned tickets in every department in the same transaction (audited with reason `user_deactivated`); memberships, messages, audit history and requester records are kept. Sign-in never reactivates an account.

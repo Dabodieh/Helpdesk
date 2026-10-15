@@ -70,6 +70,12 @@ internal sealed class UserProvisioner(
                 CreatedAt = now,
             });
         }
+        else if (!external.User.IsActive)
+        {
+            // A deactivated account is left exactly as it is: no attribute refresh, no sign-in time, and above all no reactivation. The caller refuses the sign-in.
+            await tx.CommitAsync(ct);
+            return new ProvisionedUser(external.User.Id, external.User.DisplayName, external.User.Email, false, external.User.IsPlatformAdmin, false, external.User.SessionVersion);
+        }
         else
         {
             user = external.User;
@@ -105,7 +111,7 @@ internal sealed class UserProvisioner(
         }
 
         await tx.CommitAsync(ct);
-        return new ProvisionedUser(user.Id, user.DisplayName, user.Email, user.IsActive, user.IsPlatformAdmin, isNew);
+        return new ProvisionedUser(user.Id, user.DisplayName, user.Email, user.IsActive, user.IsPlatformAdmin, isNew, user.SessionVersion);
     }
 
     private bool IsBootstrapSubject(string provider, string subject) =>

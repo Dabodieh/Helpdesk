@@ -11,6 +11,8 @@ internal static class UserEndpoints
 {
     internal sealed record SetPlatformAdminRequest(bool? Value);
 
+    internal sealed record SetUserActiveRequest(bool? Value, string? Reason);
+
     public static void Map(IEndpointRouteBuilder app)
     {
         app.MapGet("/api/platform/users",
@@ -31,6 +33,20 @@ internal static class UserEndpoints
                     }
 
                     return TypedResults.Ok(await users.SetPlatformAdminAsync(userId, body.Value.Value, ct));
+                })
+            .RequirePermission(PermissionCodes.PlatformUsersManage, departmentRouteParameter: null)
+            .WithTags("Platform");
+
+        // Deactivation / explicit reactivation. Platform administrators only (platform.users.manage); never department staff.
+        app.MapPut("/api/platform/users/{userId:guid}/active",
+                async (Guid userId, SetUserActiveRequest body, PlatformUserService users, CancellationToken ct) =>
+                {
+                    if (body.Value is null)
+                    {
+                        throw new RequestValidationException("value", "value is required.");
+                    }
+
+                    return TypedResults.Ok(await users.SetActiveAsync(userId, body.Value.Value, body.Reason, ct));
                 })
             .RequirePermission(PermissionCodes.PlatformUsersManage, departmentRouteParameter: null)
             .WithTags("Platform");

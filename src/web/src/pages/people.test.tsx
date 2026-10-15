@@ -10,8 +10,18 @@ const INVITATION = {
   expiresAt: '2026-10-16T10:00:00Z', createdAt: '2026-10-09T10:00:00Z', emailState: 'Accepted', acceptedAt: null,
 }
 
+const USERS = {
+  items: [
+    { id: PLATFORM.id, displayName: 'Root Admin', email: 'root@samh.example', isPlatformAdmin: true, isActive: true },
+    { id: 'u2', displayName: 'Cara Lee', email: 'cara@samh.example', isPlatformAdmin: false, isActive: true },
+    { id: 'u3', displayName: 'Dan Wu', email: 'dan@samh.example', isPlatformAdmin: false, isActive: false },
+  ],
+  nextCursor: null,
+}
+
 const routes = (extra: Record<string, (c: Call) => unknown> = {}) => ({
   'GET /api/me': () => PLATFORM,
+  'GET /api/platform/users': () => USERS,
   'GET /api/departments': () => [DEPT],
   'GET /api/admin/invitations': () => [INVITATION],
   ...csrfHandler,
@@ -122,4 +132,34 @@ test('old emailed paths are migrated without putting the token in the sign-in re
   renderApp('/activate/legacy-token')
   expect(await screen.findByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/api/auth/login?returnUrl=%2Factivate')
   expect(sessionStorage.getItem('helpdesk.invitation')).toBe('legacy-token')
+})
+
+test('an administrator deactivates an account in two steps, cannot deactivate their own, and can reactivate', async () => {
+  const calls = mockFetch(
+    routes({
+      'PUT /api/platform/users/u2/active': (c) => ({ ...USERS.items[1], isActive: (c.body as { value: boolean }).value }),
+      'PUT /api/platform/users/u3/active': (c) => ({ ...USERS.items[2], isActive: (c.body as { value: boolean }).value }),
+    }),
+  )
+  renderApp('/admin/people')
+  expect(await screen.findByText('Cara Lee')).toBeInTheDocument()
+  // Exactly one Deactivate button: the signed-in administrator's own row has none.
+  expect(screen.getAllByRole('button', { name: 'Deactivate' })).toHaveLength(1)
+
+  fireEvent.click(screen.getByRole('button', { name: 'Deactivate' }))
+  expect(await screen.findByText(/Signs Cara Lee out everywhere now/)).toBeInTheDocument()
+  expect(calls.some((c) => c.method === 'PUT')).toBe(false)
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm deactivation' }))
+  await waitFor(() => expect(calls.find((c) => c.method === 'PUT' && c.path === '/api/platform/users/u2/active')?.body).toEqual({ value: false }))
+
+  fireEvent.click(screen.getByRole('button', { name: 'Reactivate' }))
+  await waitFor(() => expect(calls.find((c) => c.method === 'PUT' && c.path === '/api/platform/users/u3/active')?.body).toEqual({ value: true }))
+})
+
+test('a refused deactivation shows the server message', async () => {
+  mockFetch(routes({ 'PUT /api/platform/users/u2/active': () => problem(409, 'The last active platform administrator cannot be deactivated.') }))
+  renderApp('/admin/people')
+  fireEvent.click(await screen.findByRole('button', { name: 'Deactivate' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Confirm deactivation' }))
+  expect(await screen.findByText(/last active platform administrator/i)).toBeInTheDocument()
 })

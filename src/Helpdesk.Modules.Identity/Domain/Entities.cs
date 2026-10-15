@@ -12,6 +12,12 @@ internal sealed class User
 
     public bool IsPlatformAdmin { get; set; }
 
+    /// <summary>
+    /// Stamped into every session cookie at sign-in and compared on every request. Deactivation and reactivation increment it, so every session issued before is dead
+    /// for good (a reactivated account must sign in again), whatever the cookie's own expiry says.
+    /// </summary>
+    public int SessionVersion { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset UpdatedAt { get; set; }

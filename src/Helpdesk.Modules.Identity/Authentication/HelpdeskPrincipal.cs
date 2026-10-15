@@ -15,10 +15,18 @@ internal static class HelpdeskPrincipal
     public const string UserIdClaim = "helpdesk:uid";
     public const string ProviderClaim = "helpdesk:idp";
 
-    public static ClaimsPrincipal Create(ProvisionedUser user, string provider)
+    /// <summary>The user's session version at sign-in; a session whose version is not the current one is revoked.</summary>
+    public const string SessionVersionClaim = "helpdesk:sv";
+
+    /// <summary>Sign-in time (Unix seconds). Sliding renewal never changes it, so it anchors the absolute session lifetime.</summary>
+    public const string IssuedAtClaim = "helpdesk:iat";
+
+    public static ClaimsPrincipal Create(ProvisionedUser user, string provider, DateTimeOffset issuedAt)
     {
         var claims = new List<Claim>
         {
+            new(SessionVersionClaim, user.SessionVersion.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+            new(IssuedAtClaim, issuedAt.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture)),
             new(UserIdClaim, user.UserId.ToString()),
             new(ClaimTypes.NameIdentifier, user.UserId.ToString()),
             new(ClaimTypes.Name, user.DisplayName),
@@ -30,6 +38,20 @@ internal static class HelpdeskPrincipal
         }
 
         return new ClaimsPrincipal(new ClaimsIdentity(claims, AuthSchemes.Cookie, ClaimTypes.Name, ClaimTypes.Role));
+    }
+
+    public static bool TryGetSession(ClaimsPrincipal? principal, out int sessionVersion, out DateTimeOffset issuedAt)
+    {
+        sessionVersion = 0;
+        issuedAt = default;
+        if (!int.TryParse(principal?.FindFirst(SessionVersionClaim)?.Value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out sessionVersion)
+            || !long.TryParse(principal?.FindFirst(IssuedAtClaim)?.Value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var seconds))
+        {
+            return false;
+        }
+
+        issuedAt = DateTimeOffset.FromUnixTimeSeconds(seconds);
+        return true;
     }
 
     public static bool TryGetUserId(ClaimsPrincipal? principal, out Guid userId)

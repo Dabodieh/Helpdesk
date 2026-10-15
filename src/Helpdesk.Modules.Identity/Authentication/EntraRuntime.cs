@@ -200,7 +200,7 @@ internal sealed class EntraOpenIdConnectConfigurer(EntraSettingsStore store) : I
                     return;
                 }
 
-                ctx.Principal = HelpdeskPrincipal.Create(user, identity!.Provider);
+                ctx.Principal = HelpdeskPrincipal.Create(user, identity!.Provider, ctx.HttpContext.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow());
             },
             OnRemoteFailure = ctx =>
             {

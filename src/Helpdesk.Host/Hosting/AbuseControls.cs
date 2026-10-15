@@ -127,7 +127,7 @@ internal static class AbuseControls
         }
 
         var path = request.Path;
-        if (path.StartsWithSegments("/api/admin", StringComparison.OrdinalIgnoreCase))
+        if (path.StartsWithSegments("/api/admin", StringComparison.OrdinalIgnoreCase) || path.StartsWithSegments("/api/platform", StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }

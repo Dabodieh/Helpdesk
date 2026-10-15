@@ -20,6 +20,7 @@ internal static class AuthenticationSetup
     public static void Configure(IServiceCollection services, IConfiguration configuration, IHostEnvironment environment)
     {
         var relaxedCookie = environment.IsDevelopment() || environment.IsEnvironment("Testing");
+        var session = configuration.GetSection(HelpdeskAuthenticationOptions.Section).GetSection("Session").Get<SessionOptions>() ?? new SessionOptions();
 
         var auth = services.AddAuthentication(o =>
         {
@@ -33,7 +34,7 @@ internal static class AuthenticationSetup
             o.Cookie.HttpOnly = true;
             o.Cookie.SameSite = SameSiteMode.Lax;
             o.Cookie.SecurePolicy = relaxedCookie ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
-            o.ExpireTimeSpan = TimeSpan.FromHours(8);
+            o.ExpireTimeSpan = TimeSpan.FromMinutes(session.IdleTimeoutMinutes > 0 ? session.IdleTimeoutMinutes : 480);
             o.SlidingExpiration = true;
             // This is an API: never redirect to a login page.
             o.Events.OnRedirectToLogin = ctx =>
@@ -48,8 +49,13 @@ internal static class AuthenticationSetup
             };
             o.Events.OnValidatePrincipal = async ctx =>
             {
-                var current = ctx.HttpContext.RequestServices.GetRequiredService<CurrentUser>();
-                if (!await current.LoadAsync(ctx.Principal, ctx.HttpContext.RequestAborted))
+                var services = ctx.HttpContext.RequestServices;
+                var current = services.GetRequiredService<CurrentUser>();
+                var policy = services.GetRequiredService<IOptions<HelpdeskAuthenticationOptions>>().Value.Session;
+                // Per request: the account exists and is active, the session was issued under the account's CURRENT session version (deactivation and reactivation
+                // increment it, so older sessions never come back) and it is younger than the absolute lifetime (sliding renewal does not change the sign-in time).
+                if (!await current.LoadAsync(ctx.Principal, ctx.HttpContext.RequestAborted)
+                    || !current.IsSessionValid(ctx.Principal, services.GetRequiredService<TimeProvider>().GetUtcNow(), TimeSpan.FromHours(policy.AbsoluteLifetimeHours)))
                 {
                     ctx.RejectPrincipal();
                     await ctx.HttpContext.SignOutAsync(AuthSchemes.Cookie);
