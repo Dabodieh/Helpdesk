@@ -2,31 +2,34 @@
 # Encrypted logical backup of the Helpdesk PostgreSQL database (decision D3: RPO 1 hour, encrypted, kept OFF the Helpdesk host).
 #
 #   BACKUP_PASSPHRASE_FILE=/secure/backup.pass BACKUP_DIR=/mnt/offhost-staging scripts/ops/backup-database.sh
+#   # local Docker (Windows Docker Desktop through Git Bash, Unraid, plain Docker host):
+#   PG_CONTAINER=helpdesk-postgres-prod-1 BACKUP_NAME_PREFIX=helpdesk-prod BACKUP_PASSPHRASE_FILE=... BACKUP_DIR=... scripts/ops/backup-database.sh
 #
-# Writes <BACKUP_DIR>/helpdesk-<UTC timestamp>.dump.enc and a .sha256 next to it. Copy both to the off-host target (separate from this host's infrastructure) and
-# pair them with the object-storage state taken at the same time: the database and the attachment store are ONE recoverable system (docs/guides/BACKUP_AND_RESTORE.md).
-# Run at least hourly. The passphrase file is never printed; keep a copy of it somewhere that survives the loss of this host.
+# Writes <BACKUP_DIR>/<prefix>-<UTC timestamp>.dump.enc, a .sha256 and a .meta.json (format description, no secrets) next to it. Always `pg_dump --format=custom
+# --no-owner --no-acl`: ownership and grants are NOT in the archive, so it restores on any server; roles are re-applied afterwards with scripts/ops/prod-db-roles.sql.
+# The dump is streamed straight into encryption: no plaintext copy of the data is ever written to disk. The passphrase file is never printed.
 set -euo pipefail
 umask 077 # backups and their checksums are readable by the backup user only
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib-backup.sh
+. "$here/lib-backup.sh"
 
-: "${BACKUP_PASSPHRASE_FILE:?path of a file holding the encryption passphrase}"
+require_passphrase
 : "${BACKUP_DIR:?directory to write the backup to}"
-COMPOSE_FILE="${COMPOSE_FILE:-docker/production/compose.yml}"
-DB_NAME="${DB_NAME:-helpdesk}"; DB_USER="${DB_USER:-helpdesk}"; PG_SERVICE="${PG_SERVICE:-postgres}"
-ENV_FILE="${ENV_FILE:-docker/production/.env}"
-[ -s "$BACKUP_PASSPHRASE_FILE" ] || { echo "passphrase file is missing or empty" >&2; exit 1; }
+[ -n "$DB_USER" ] || { echo "cannot determine the database user (is the PostgreSQL container running?)" >&2; exit 1; }
 mkdir -p "$BACKUP_DIR"
 
-stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-out="$BACKUP_DIR/helpdesk-$stamp.dump.enc"
+stamp="$(stamp_now)"
+out="$BACKUP_DIR/$BACKUP_NAME_PREFIX-$stamp.dump.enc"
 # A failed or interrupted run must not leave a partial file that looks like a backup.
-trap 'rc=$?; [ "$rc" -eq 0 ] || rm -f "$out" "$out.sha256"' EXIT
+trap 'rc=$?; [ "$rc" -eq 0 ] || rm -f "$out" "$out.sha256" "$out.meta.json"' EXIT
 
-# Custom-format dump streamed straight into encryption: no plaintext copy of the data is ever written to disk.
-docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T "$PG_SERVICE" pg_dump -U "$DB_USER" -d "$DB_NAME" --format=custom --no-owner \
-  | openssl enc -aes-256-cbc -pbkdf2 -salt -pass "file:$BACKUP_PASSPHRASE_FILE" -out "$out"
+pg_exec pg_dump -U "$DB_USER" -d "$DB_NAME" --format=custom --no-owner --no-acl | enc > "$out"
 
 # An empty or truncated dump must never be mistaken for a backup.
-[ "$(stat -c %s "$out" 2>/dev/null || stat -f %z "$out")" -gt 1024 ] || { rm -f "$out"; echo "backup is implausibly small; removed" >&2; exit 1; }
-( cd "$BACKUP_DIR" && sha256sum "$(basename "$out")" > "$(basename "$out").sha256" )
+[ "$(file_size "$out")" -gt 1024 ] || { echo "backup is implausibly small; removed" >&2; exit 1; }
+server="$(pg_exec psql -U "$DB_USER" -d "$DB_NAME" -X -At -c 'show server_version' 2>/dev/null | head -1 | tr -d '\r' || true)"
+printf '{"createdAt":"%s","database":"%s","pgDump":"--format=custom --no-owner --no-acl","cipher":"aes-256-cbc","kdf":"pbkdf2","iterations":%s,"salt":"openssl-enc","serverVersion":"%s","decrypt":"openssl enc -d -aes-256-cbc -pbkdf2 -iter %s -pass file:<passphrase-file> -in <this-file>"}\n' \
+  "$(utc_now)" "$DB_NAME" "$BACKUP_PBKDF2_ITER" "$server" "$BACKUP_PBKDF2_ITER" > "$out.meta.json"
+write_sha "$out"
 echo "wrote $out"

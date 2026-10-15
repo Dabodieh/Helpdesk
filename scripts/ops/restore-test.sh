@@ -5,19 +5,19 @@
 #
 #   BACKUP_PASSPHRASE_FILE=/secure/backup.pass scripts/ops/restore-test.sh /mnt/offhost-staging/helpdesk-20261008T100000Z.dump.enc
 #
+# NOTE: this restores into a scratch database ON THE SAME SERVER. For a fully isolated test (separate disposable server, roles, comparison) use
+# restore-test-isolated.sh.
 # Environment: as restore-database.sh; RESTORE_TEST_RESULT (default ./restore-test-result.json; record the outcome in BACKUP_AND_RESTORE.md);
 # RESTORE_TEST_KEEP=1 keeps the scratch database for inspection; RESTORE_TEST_EXPECT_SCHEMAS (default "identity ticketing"); RTO_MINUTES (240), RPO_MINUTES (60).
 set -euo pipefail
 
 backup="${1:?usage: restore-test.sh <backup.dump.enc>}"
 : "${BACKUP_PASSPHRASE_FILE:?path of the file holding the encryption passphrase}"
-COMPOSE_FILE="${COMPOSE_FILE:-docker/production/compose.yml}"
-ENV_FILE="${ENV_FILE:-docker/production/.env}"
-DB_USER="${DB_USER:-helpdesk}"; PG_SERVICE="${PG_SERVICE:-postgres}"
 RESULT="${RESTORE_TEST_RESULT:-./restore-test-result.json}"
 RTO="${RTO_MINUTES:-240}"; RPO="${RPO_MINUTES:-60}"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-psqlx() { docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T "$PG_SERVICE" psql -U "$DB_USER" -tA "$@"; }
+. "$here/lib-backup.sh"
+psqlx() { pg_exec psql -U "$DB_USER" -X -tA "$@" | tr -d '\015'; }
 
 scratch="restore_test_$(date -u +%Y%m%d%H%M%S)"
 case "$scratch" in restore_test_[0-9]*) ;; *) echo "refusing: unexpected scratch name" >&2; exit 1;; esac
@@ -46,7 +46,7 @@ for schema in ${RESTORE_TEST_EXPECT_SCHEMAS:-identity ticketing}; do
   [ "${n:-0}" -gt 0 ] || bad "schema '$schema' is missing or empty after restore"
 done
 
-stamp="$(basename "$backup" | sed -n 's/^helpdesk-\([0-9]\{8\}T[0-9]\{6\}Z\)\..*/\1/p')"
+stamp="$(basename "$backup" | sed -n 's/^.*-\([0-9]\{8\}T[0-9]\{6\}Z\)\.dump\.enc$/\1/p')"
 age=0
 if [ -n "$stamp" ]; then
   iso="${stamp:0:4}-${stamp:4:2}-${stamp:6:2}T${stamp:9:2}:${stamp:11:2}:${stamp:13:2}Z"

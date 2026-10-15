@@ -1,5 +1,7 @@
 # Backup and restore
 
+> Portable local-Docker variant (PG_CONTAINER, object volume, configuration bundle, isolated restore test, Unraid/cron scheduling): see `PORTABLE_BACKUP_RECOVERY.md`. The scripts below are shared; backups are now made with `pg_dump --no-owner --no-acl` and PBKDF2 600 000 iterations.
+
 Targets (decision D3): RPO 1 hour, RTO 4 hours. Backups are encrypted and kept off the Helpdesk host and its infrastructure. The database and the attachment (object) store are backed up and restored as one system.
 
 ## What to back up
