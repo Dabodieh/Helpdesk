@@ -6,7 +6,7 @@ Scope: the local Windows Docker Desktop development database (`helpdesk` in `hel
 
 | Item | Value |
 |---|---|
-| Backup A | `C:\Users\abode\HelpdeskBackups\dev\helpdesk-dev-20261013T221327Z.dump.enc` (+ `.sha256`), taken before the c73db3c deployment |
+| Backup A | `%USERPROFILE%\HelpdeskBackups\dev\helpdesk-dev-20261013T221327Z.dump.enc` (+ `.sha256`), taken before the c73db3c deployment |
 | Backup B | `D:\DB Backup\helpdesk-dev-20261013T223240Z.dump.enc` (+ `.sha256`), 582 032 bytes, taken after the deployment (moved from `F:\DB Backup`; hashes compared before the original was removed) |
 | Content | `pg_dump --format=custom --no-owner` of database `helpdesk`, then encrypted |
 | Format | OpenSSL `enc` AES-256-CBC, PBKDF2 (600 000 iterations), salted (`Salted__` header). Only `openssl` and `pg_restore` are needed. |

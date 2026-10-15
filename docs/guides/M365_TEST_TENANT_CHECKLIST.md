@@ -162,7 +162,7 @@ Reply with the numbers you approve; I will give you the commands for exactly tho
 
 1. Create users 1 and 2 (cloud-only, strong passwords you keep, no licences, no roles).
 2. Create app registration 3 with the redirect URI above and one 30-day client secret; no API permissions.
-3. Create app registration 4 and upload `C:\Users\abode\HelpdeskSecrets\m365\graph-public.cer` (thumbprint `C93077A06A317152A5EA5F11D809920E3E716648`, expires 2027-10-14, public key only); no API permissions, no consent.
+3. Create app registration 4 and upload `%USERPROFILE%\HelpdeskSecrets\m365\graph-public.cer` (thumbprint `C93077A06A317152A5EA5F11D809920E3E716648`, expires 2027-10-14, public key only); no API permissions, no consent.
 4. Create shared mailboxes 5 and 6.
 5. Set custom attribute 1 on mailboxes A and B only.
 6. Create the management scope, the Exchange service principal pointer and the two role assignments; verify with `Test-ServicePrincipalAuthorization` (A and B in scope, outside not).
@@ -174,7 +174,7 @@ Reply with the numbers you approve; I will give you the commands for exactly tho
 |---|---|
 | Project/ports | `helpdesk-m365`, `127.0.0.1:8289` (redirect) and `127.0.0.1:8643` (HTTPS), subnet 172.31.99.0/24; separate volumes, database, object store; `helpdesk-pv` untouched and kept |
 | Env file | `docker\windows\.env.m365` (git-ignored) prepared: random database and object-store secrets, Production mode via the production compose file, `BIND_ADDRESS=127.0.0.1`, no development sign-in, fake tenant values removed (empty until step I4.7) |
-| Data Protection | Certificate `dp.pfx` + password file generated into `C:\Users\abode\HelpdeskSecrets\m365\` (ACL: this user only), mounted read-only through the new `compose.secrets.yml` overlay; `DP_REQUIRE_CERT=true`, so a missing or unreadable certificate stops the start |
+| Data Protection | Certificate `dp.pfx` + password file generated into `%USERPROFILE%\HelpdeskSecrets\m365\` (ACL: this user only), mounted read-only through the new `compose.secrets.yml` overlay; `DP_REQUIRE_CERT=true`, so a missing or unreadable certificate stops the start |
 | Graph certificate | `graph.pfx` + public `graph-public.cer` generated in the same folder (private key never leaves it) |
 | Egress | `NO_EGRESS=true` + `EGRESS_ALLOWLIST=true`: internal network, only the two Microsoft hosts through the squid proxy (`compose.egress-allowlist.yml`, `egress/squid.conf`). The proxy image is `ubuntu/squid:latest` and has **not been pulled or tested** (Docker Desktop was not running: the PC restarted this morning); pin a digest in `EGRESS_PROXY_IMAGE` after the first pull |
 | Config check | `Test-HelpdeskConfig` against the file: only the six tenant values are missing (expected) |
@@ -221,7 +221,7 @@ Nothing in this section is run by the application or by Claude; secrets are type
 
 ### K1. Status after local preparation (2026-10-14)
 
-- Production certificates generated (not yet backed up offline; do that before first use): Data Protection `CN=Helpdesk production key ring`, thumbprint `A03A390F17518D6F9EA5BF3B9ED09390DE7178F8`, expires 2031-10-14; Graph client `CN=Helpdesk production Graph client`, thumbprint `7858DEA062F0CEC2F35805BC2447ADD3EF7352BF`, expires 2027-10-14. Public file to upload to the mail app registration: `C:\Users\abode\HelpdeskSecrets\production\graph-public.cer` (public key only; do NOT use the disposable `m365\graph-public.cer`).
+- Production certificates generated (not yet backed up offline; do that before first use): Data Protection `CN=Helpdesk production key ring`, thumbprint `A03A390F17518D6F9EA5BF3B9ED09390DE7178F8`, expires 2031-10-14; Graph client `CN=Helpdesk production Graph client`, thumbprint `7858DEA062F0CEC2F35805BC2447ADD3EF7352BF`, expires 2027-10-14. Public file to upload to the mail app registration: `%USERPROFILE%\HelpdeskSecrets\production\graph-public.cer` (public key only; do NOT use the disposable `m365\graph-public.cer`).
 - `helpdesk_prod` created and migrated (59 tables, empty); the development database was not touched.
 - Waiting for you: tenant type confirmation (business or Developer tenant with Exchange Online) and approval of K steps 1 to 5.
 
@@ -244,9 +244,9 @@ Signed in interactively as `<operator-account>` (Microsoft Graph PowerShell with
 
 **Resources proposed (all new, `helpdesk-test-*` names; nothing exists until you approve):**
 1. App registration `Helpdesk sign-in`: single tenant, Web redirect `https://helpdesk.amb-it.co.uk/api/auth/signin-oidc`, one 30-day client secret, NO API permissions, no consent.
-2. App registration `Helpdesk mail`: single tenant, certificate credential = `C:\Users\abode\HelpdeskSecrets\production\graph-public.cer` (thumbprint `7858DEA062F0CEC2F35805BC2447ADD3EF7352BF`), NO Graph API permissions, no consent.
-3. Users `helpdesk-test-admin@amb-it.co.uk` (platform administrator candidate) and `helpdesk-test-employee@amb-it.co.uk`: cloud-only, unlicensed, no directory roles, strong passwords you set.
-4. Shared mailboxes `helpdesk-test-a@amb-it.co.uk` and `helpdesk-test-b@amb-it.co.uk` (CustomAttribute1 = `HelpdeskTest`), and control `helpdesk-test-outside@amb-it.co.uk` (no attribute, never registered).
+2. App registration `Helpdesk mail`: single tenant, certificate credential = `%USERPROFILE%\HelpdeskSecrets\production\graph-public.cer` (thumbprint `7858DEA062F0CEC2F35805BC2447ADD3EF7352BF`), NO Graph API permissions, no consent.
+3. Users `helpdesk-test-admin@<test-domain>` (platform administrator candidate) and `helpdesk-test-employee@<test-domain>`: cloud-only, unlicensed, no directory roles, strong passwords you set.
+4. Shared mailboxes `helpdesk-test-a@<test-domain>` and `helpdesk-test-b@<test-domain>` (CustomAttribute1 = `HelpdeskTest`), and control `helpdesk-test-outside@<test-domain>` (no attribute, never registered).
 5. Exchange RBAC: service principal pointer for `Helpdesk mail`, management scope `HelpdeskTestMailboxes` (`CustomAttribute1 -eq HelpdeskTest`), role assignments `Application Mail.ReadWrite` and `Application Mail.Send` scoped to it; then `Test-ServicePrincipalAuthorization` (A, B in scope; outside not). No tenant-wide mailbox access, no Graph application permission, no admin consent, no changes to your or <second-admin>s mailbox.
 
 **Decision for you:** which account is the first platform administrator (`BOOTSTRAP_PLATFORM_ADMIN_SUBJECT` = Entra object id): the dedicated `helpdesk-test-admin` (recommended; needs its own sign-in) or your own account (its object id is read from Entra when you decide).
@@ -262,7 +262,7 @@ Run by `scripts\windows\provision-m365-test-tenant.ps1 -Execute` (idempotent; te
 | App `Helpdesk sign-in` | created, appId `<sign-in-app-id>`, single tenant, redirect `https://helpdesk.amb-it.co.uk/api/auth/signin-oidc`, 30-day secret (expires about 2026-11-13), no API permissions |
 | App `Helpdesk mail` | created, appId `<mail-app-id>`, certificate `graph-public.cer` (thumbprint `7858DEA062F0CEC2F35805BC2447ADD3EF7352BF`); no Graph application permissions, no consent |
 | Certificate proof | a client-credentials token was obtained with `graph.pfx` (cert works; Entra stores a different key identifier string than the thumbprint, which is normal) |
-| Users | `helpdesk-test-admin@amb-it.co.uk`, `helpdesk-test-employee@amb-it.co.uk`: cloud-only, unlicensed, no roles, must change password at first sign-in |
+| Users | `helpdesk-test-admin@<test-domain>`, `helpdesk-test-employee@<test-domain>`: cloud-only, unlicensed, no roles, must change password at first sign-in |
 | Shared mailboxes | `helpdesk-test-a@`, `helpdesk-test-b@` (CustomAttribute1=HelpdeskTest), `helpdesk-test-outside@` (no attribute): created |
 | Exchange service principal pointer | created for `Helpdesk mail` (object id `<object-id>`) |
 | Platform administrator | `BOOTSTRAP_PLATFORM_ADMIN_SUBJECT` = <operator> object id `<object-id>` |
@@ -318,8 +318,8 @@ Next: approve `Enable-OrganizationCustomization`, then rerun the provisioning sc
 ### K3 update 7 (2026-10-14, 18:50Z): Graph mailbox isolation VERIFIED
 
 - `check-graph-mailbox-access.ps1`, run once with the rotated mail certificate, 2h06m after the RBAC assignments (16:44:02Z), read-only GET of each Inbox folder resource:
-  - helpdesk-test-a@amb-it.co.uk: HTTP 200
-  - helpdesk-test-b@amb-it.co.uk: HTTP 200
-  - helpdesk-test-outside@amb-it.co.uk: HTTP 403 ErrorAccessDenied
+  - helpdesk-test-a@<test-domain>: HTTP 200
+  - helpdesk-test-b@<test-domain>: HTTP 200
+  - helpdesk-test-outside@<test-domain>: HTTP 403 ErrorAccessDenied
   - <operator-account>: HTTP 403 ErrorAccessDenied
 - Result: the Exchange RBAC scope (`HelpdeskTestMailboxes`) grants exactly A and B; the control and the personal mailbox are unreachable. The earlier 403s at 17:11Z were propagation delay. No permissions were changed.

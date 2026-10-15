@@ -9,7 +9,7 @@ Nothing here authorises starting the tunnel. `dev.ps1 tunnel-start -ConfirmPubli
 |---|---|
 | Zone | `amb-it.co.uk` (unrelated records untouched, including the `*` wildcard and the other tunnel CNAMEs) |
 | Tunnel | `Helpdesk`, `<tunnel-id>`, remotely managed, no connector running |
-| Tunnel ingress | one rule: `http_status:404` (the `192.168.0.110:5173` route was removed on 2026-10-14) |
+| Tunnel ingress | one rule: `http_status:404` (the `<dev-pc-lan-address>:5173` route was removed on 2026-10-14) |
 | DNS | `helpdesk` CNAME to `<tunnel>.cfargotunnel.com`, proxied (kept) |
 | Access application | `SAMH Helpdesk`, id `<access-app-id>`, self-hosted, `helpdesk.amb-it.co.uk` (whole hostname including `/api` and `/hubs`) |
 | Policy | `<access-allow-policy-id>` "Helpdesk: allow <operator>", ALLOW, include exactly `<operator-account>`, 8 h. Everyone else is denied by Access default-deny; no Deny, Bypass, Service Auth, domain or group rule exists. The earlier deny placeholder was removed |
@@ -52,7 +52,7 @@ Settings come from the git-ignored root `.env`; unset secrets are empty and the 
 
 1. Further allowed emails, if any (section 1).
 2. Entra sign-in registration in the personal test tenant and the Graph registration and mailboxes: `M365_TEST_TENANT_CHECKLIST.md` G1 to G4, I4 and J (approvals pending). Redirect URI: `https://helpdesk.amb-it.co.uk/api/auth/signin-oidc`.
-3. Production values in `.env` and a secrets folder outside the repository (disposable certificates exist in `C:\Users\abode\HelpdeskSecrets\m365`; reusing them for a public instance needs your decision).
+3. Production values in `.env` and a secrets folder outside the repository (disposable certificates exist in `%USERPROFILE%\HelpdeskSecrets\m365`; reusing them for a public instance needs your decision).
 4. `dev.ps1 prod-check` clean, then `prod-migrate` and `prod-start`; verify on the Docker network only (dev-login 404, `/api/auth/providers` returns `{"entra":true}`, object-store bucket exists).
 5. Backup of the new database, your explicit approval, then add the tunnel route to `http://app:8080` and run `dev.ps1 tunnel-start -ConfirmPublic`.
 

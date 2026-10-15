@@ -152,7 +152,7 @@ Subscription for helpdesk-test-a: state `Failed`, no subscription yet. The next 
 
 ## 12. Development configuration copied to Production (2026-10-14, 19:50Z)
 
-Backup first: `C:\Users\abode\HelpdeskBackups\prod\helpdesk-prod-20261014T194859Z.dump.enc` (+ `.sha256`), AES-256-CBC with the existing DPAPI-held passphrase; decrypt round-trip hash matched and `pg_restore --list` read 469 entries.
+Backup first: `%USERPROFILE%\HelpdeskBackups\prod\helpdesk-prod-20261014T194859Z.dump.enc` (+ `.sha256`), AES-256-CBC with the existing DPAPI-held passphrase; decrypt round-trip hash matched and `pg_restore --list` read 469 entries.
 
 Applied with `scripts/ops/config-sync-apply.sql` (one transaction, dry-run rolled back first, rerun created nothing):
 
