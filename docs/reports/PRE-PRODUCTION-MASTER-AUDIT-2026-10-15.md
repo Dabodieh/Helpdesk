@@ -391,3 +391,7 @@ Remaining: Cloudflare tunnel stopped on purpose (production not publicly reachab
 | Production | Not touched: `helpdesk-backend` still on the rollback image, healthy; Postgres healthy; tunnel stopped. |
 
 Note: `local` still points at the old image; Compose must be given `HELPDESK_VERSION=1.0.0-rc1-315c605` at deploy time.
+
+## 16. RC1 deployment record (2026-10-15, 10:01 UTC)
+
+`helpdesk-host:1.0.0-rc1-315c605` (`sha256:d9244686...b0f`, revision `315c605`) replaced the Production `app` container only, via `docker compose --profile production up -d --no-deps --no-build app` with `HELPDESK_VERSION=1.0.0-rc1-315c605` added to the git-ignored `.env`. PostgreSQL, the object store and cloudflared were not touched (dry run first showed only `app` recreated). No migration was run (source counts 4/3/2/3/26/1/2 equal the database). Verified: environment Production, DevSignIn off, `/health/live` and `/health/ready` 200, Entra provider configured, `dev-login` 404, 0 restarts, 0 errors in the startup log, Hangfire server started with 5 recurring jobs and 16 jobs succeeded within the first minutes (0 failed). Data: 1 user (platform administrator), 1 identity, 1 Data Protection key, 6 departments, 79 ticket types, IT-1 and 2 messages, 1 active mailbox, subscription Active (expires 2026-10-17 19:27Z), 0 consecutive failures. Rollback: set `HELPDESK_VERSION=rollback-20261015-3509b9cd` and repeat the same command (image `sha256:3509b9cd...` retained). Cloudflare remains stopped; Development not started.
