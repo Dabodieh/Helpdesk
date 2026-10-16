@@ -541,7 +541,7 @@ Scope: tunnel started with `dev.ps1 tunnel-start -ConfirmPublic` and stopped wit
 | HTTPS scheme | OIDC sign-in completed with the HTTPS redirect through the tunnel (same as 2026-10-14). |
 | After the check | Tunnel stopped; `/api/mail/graph/notifications` from outside answers 530 (origin unreachable; `/` still 302 because Access answers at the edge); health check unchanged (one FAIL: the subscription); 0 application errors during the window. |
 | Not tested | A live IPv6 client (all addresses were IPv4; IPv6 /64 handling is covered by tests only). Behaviour on a different Cloudflare plan. Whether a copied `CF_Authorization` can be replayed (it was not accepted). |
-| Graph subscription (reported separately, not repaired) | State `Failed`, `subscription_id` null since the 12:00Z run on 2026-10-16; the Graph-side subscription `7e873051...` lapses at 2026-10-17 19:27Z. Delta polling works. A renewal needs the tunnel up and an approved "Retry subscription" run; none was done in this window. |
+| Graph subscription (reported separately, not repaired) | State `Failed`, `subscription_id` null since the 12:00Z run on 2026-10-16; the Graph-side subscription (id withheld) lapses at 2026-10-17 19:27Z. Delta polling works. A renewal needs the tunnel up and an approved "Retry subscription" run; none was done in this window. |
 
 ## 27. Graph subscription diagnosis and polling-only mode (2026-10-16; code committed locally, not deployed)
 
