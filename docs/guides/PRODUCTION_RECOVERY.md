@@ -38,4 +38,4 @@ second medium; free disk space. It does not send notifications and is not schedu
 - Windows restarts for updates can still take Production down until someone signs in (see above).
 - A health check run on the same PC cannot report that the PC itself is off; that needs an external probe.
 - The object store has no container healthcheck (adding one recreates the container); `/health/ready` and the S3 port check cover it.
-- Backups are created by `scripts/ops/backup-all.sh` (Windows wrapper `backup-production.ps1`), see `PORTABLE_BACKUP_RECOVERY.md`; scheduling is not configured. The check reports their age and checksum; it does not create them.
+- Backups are created by `scripts/ops/backup-all.sh` (Windows wrapper `backup-production.ps1`), see `PORTABLE_BACKUP_RECOVERY.md`; the Task Scheduler jobs, the independent alerting watchdog, required off-host copies and retention are implemented but not yet activated: see `WINDOWS_MONITORING_AND_BACKUP.md`. The check reports their age and checksum; it does not create them.

@@ -24,3 +24,6 @@ docker/windows/tls/
 
 # Cloudflare tunnel token for the optional tunnel Compose profile (never commit)
 .tunnel.env
+
+# Monitoring configuration (may contain a secret alert URL)
+monitor.env

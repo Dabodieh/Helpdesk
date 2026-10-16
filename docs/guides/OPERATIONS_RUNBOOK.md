@@ -28,7 +28,7 @@ The thresholds are starting points, not approved service levels. Logs are struct
 **Entra ID.** Nobody can sign in; existing sessions keep working until they expire.
 
 ## Routine
-Backups hourly via the systemd timer (`scripts/ops/systemd/`), checked by `scripts/ops/check-backup-freshness.sh`; restore drill quarterly with `scripts/ops/restore-test.sh` (`BACKUP_AND_RESTORE.md`). Logs and operational tables are not pruned yet: retention periods are provisional (D7/D-09) and pruning will not be switched on until the organisation's policy approves them. Watch table growth until then.
+On a Windows Docker Desktop host, scheduled backups, the independent watchdog with alerts and the sign-in recovery task are described in `WINDOWS_MONITORING_AND_BACKUP.md`. Backups hourly via the systemd timer (`scripts/ops/systemd/`), checked by `scripts/ops/check-backup-freshness.sh`; restore drill quarterly with `scripts/ops/restore-test.sh` (`BACKUP_AND_RESTORE.md`). Logs and operational tables are not pruned yet: retention periods are provisional (D7/D-09) and pruning will not be switched on until the organisation's policy approves them. Watch table growth until then.
 
 ## Inbound mail mode (polling or webhook)
 Production runs `Mail:InboundMode=Polling` (set by `MAIL_INBOUND_MODE`, default Polling): the 5-minute delta sync finds mail and no Graph subscription exists, which is normal and reported as an intentional mode. Real problems are a stale `last_sync_at`, `consecutive_failures` above 0, or a `last_sync_error`. Subscription errors (`subscription_error`) are separate and only matter in webhook mode. Details, switching and checks: `INBOUND_MAIL_MODES.md`.
