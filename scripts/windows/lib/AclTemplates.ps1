@@ -21,19 +21,21 @@ $script:ReadMask = 0x1L -bor 0x8L -bor 0x20L -bor 0x80000000L -bor 0x10000000L
 # BackupRoot holds backups. All three are configurable; the defaults are Program Files and ProgramData.
 function Get-HelpdeskLayout {
     param([string]$InstallRoot = (Join-Path $env:ProgramFiles 'Helpdesk'), [string]$DataRoot = (Join-Path $env:ProgramData 'Helpdesk'), [string]$BackupRoot = '')
-    if (-not $BackupRoot) { $BackupRoot = Join-Path $DataRoot 'backups' }
+    # String paths only (Join-Path would fail for a drive that does not exist on this PC, and a layout is only a description).
+    $j = { param([string]$a, [string]$b) [IO.Path]::Combine($a, $b) }
+    if (-not $BackupRoot) { $BackupRoot = & $j $DataRoot 'backups' }
     [pscustomobject]@{
         InstallRoot    = $InstallRoot
-        Scripts        = Join-Path $InstallRoot 'scripts'
+        Scripts        = & $j $InstallRoot 'scripts'
         DataRoot       = $DataRoot
-        Config         = Join-Path $DataRoot 'config'
-        Secrets        = Join-Path $DataRoot 'secrets'
-        State          = Join-Path $DataRoot 'monitor'
+        Config         = & $j $DataRoot 'config'
+        Secrets        = & $j $DataRoot 'secrets'
+        State          = & $j $DataRoot 'monitor'
         BackupRoot     = $BackupRoot
-        ConfigFile     = Join-Path (Join-Path $DataRoot 'config') 'monitor.env'
-        PassphraseFile = Join-Path (Join-Path $DataRoot 'secrets') 'backup.pass'
-        TokenFile      = Join-Path (Join-Path $DataRoot 'secrets') 'alert.token'
-        RestoreResult  = Join-Path (Join-Path $DataRoot 'monitor') 'restore-test-result.json'
+        ConfigFile     = & $j (& $j $DataRoot 'config') 'monitor.env'
+        PassphraseFile = & $j (& $j $DataRoot 'secrets') 'backup.pass'
+        TokenFile      = & $j (& $j $DataRoot 'secrets') 'alert.token'
+        RestoreResult  = & $j (& $j $DataRoot 'monitor') 'restore-test-result.json'
     }
 }
 
