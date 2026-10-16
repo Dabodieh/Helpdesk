@@ -38,6 +38,10 @@ internal static class ProductionHosting
         }
 
         // The framework trusts EVERY caller when both lists are empty (verified, SRE-006), so with nothing configured the middleware must do nothing at all.
+        // One hop: only the RIGHTMOST X-Forwarded-For entry (the one the trusted proxy itself appended) is used; any entries a client put in front of it are ignored.
+        // Stated explicitly because the guarantee depends on it. A second trusted hop (a proxy in front of the tunnel) must raise it deliberately.
+        options.ForwardLimit = 1;
+
         options.ForwardedHeaders = options.KnownProxies.Count + options.KnownIPNetworks.Count == 0
             ? ForwardedHeaders.None
             : ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;

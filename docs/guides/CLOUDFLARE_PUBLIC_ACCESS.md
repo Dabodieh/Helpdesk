@@ -34,7 +34,7 @@ To add people: add their exact email addresses to this Allow policy (never "Ever
 | Database | `helpdesk` | `PROD_DB_NAME` (default `helpdesk_prod`) on the same server and volume; created and migrated only by `dev.ps1 prod-migrate` |
 | Migrations | on start | never on start (`Database__MigrateOnStartup=false`) |
 | Sign-in / cookies | dev | Entra OIDC; Secure cookies outside Development |
-| Proxy trust | none | `Proxy__KnownNetworks__0=172.16.0.0/12`; safe because nothing is published and only `cloudflared` shares the network |
+| Proxy trust | none | `Proxy__KnownNetworks__0=${PROXY_KNOWN_NETWORKS:-172.16.0.0/12}`; safe because nothing is published and only `cloudflared` shares the network. Client address, limits and the outstanding live check: `CLIENT_ADDRESS_AND_RATE_LIMITS.md` (S-03) |
 | Hosts / origins | any | `AllowedHosts` and `Realtime__AllowedOrigins__0` = `PUBLIC_HOST` (https) |
 | Key ring | plain | certificate required (`DataProtection__RequireCertificate=true`) |
 | Mail / storage | Fake / in-memory | Graph / S3 (`objectstore`); attachments disabled until a scanner exists (D-08) |

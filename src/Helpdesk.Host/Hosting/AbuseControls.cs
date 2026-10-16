@@ -92,7 +92,7 @@ internal static class AbuseControls
     public static RateLimitPartition<string> InfrastructurePartition(HttpContext context, RateLimitOptions limits)
     {
         var path = context.Request.Path;
-        var address = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var address = ClientKey(context.Connection.RemoteIpAddress) ?? "unknown";
         var user = context.User.Identity?.IsAuthenticated == true
             ? context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? context.User.Identity.Name ?? address
             : address;
@@ -117,6 +117,33 @@ internal static class AbuseControls
         }
 
         return RateLimitPartition.GetNoLimiter("infrastructure-none");
+    }
+
+    /// <summary>
+    /// The rate-limit identity of a client address. An IPv4-mapped IPv6 address is the same client as its IPv4 form, and an IPv6 address is reduced to its /64: one
+    /// subscriber holds a whole /64, so keying on the full address would let a single client mint a fresh bucket for every request (S-03). Public so it can be tested.
+    /// </summary>
+    public static string? ClientKey(System.Net.IPAddress? address)
+    {
+        if (address is null)
+        {
+            return null;
+        }
+
+        if (address.IsIPv4MappedToIPv6)
+        {
+            address = address.MapToIPv4();
+        }
+
+        if (address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetworkV6)
+        {
+            return address.ToString();
+        }
+
+        Span<byte> bytes = stackalloc byte[16];
+        address.TryWriteBytes(bytes, out _);
+        bytes[8..].Clear();
+        return new System.Net.IPAddress(bytes).ToString() + "/64";
     }
 
     private static bool IsAdministrativeWrite(HttpRequest request)
@@ -156,7 +183,7 @@ internal static class AbuseControls
         // The policy runs after authentication; an unauthenticated caller never reaches these endpoints, but is keyed by address rather than shared.
         var who = context.User.Identity?.IsAuthenticated == true
             ? context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? context.User.Identity.Name ?? "user"
-            : context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
+            : ClientKey(context.Connection.RemoteIpAddress) ?? "anonymous";
         return RateLimitPartition.GetFixedWindowLimiter($"{policy}:{who}", _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = limit.Permits,

@@ -91,8 +91,9 @@ services:
       Authentication__DevSignIn__Enabled: "false"
       AllowedHosts: ${PUBLIC_HOST:-helpdesk.amb-it.co.uk}
       Realtime__AllowedOrigins__0: https://${PUBLIC_HOST:-helpdesk.amb-it.co.uk}
-      # Only cloudflared (same Compose network, nothing else published) can reach the app; its address is dynamic, so trust the private Docker ranges.
-      Proxy__KnownNetworks__0: 172.16.0.0/12
+      # Only cloudflared (same Compose network, nothing else published) can reach the app; its address is dynamic, so trust the private Docker ranges by default.
+      # Narrow it on any host that can (PROXY_KNOWN_NETWORKS in .env, e.g. the exact compose subnet; docs/guides/CLIENT_ADDRESS_AND_RATE_LIMITS.md).
+      Proxy__KnownNetworks__0: ${PROXY_KNOWN_NETWORKS:-172.16.0.0/12}
       Authentication__Entra__TenantId: ${ENTRA_TENANT_ID:-}
       Authentication__Entra__ClientId: ${ENTRA_CLIENT_ID:-}
       Authentication__Entra__ClientSecret: ${ENTRA_CLIENT_SECRET:-}
