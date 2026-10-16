@@ -1,6 +1,6 @@
 # Controlled live-tunnel check: client address (S-03) and Graph subscription renewal
 
-Status: PLAN ONLY (2026-10-16). Nothing in it has been run. Cloudflare, the tunnel, Access, Entra and Graph have not been touched. Every step that starts the tunnel or sends traffic through it needs your explicit go-ahead for the window.
+Status: EXECUTED 2026-10-16 (17:44Z to 17:57Z) for steps 1 to 7 and 10; results in the master audit section 26. Steps 8 and 9 (subscription retry and mail proof) were deliberately NOT run: the Failed subscription was to be reported, not repaired. Original plan: Cloudflare, the tunnel, Access, Entra and Graph have not been touched. Every step that starts the tunnel or sends traffic through it needs your explicit go-ahead for the window.
 
 ## 1. Why, and what is already known
 - **Client address (S-03).** The application is proven, with synthetic requests, to honour only the rightmost `X-Forwarded-For` entry from a trusted proxy and to rate-limit per forwarded client (`ClientAddressTrustTests`, plus an internal-network check of the deployed Production app). Not proven: what Cloudflare and cloudflared really send (does Cloudflare append the connecting address; does cloudflared pass it unchanged).

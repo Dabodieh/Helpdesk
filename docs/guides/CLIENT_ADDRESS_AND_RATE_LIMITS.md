@@ -1,6 +1,6 @@
 # Client address, forwarded headers and rate limits (S-03)
 
-Status 2026-10-16: investigated and hardened in code and tests (not deployed). The behaviour of the real Cloudflare edge and cloudflared is NOT verified; section 5 lists the one controlled check still needed.
+Status 2026-10-16: investigated, hardened in code, deployed to local Production, and verified live through the real Cloudflare tunnel (section 5, results). Not verified: a live IPv6 client.
 
 ## 1. How a request reaches the application
 Browser -> Cloudflare edge (Access in front) -> cloudflared container -> `app` over the Compose network. Nothing else is published. The application sees cloudflared as the TCP peer; the real client address can only come from forwarding headers.
@@ -27,7 +27,8 @@ Browser -> Cloudflare edge (Access in front) -> cloudflared container -> `app` o
 ## 4. Fix
 `AbuseControls.ClientKey`: IPv4-mapped IPv6 becomes IPv4, other IPv6 addresses are reduced to their /64. Used for the webhook, sign-in and anonymous per-user buckets. `ForwardLimit = 1` is now explicit. The rate limiter stays on in Production with no off switch.
 
-## 5. Controlled live-tunnel verification still required (needs approval; not run)
+## 5. Controlled live-tunnel verification (DONE 2026-10-16; full record in the master audit section 26)
+Results: Cloudflare appends the real client address and the application uses only that entry; each client address has its own bucket (two networks, one tunnel); forged `X-Forwarded-For` and `X-Real-IP` were ignored on the live webhook route; `CF-Connecting-IP` forged by a client is refused by Cloudflare itself (403, error 1000). The authenticated-route curl variant was not conclusive (Access refused the copied cookie). Note: the Access bypass reaches the origin for sub-paths of the two webhook paths. The original plan follows for reference.
 Cloudflare, cloudflared and Access were not started or changed. Before relying on per-client limits, with the tunnel up for the single allowed operator:
 1. From the operator's browser make one request through the tunnel and capture, from a temporary debug log of the application or a throw-away echo container on the same Compose network, the TCP peer address and the `X-Forwarded-For`, `X-Forwarded-Proto`, `CF-Connecting-IP` headers.
 2. Expect: the peer inside `PROXY_KNOWN_NETWORKS`; `X-Forwarded-For` ending with the operator's public address (compare with `CF-Connecting-IP`); `X-Forwarded-Proto: https`.
