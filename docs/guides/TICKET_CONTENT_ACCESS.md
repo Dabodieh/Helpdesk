@@ -1,6 +1,6 @@
 # Who can read ticket content
 
-Status: DRAFT for organisational approval. The wording below is not an approved privacy notice and must not be published or relied on as one until the decision in OPEN_DECISIONS D-19 is closed by the organisation (data-protection lead or equivalent).
+Status: DRAFT for organisational approval. The wording below is not an approved privacy notice and must not be published or relied on as one until the decision in OPEN_DECISIONS D-20 is closed by the organisation (data-protection lead or equivalent).
 
 ## Purpose
 Tickets, replies, Internal Notes, requester names and email addresses and attachments can contain personal data. This page records who can read them so that it can be reflected in the privacy notice and in the record of processing.
@@ -20,6 +20,6 @@ Tickets, replies, Internal Notes, requester names and email addresses and attach
 - Access is a role of the Platform Administrator, not a copy of the data: nothing is exported, and departments do not receive notifications, assignments or follows because a Platform Administrator looked at a ticket.
 
 ## Outstanding decisions (not assumed approved)
-- D-19: organisational approval of this wording and of Platform Administrators having access to all ticket content, including Internal Notes, for the privacy notice and the record of processing.
+- D-20: organisational approval of this wording and of Platform Administrators having access to all ticket content, including Internal Notes, for the privacy notice and the record of processing.
 - Whether reads of ticket content by a Platform Administrator should be logged (not implemented).
 - Retention of ticket content remains governed by D-09 (unresolved).
