@@ -97,6 +97,17 @@ function Invoke-BackupRetention {
     return [pscustomobject]@{ Directory = $Directory; Kept = $kept; Removed = $removed; Note = '' }
 }
 
+# Destination pruning is only allowed after a successful isolated restore test: the result file written by scripts/ops/restore-test-isolated.sh must say "ok" and be recent.
+function Test-RecoveryVerified([string]$ResultFile, [int]$MaxAgeDays = 35, [datetime]$Now = [datetime]::UtcNow) {
+    if (-not $ResultFile -or -not (Test-Path -LiteralPath $ResultFile)) { return [pscustomobject]@{ Verified = $false; Reason = 'no restore-test result file' } }
+    try { $o = Get-Content -LiteralPath $ResultFile -Raw | ConvertFrom-Json } catch { return [pscustomobject]@{ Verified = $false; Reason = 'restore-test result file is not readable' } }
+    if ($o.result -ne 'ok') { return [pscustomobject]@{ Verified = $false; Reason = 'the last restore test did not succeed' } }
+    $at = [datetime]::MinValue
+    if (-not [datetime]::TryParse([string]$o.testedAt, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::AdjustToUniversal -bor [Globalization.DateTimeStyles]::AssumeUniversal, [ref]$at)) { return [pscustomobject]@{ Verified = $false; Reason = 'restore-test time is missing' } }
+    if (($Now - $at).TotalDays -gt $MaxAgeDays) { return [pscustomobject]@{ Verified = $false; Reason = "the last successful restore test is older than $MaxAgeDays days" } }
+    return [pscustomobject]@{ Verified = $true; Reason = '' }
+}
+
 # Marks the status file of a finished run as failed (for example when a required off-host copy is missing) while keeping what the run recorded.
 function Set-BackupStatusFailed([string]$StatusFile, [string]$Reason, [datetime]$Now = [datetime]::UtcNow) {
     $o = [ordered]@{}

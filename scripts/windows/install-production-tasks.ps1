@@ -26,6 +26,7 @@ $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 . (Join-Path $PSScriptRoot 'lib\Monitoring.ps1')
 . (Join-Path $PSScriptRoot 'lib\ProductionTasks.ps1')
+. (Join-Path $PSScriptRoot 'lib\AclTemplates.ps1')
 
 $ConfigFile = (Resolve-Path -LiteralPath $ConfigFile).Path
 $S = Get-MonitorSettings (Read-MonitorConfig $ConfigFile)
@@ -37,6 +38,13 @@ if ($S.RequiredBackupDirs.Count -eq 0) { $problems += 'BACKUP_REQUIRED_DIRS is r
 foreach ($f in 'backup-production.ps1', 'watchdog-production.ps1', 'recover-production.ps1') { if (-not (Test-Path (Join-Path $PSScriptRoot $f))) { $problems += "script missing: $f" } }
 if ($problems.Count -gt 0) { throw ('cannot install: ' + ($problems -join '; ')) }
 if ($S.PassphraseFile -and (Test-BroadlyReadable $S.PassphraseFile)) { Write-Warning 'the passphrase file is readable by broad groups (Everyone/Users); restrict it to the service account and administrators' }
+
+# Tasks run these scripts as a privileged service account (Docker access is root-equivalent on the host): nobody else may be able to change them.
+$writable = @(Get-ScriptTreeWriteIssues (Join-Path $repo 'scripts'))
+if ($writable.Count -gt 0) {
+    $msg = "$($writable.Count) script folder(s)/file(s) can be changed by ordinary users (Users, Authenticated Users or Everyone). Install the release under C:\Program Files\Helpdesk with the Program ACL template (docs\architecture\WINDOWS_INSTALL_LAYOUT.md)."
+    if ($WhatIfPreference) { Write-Warning "a real installation would be refused: $msg" } else { throw "refusing to register tasks: $msg" }
+}
 
 $defs = Get-ProductionTaskDefinitions -RepoRoot $repo -ConfigFile $ConfigFile -ServiceUser $ServiceUser -DesktopUser $DesktopUser -PassphraseFile $S.PassphraseFile -IncludeConfig:$IncludeConfig
 $defs | ForEach-Object { Write-Host ("{0}: {1}; as {2} ({3}); limit {4} min" -f $_.Name, $(if ($_.Trigger -eq 'Repeat') { "every $($_.RepeatMinutes) min" } else { 'at sign-in' }), $_.RunAs, $_.LogonType, $_.TimeLimitMinutes) }

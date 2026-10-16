@@ -157,3 +157,30 @@ Describe 'backup-production.ps1 -WhatIf' {
         Test-Path (Join-Path $d 'last-backup.json') | Should Be $false
     }
 }
+
+Describe 'Off-host pruning is gated by a verified restore test (static check of the wrapper)' {
+    $src = Get-Content (Join-Path $PSScriptRoot '..\..\scripts\windows\backup-production.ps1') -Raw
+    It 'never prunes destinations unless Test-RecoveryVerified succeeded' {
+        $gate = $src.IndexOf('Test-RecoveryVerified')
+        $add = $src.IndexOf('$targets += @($optionalOk) + @($requiredOk)')
+        $gate | Should BeGreaterThan 0
+        $add | Should BeGreaterThan $gate
+        $src | Should Match 'if \(\$rv\.Verified\) \{ \$targets \+='
+    }
+    It 'prunes destinations only when explicitly requested (disabled by default)' {
+        $src | Should Match '\[switch\]\$PruneDestinations'
+        $src | Should Match 'if \(\$PruneDestinations\) \{'
+        (Get-MonitorSettings @{ BACKUP_DIR = 'C:\b' }).PruneDestinations | Should Be $false
+    }
+}
+
+Describe 'install-production-tasks.ps1 refuses writable scripts (static check)' {
+    $src = Get-Content (Join-Path $PSScriptRoot '..\..\scripts\windows\install-production-tasks.ps1') -Raw
+    It 'checks the script tree before any task is registered or any password is requested' {
+        $guard = $src.IndexOf('Get-ScriptTreeWriteIssues')
+        $guard | Should BeGreaterThan 0
+        $guard | Should BeLessThan $src.IndexOf('Register-ProductionTasks')
+        $guard | Should BeLessThan $src.IndexOf('Read-Host')
+        $src | Should Match 'refusing to register tasks'
+    }
+}

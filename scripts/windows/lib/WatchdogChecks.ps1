@@ -11,15 +11,36 @@ function Get-StatusFile([string]$BackupDir) {
     try { return (Get-Content -LiteralPath $f -Raw | ConvertFrom-Json) } catch { return $null }
 }
 
+# Why a docker command failed, from its own error text (the text itself is never kept or sent):
+#   'access' = the engine pipe exists but this account may not open it, 'unavailable' = no engine is listening, 'timeout', or 'other'.
+function Get-DockerFailureKind($Result) {
+    if ($Result.TimedOut) { return 'timeout' }
+    $t = "$($Result.Error) $($Result.Output)"
+    if ($t -match '(?i)access is denied|permission denied|operation not permitted|not allowed') { return 'access' }
+    if ($t -match '(?i)cannot find the file|file specified|pipe.*not found|daemon (is )?running|connection refused|no such file|could not be found') { return 'unavailable' }
+    return 'other'
+}
+
+# Fixed, secret-free operator guidance for each kind of Docker failure.
+function Get-DockerFailureGuidance([string]$Kind, [bool]$DesktopRunning, [int]$TimeoutSec = 20, [int]$ExitCode = 1) {
+    if ($Kind -eq 'access') {
+        return 'Docker is running but the account that runs this task is not allowed to use its engine pipe. An administrator must add that account to the local docker-users group; the next task run picks the change up. Checks that need Docker are paused until then.'
+    }
+    if ($Kind -eq 'timeout') { return "no answer within $TimeoutSec s; Docker Desktop may be starting, paused or unresponsive" }
+    if (-not $DesktopRunning) { return 'the Docker engine is not available and Docker Desktop is not running (it starts only when a user signs in: sign in to the PC)' }
+    if ($Kind -eq 'unavailable') { return 'Docker Desktop is running but its engine is not answering; open Docker Desktop and check its status' }
+    return "docker returned an error (exit $ExitCode)"
+}
+
 # Docker engine reachable. Before sign-in Docker Desktop does not run (a Windows/Docker limitation), so this is also the "restarted, nobody signed in" detector.
+# An access-denied answer is reported as such (a permission fault is not a transient start-up state, so the boot grace period does not hide it).
 function Test-DockerEngine($S) {
     $r = Invoke-ExternalWithTimeout $S.DockerExe @('info', '--format', '{{.ServerVersion}}') $S.CommandTimeoutSec
     if (-not $r.TimedOut -and $r.ExitCode -eq 0 -and $r.Output.Trim()) { return New-CheckResult 'docker-engine' 'Docker engine' 'OK' 'engine responding' }
-    $age = Get-BootAgeMinutes
-    if ($age -lt $S.BootGraceMinutes) { return New-CheckResult 'docker-engine' 'Docker engine' 'SKIP' 'still starting after a restart' }
-    $why = if ($r.TimedOut) { "no answer within $($S.CommandTimeoutSec) s" } else { "not available (exit $($r.ExitCode))" }
-    if (-not (Get-DockerDesktopRunning)) { $why += '; Docker Desktop is not running (it starts only when a user signs in: sign in to the PC)' }
-    return New-CheckResult 'docker-engine' 'Docker engine' 'FAIL' $why
+    $kind = Get-DockerFailureKind $r
+    if ($kind -ne 'access' -and (Get-BootAgeMinutes) -lt $S.BootGraceMinutes) { return New-CheckResult 'docker-engine' 'Docker engine' 'SKIP' 'still starting after a restart' }
+    $why = Get-DockerFailureGuidance $kind (Get-DockerDesktopRunning) $S.CommandTimeoutSec $r.ExitCode
+    return New-CheckResult 'docker-engine' 'Docker engine' 'FAIL' $why $(if ($kind -eq 'access') { 'access' } else { '' })
 }
 
 function Test-StackContainers($S) {

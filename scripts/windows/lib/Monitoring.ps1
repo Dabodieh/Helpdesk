@@ -47,6 +47,7 @@ function Get-MonitorSettings($Config) {
         RequiredBackupDirs     = @(Split-ConfigList $Config['BACKUP_REQUIRED_DIRS'])
         OptionalBackupDirs     = @(Split-ConfigList $Config['BACKUP_COPY_DIRS'])
         PruneDestinations      = ($Config['BACKUP_PRUNE_DESTINATIONS'] -eq 'true')
+        RestoreTestResultFile  = $Config['RESTORE_TEST_RESULT_FILE']
         BackupMaxAgeMinutes    = ConvertTo-ConfigInt $Config 'MONITOR_BACKUP_MAX_AGE_MINUTES' 120
         MailSyncStaleMinutes   = ConvertTo-ConfigInt $Config 'MONITOR_MAIL_SYNC_STALE_MINUTES' 15
         ConfirmRuns            = ConvertTo-ConfigInt $Config 'MONITOR_CONFIRM_RUNS' 2

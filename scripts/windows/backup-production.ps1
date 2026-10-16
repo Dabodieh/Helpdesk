@@ -37,6 +37,7 @@ param(
     [int]$RetentionDays = 14,
     [int]$RetentionMinSets = 24,
     [switch]$PruneDestinations,
+    [string]$RestoreTestResultFile = '',
     [switch]$SkipRetention
 )
 $ErrorActionPreference = 'Stop'
@@ -52,6 +53,7 @@ if ($ConfigFile) {
     if (-not $PSBoundParameters.ContainsKey('CopyDirs') -and $cfg.ContainsKey('BACKUP_COPY_DIRS')) { $CopyDirs = $c.OptionalBackupDirs }
     if (-not $PSBoundParameters.ContainsKey('RequiredCopyDirs') -and $c.RequiredBackupDirs.Count -gt 0) { $RequiredCopyDirs = $c.RequiredBackupDirs }
     if (-not $PSBoundParameters.ContainsKey('PruneDestinations') -and $c.PruneDestinations) { $PruneDestinations = [switch]$true }
+    if (-not $PSBoundParameters.ContainsKey('RestoreTestResultFile') -and $c.RestoreTestResultFile) { $RestoreTestResultFile = $c.RestoreTestResultFile }
 }
 $CopyDirs = @($CopyDirs | Where-Object { $_ })
 $RequiredCopyDirs = @($RequiredCopyDirs | Where-Object { $_ })
@@ -122,7 +124,12 @@ try {
 
     if ($code -eq 0 -and -not $SkipRetention) {
         $targets = @($BackupDir)
-        if ($PruneDestinations) { $targets += @($optionalOk) + @($requiredOk) }
+        if ($PruneDestinations) {
+            # Off-host retention stays off until an isolated restore test has succeeded recently.
+            $rv = Test-RecoveryVerified $RestoreTestResultFile
+            if ($rv.Verified) { $targets += @($optionalOk) + @($requiredOk) }
+            else { Write-Warning "pruning of off-host destinations was requested but is skipped: $($rv.Reason)" }
+        }
         foreach ($t in $targets) {
             try {
                 $r = Invoke-BackupRetention -Directory $t -Days $RetentionDays -MinSets $RetentionMinSets

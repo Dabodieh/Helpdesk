@@ -51,6 +51,8 @@ function ConvertTo-ScheduledTaskParts($Def) {
     $action = New-ScheduledTaskAction -Execute $Def.Execute -Argument $Def.Arguments
     if ($Def.Trigger -eq 'Repeat') {
         $trigger = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddMinutes($Def.DelayMinutes)) -RepetitionInterval (New-TimeSpan -Minutes $Def.RepeatMinutes)
+    } elseif ($Def.Trigger -eq 'Once') {
+        $trigger = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddMinutes($Def.DelayMinutes))
     } else {
         $trigger = New-ScheduledTaskTrigger -AtLogOn -User $Def.RunAs
         $trigger.Delay = 'PT{0}M' -f $Def.DelayMinutes
@@ -64,7 +66,7 @@ function Register-ProductionTasks {
     [CmdletBinding(SupportsShouldProcess)]
     param([Parameter(Mandatory)]$Definitions, [securestring]$ServicePassword, [switch]$Force)
     foreach ($d in $Definitions) {
-        if ($PSCmdlet.ShouldProcess($d.Name, "register scheduled task ($(if ($d.Trigger -eq 'Repeat') { "every $($d.RepeatMinutes) min" } else { 'at sign-in' }), as $($d.RunAs), $($d.LogonType))")) {
+        if ($PSCmdlet.ShouldProcess($d.Name, "register scheduled task ($(if ($d.Trigger -eq 'Repeat') { "every $($d.RepeatMinutes) min" } elseif ($d.Trigger -eq 'Once') { 'once' } else { 'at sign-in' }), as $($d.RunAs), $($d.LogonType))")) {
             if ((Get-ScheduledTask -TaskName $d.Name -ErrorAction SilentlyContinue) -and -not $Force) { throw "task '$($d.Name)' already exists; use -Force to replace it" }
             $p = ConvertTo-ScheduledTaskParts $d
             if ($d.LogonType -eq 'Password') {
