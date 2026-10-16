@@ -53,6 +53,7 @@ export function makeMe(over: Partial<Me> = {}): Me {
     isPlatformAdmin: false,
     platformPermissions: [],
     memberships: [],
+    departments: [],
     ...over,
   }
 }

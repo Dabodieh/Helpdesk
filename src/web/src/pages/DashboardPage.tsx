@@ -2,7 +2,7 @@ import { useIsFetching, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { getDashboard, getVolume, type Dashboard } from '../api/dashboard'
-import { canTicket } from '../api/permissions'
+import { departmentsWith } from '../api/permissions'
 import { listTickets } from '../api/tickets'
 import type { SlaFilter } from '../api/ticketSchemas'
 import { useMe } from '../auth'
@@ -109,7 +109,7 @@ export default function DashboardPage() {
   const { departmentId } = useParams()
   const me = useMe()
   const qc = useQueryClient()
-  const readable = me.memberships.filter((m) => canTicket(me, 'tickets.read', m.departmentId))
+  const readable = departmentsWith(me, 'tickets.read')
   const q = useQuery({ queryKey: ['dashboard', departmentId], queryFn: () => getDashboard(departmentId!), enabled: !!departmentId, refetchInterval: 60_000 })
   const refreshing = useIsFetching({ predicate: (query) => isDashboardQuery(query.queryKey) }) > 0
 

@@ -23,6 +23,8 @@ export const meSchema = z.object({
       permissions: z.array(z.string()),
     }),
   ),
+  /** Every department a platform administrator reaches without a membership (empty for everyone else). */
+  departments: z.array(z.object({ departmentId: z.string(), departmentKey: z.string(), departmentName: z.string() })).default([]),
 })
 export type Me = z.infer<typeof meSchema>
 

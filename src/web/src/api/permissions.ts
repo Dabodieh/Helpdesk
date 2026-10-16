@@ -30,7 +30,18 @@ export function canTicket(me: Me, code: string, departmentId: string) {
   return me.memberships.some((m) => m.departmentId === departmentId && m.permissions.includes(code))
 }
 
-export const hasAnyPermission = (me: Me, code: string) => me.memberships.some((m) => m.permissions.includes(code))
+/**
+ * Departments in which the caller can use `code`: the memberships whose role grants it, plus every department for a platform administrator (S-02). Global access
+ * never creates a membership, assignment, follow or notification. UX hint; the server decides.
+ */
+export function departmentsWith(me: Me, code: string) {
+  const own = me.memberships.filter((m) => m.permissions.includes(code)).map((m) => ({ departmentId: m.departmentId, departmentKey: m.departmentKey, departmentName: m.departmentName }))
+  if (!me.isPlatformAdmin) return own
+  const seen = new Set(own.map((d) => d.departmentId))
+  return [...own, ...me.departments.filter((d) => !seen.has(d.departmentId)).map((d) => ({ departmentId: d.departmentId, departmentKey: d.departmentKey, departmentName: d.departmentName }))]
+}
+
+export const hasAnyPermission = (me: Me, code: string) => departmentsWith(me, code).length > 0
 
 /** Does /api/me show anything the user can administer? Controls only whether the Administration entry is offered. */
 export function canAdminister(me: Me) {

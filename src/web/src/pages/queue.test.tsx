@@ -231,3 +231,23 @@ test('search page does not query until two characters are entered, then searches
   expect(q.get('q')).toBe('print')
   expect(q.getAll('status')).toEqual(['Open', 'Pending', 'Resolved', 'Closed'])
 })
+
+test('a platform admin without memberships lands in the queue and can pick any department; an agent only their own', async () => {
+  const departments = [
+    { departmentId: 'd1', departmentKey: 'IT', departmentName: 'IT Support' },
+    { departmentId: 'd2', departmentKey: 'HR', departmentName: 'People Team' },
+  ]
+  mockFetch(workspaceRoutes(makeMe({ isPlatformAdmin: true, platformPermissions: ['platform.departments.manage'], departments })))
+  renderApp('/queue/all')
+  const select = await screen.findByLabelText('Department')
+  expect(within(select).getByRole('option', { name: 'IT Support' })).toBeInTheDocument()
+  expect(within(select).getByRole('option', { name: 'People Team' })).toBeInTheDocument()
+})
+
+test('an agent of one department is offered no department switcher and never other departments', async () => {
+  mockFetch(workspaceRoutes(makeMe({ ...agentMe(), departments: [{ departmentId: 'd9', departmentKey: 'X', departmentName: 'Other' }] })))
+  renderApp('/queue/all')
+  await screen.findByRole('link', { name: 'Printer jam' })
+  expect(screen.queryByLabelText('Department')).not.toBeInTheDocument()
+  expect(screen.queryByText('Other')).not.toBeInTheDocument()
+})

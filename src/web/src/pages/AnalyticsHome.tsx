@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { departmentsWith } from '../api/permissions'
 import { useMe } from '../auth'
 import { Icon } from '../components/icons'
 import { PageHeader } from '../components/common'
@@ -7,7 +8,7 @@ import { CATEGORIES, REPORTS, readStore, reportByKey, writeStore } from '../lib/
 
 export function useAnalyticsDepartments() {
   const me = useMe()
-  return me.memberships.filter((m) => m.permissions.includes('tickets.read')).map((m) => ({ id: m.departmentId, name: m.departmentName }))
+  return departmentsWith(me, 'tickets.read').map((d) => ({ id: d.departmentId, name: d.departmentName }))
 }
 
 export default function AnalyticsHome() {

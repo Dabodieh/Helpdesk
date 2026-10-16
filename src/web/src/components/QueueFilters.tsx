@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import { listQueueTypes } from '../api/queuePrefs'
 import type { TicketFilters } from '../api/tickets'
 import { PRIORITIES, STATUSES } from '../api/ticketSchemas'
+import { departmentsWith } from '../api/permissions'
 import { useMe } from '../auth'
 import { useDirectory } from '../hooks/useDirectory'
 import { ACTIVE_STATUSES, withParam, type Mode } from '../lib/filters'
@@ -24,7 +25,7 @@ export default function QueueFilters({
   const me = useMe()
   const [params, setParams] = useSearchParams()
   const [viewsOpen, setViewsOpen] = useState(false)
-  const departments = me.memberships.filter((m) => m.permissions.includes('tickets.read'))
+  const departments = departmentsWith(me, 'tickets.read')
   const deptParam = params.get('dept') ?? ''
   const scopeDept = deptParam || (departments.length === 1 ? departments[0]!.departmentId : undefined)
   const { members } = useDirectory(scopeDept)

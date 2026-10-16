@@ -485,4 +485,14 @@ Implemented locally, tested, committed; **not pushed and not deployed**. Product
 | Audit | Membership add, role change and removal events now carry `next.viaPlatformAdmin` next to `selfGrant`; the flag change keeps `user.platform_admin_changed` with `selfChange`; ticket changes record the acting user as always. |
 | Tests | New `PlatformAdministratorPolicyTests` (4); updated evaluator, authorizer, decision and probe tests (the probe now proves the administrator of ANOTHER department sees no content); about twenty test files whose expectations encoded the old rule were updated (isolation matrices, realtime, dashboard, reporting, mail, portal). Targeted .NET groups all passed on a disposable PostgreSQL (policy, authorizer and probe 50; isolation, realtime and dashboard 314; ticketing, mail and portal 212; identity, platform, organisation and audit 369; Production and Development databases untouched), architecture 76/76, web queue and people 24/24. |
 | Schema / deployment | No migration. Not deployed, not pushed. Production keeps running the S-01 image until a deployment is approved. |
-| Follow-ups | Project `CLAUDE.md` still lists "implicit Platform Admin ticket access" as an exclusion and says Platform Admin gains no Department content access; it now contradicts ADR-039 and needs the owner's confirmation to edit. The web queue switcher lists only departments the user belongs to (UI change not made). The privacy notice and record of who can read ticket content should name the Platform Administrator. |
+| Follow-ups | Closed in 23.1: `CLAUDE.md` aligned, queue UI finished. Open: privacy approval (D-19), optional logging of Platform Administrator reads of ticket content. |
+
+### 23.1 S-02 finalisation (2026-10-16, local commits; not deployed)
+
+| Item | Result |
+|---|---|
+| Queue and pickers | `/api/me` returns `departments` (every department) for a platform administrator only; the queue department filter, dashboard and analytics pickers, New ticket dialog and the "has tickets" navigation use `departmentsWith`, so a Platform Administrator selects any department, or All, without a membership. Search, saved views and queue filters were already server-side and follow the widened scope. |
+| Participation | Unchanged and tested: no membership, assignment, follow or notification is created by global access; assigning a ticket to a non-member platform administrator is refused until it joins. Signatures stay per agent and membership-based. |
+| Blocking routes and controls | Reviewed every `IsPlatformAdmin`, membership and `tickets.*` use in `src`: all department checks go through `IAuthorizer` or the organisation directory; the remaining membership-only paths are the deliberate participation lists above. UI hints (`canTicket`, `departmentsWith`) follow the flag. No further blocker found. |
+| Privacy | `docs/guides/TICKET_CONTENT_ACCESS.md` (draft) and decision D-19 record that approval is outstanding. No approval assumed. |
+| Security | Authentication and session code untouched; audit unchanged. |

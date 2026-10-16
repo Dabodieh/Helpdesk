@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { fieldErrors } from '../api/errors'
-import { canTicket } from '../api/permissions'
+import { canTicket, departmentsWith } from '../api/permissions'
 import { listOutboundMailboxes } from '../api/emailIdentity'
 import { listTicketTypeOptions } from '../api/ticketing'
 import { createTicket, lookupRequesters } from '../api/tickets'
@@ -15,7 +15,7 @@ import Dialog from './Dialog'
 export default function NewTicketDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (t: TicketDetail) => void }) {
   const me = useMe()
   const qc = useQueryClient()
-  const departments = me.memberships.filter((m) => m.permissions.includes('tickets.create'))
+  const departments = departmentsWith(me, 'tickets.create')
   const [departmentId, setDepartmentId] = useState(departments[0]?.departmentId ?? '')
   const [email, setEmail] = useState('')
   const [chosen, setChosen] = useState<RequesterLookup | null>(null)
