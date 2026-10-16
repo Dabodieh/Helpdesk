@@ -146,6 +146,7 @@ Describe 'Set-BackupStatusFailed' {
 Describe 'backup-production.ps1 -WhatIf' {
     $script = Join-Path $PSScriptRoot '..\..\scripts\windows\backup-production.ps1'
     It 'takes no backup, reports a missing required destination and removes nothing' {
+        $ErrorActionPreference = 'Continue'
         $d = New-Dir 'wi-backups'
         0..25 | ForEach-Object { New-TestSet $d $now.AddDays(-$_) }
         $before = @(Get-ChildItem $d).Count

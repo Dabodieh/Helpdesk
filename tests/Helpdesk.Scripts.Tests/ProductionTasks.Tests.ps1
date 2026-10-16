@@ -108,18 +108,21 @@ Describe 'install-production-tasks.ps1 and uninstall-production-tasks.ps1 -WhatI
     Set-Content -LiteralPath $conf -Value @('ALERT_WEBHOOK_URL=https://ntfy.example.test/topic', "BACKUP_DIR=$TestDrive\b", "BACKUP_PASSPHRASE_FILE=$pass", 'BACKUP_REQUIRED_DIRS=\\nas\helpdesk\prod')
 
     It 'shows the plan and registers nothing' {
+        $ErrorActionPreference = 'Continue'
         $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $install -ConfigFile $conf -ServiceUser '.\hd-svc' -DesktopUser 'CORP\admin' -WhatIf 2>&1 | Out-String
         $out | Should Match 'Helpdesk Production Watchdog: every 5 min'
         $out | Should Match 'WhatIf: nothing was registered and no password was requested'
         (Get-ScheduledTask -TaskName 'Helpdesk Production*' -ErrorAction SilentlyContinue) | Should BeNullOrEmpty
     }
     It 'refuses an incomplete configuration' {
+        $ErrorActionPreference = 'Continue'
         $bad = Join-Path $TestDrive 'bad.env'; Set-Content -LiteralPath $bad -Value @("BACKUP_DIR=$TestDrive\b")
         $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $install -ConfigFile $bad -ServiceUser '.\hd-svc' -DesktopUser 'CORP\admin' -WhatIf 2>&1 | Out-String
         $out | Should Match 'cannot install'
         $out | Should Match 'BACKUP_REQUIRED_DIRS is required'
     }
     It 'uninstall -WhatIf removes nothing' {
+        $ErrorActionPreference = 'Continue'
         $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $uninstall -WhatIf 2>&1 | Out-String
         $LASTEXITCODE | Should Be 0
     }

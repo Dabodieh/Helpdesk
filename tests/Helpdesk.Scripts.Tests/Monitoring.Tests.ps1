@@ -17,6 +17,7 @@ Describe 'Read-MonitorConfig and settings' {
         $s.MailSyncStaleMinutes | Should Be 15
         $s.ConfirmRuns | Should Be 2
         ($s.ExpiryWarnDays -join ',') | Should Be '30,14,7'
+        $s.DockerExe | Should Be 'docker'
         $s.PruneDestinations | Should Be $false
     }
     It 'accepts a valid configuration' { @(Test-MonitorSettings $s).Count | Should Be 0 }

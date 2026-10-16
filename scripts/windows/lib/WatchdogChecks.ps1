@@ -13,7 +13,7 @@ function Get-StatusFile([string]$BackupDir) {
 
 # Docker engine reachable. Before sign-in Docker Desktop does not run (a Windows/Docker limitation), so this is also the "restarted, nobody signed in" detector.
 function Test-DockerEngine($S) {
-    $r = Invoke-ExternalWithTimeout 'docker' @('info', '--format', '{{.ServerVersion}}') $S.CommandTimeoutSec
+    $r = Invoke-ExternalWithTimeout $S.DockerExe @('info', '--format', '{{.ServerVersion}}') $S.CommandTimeoutSec
     if (-not $r.TimedOut -and $r.ExitCode -eq 0 -and $r.Output.Trim()) { return New-CheckResult 'docker-engine' 'Docker engine' 'OK' 'engine responding' }
     $age = Get-BootAgeMinutes
     if ($age -lt $S.BootGraceMinutes) { return New-CheckResult 'docker-engine' 'Docker engine' 'SKIP' 'still starting after a restart' }
@@ -25,7 +25,7 @@ function Test-DockerEngine($S) {
 function Test-StackContainers($S) {
     $out = @()
     foreach ($c in @(@('postgres', 'Database container', $S.PgContainer), @('app', 'Application container', $S.AppContainer), @('objectstore', 'Object store container', $S.ObjectContainer))) {
-        $r = Invoke-ExternalWithTimeout 'docker' @('inspect', $c[2], '--format', '{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}') $S.CommandTimeoutSec
+        $r = Invoke-ExternalWithTimeout $S.DockerExe @('inspect', $c[2], '--format', '{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}') $S.CommandTimeoutSec
         $key = "container-$($c[0])"
         if ($r.TimedOut -or $r.ExitCode -ne 0) { $out += New-CheckResult $key $c[1] 'FAIL' $(if ($r.TimedOut) { 'docker did not answer in time' } else { 'container not found' }); continue }
         $state, $health = ($r.Output.Trim()).Split('|')
@@ -37,7 +37,7 @@ function Test-StackContainers($S) {
 }
 
 function Test-DatabaseReady($S) {
-    $r = Invoke-ExternalWithTimeout 'docker' @('exec', $S.PgContainer, 'sh', '-c', 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"') $S.CommandTimeoutSec
+    $r = Invoke-ExternalWithTimeout $S.DockerExe @('exec', $S.PgContainer, 'sh', '-c', 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"') $S.CommandTimeoutSec
     if (-not $r.TimedOut -and $r.ExitCode -eq 0) { return New-CheckResult 'database' 'Database' 'OK' 'accepting connections' }
     return New-CheckResult 'database' 'Database' 'FAIL' $(if ($r.TimedOut) { "no answer within $($S.CommandTimeoutSec) s" } else { 'not accepting connections' })
 }
@@ -50,7 +50,7 @@ exec 3<>/dev/tcp/127.0.0.1/8080 || exit 2
 printf 'GET /health/ready HTTP/1.0\r\nHost: %s\r\n\r\n' "$h" >&3
 head -n 1 <&3
 '@
-    $r = Invoke-ExternalWithTimeout 'docker' @('exec', '-i', $S.AppContainer, 'bash') $S.CommandTimeoutSec $script
+    $r = Invoke-ExternalWithTimeout $S.DockerExe @('exec', '-i', $S.AppContainer, 'bash') $S.CommandTimeoutSec $script
     if ($r.TimedOut) { return New-CheckResult 'app-ready' 'Application readiness' 'FAIL' "no answer within $($S.CommandTimeoutSec) s" }
     if ($r.Output -match ' 200 ') { return New-CheckResult 'app-ready' 'Application readiness' 'OK' 'ready (200)' }
     $code = if ($r.Output -match 'HTTP/1\.[01] (\d{3})') { $Matches[1] } else { 'no response' }
@@ -60,7 +60,7 @@ head -n 1 <&3
 # Inbound mail (delta synchronisation): an active mailbox whose last successful check is older than the limit.
 function Test-MailSync($S) {
     $sql = "select m.is_active, coalesce(extract(epoch from (now() - s.last_sync_at)) / 60, -1) from mail.mailboxes m left join mail.mailbox_sync s on s.mailbox_id = m.id;"
-    $r = Invoke-ExternalWithTimeout 'docker' @('exec', '-i', $S.PgContainer, 'sh', '-c', 'psql -X -At -F"|" -U "$POSTGRES_USER" -d "$POSTGRES_DB"') $S.CommandTimeoutSec $sql
+    $r = Invoke-ExternalWithTimeout $S.DockerExe @('exec', '-i', $S.PgContainer, 'sh', '-c', 'psql -X -At -F"|" -U "$POSTGRES_USER" -d "$POSTGRES_DB"') $S.CommandTimeoutSec $sql
     if ($r.TimedOut -or $r.ExitCode -ne 0) { return New-CheckResult 'mail-sync' 'Inbound mail check' 'FAIL' 'could not read the mail check state' }
     $stale = @()
     $n = 0

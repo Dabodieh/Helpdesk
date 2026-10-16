@@ -56,6 +56,7 @@ function Get-MonitorSettings($Config) {
         MinFreeDiskGb          = ConvertTo-ConfigInt $Config 'MONITOR_MIN_FREE_DISK_GB' 10
         PgContainer            = $(if ($Config['PG_CONTAINER']) { $Config['PG_CONTAINER'] } else { 'helpdesk-postgres-prod-1' })
         AppContainer           = $(if ($Config['APP_CONTAINER']) { $Config['APP_CONTAINER'] } else { 'helpdesk-backend' })
+        DockerExe              = $(if ($Config['DOCKER_EXE']) { $Config['DOCKER_EXE'] } else { 'docker' })
         ObjectContainer        = $(if ($Config['OBJECTSTORE_CONTAINER']) { $Config['OBJECTSTORE_CONTAINER'] } else { 'helpdesk-objectstore-prod-1' })
         EntraSecretExpires     = $Config['ENTRA_SECRET_EXPIRES']
         CertFiles              = @(Split-ConfigList $Config['CERT_EXPIRY_FILES'])
@@ -77,9 +78,10 @@ function Test-MonitorSettings($S) {
     if ($S.AlertUrl -and -not (Test-WebhookUrl $S.AlertUrl $S.AllowLoopbackHttp)) { $p.Add('ALERT_WEBHOOK_URL must be an https URL') }
     if ($S.HeartbeatUrl -and -not (Test-WebhookUrl $S.HeartbeatUrl $S.AllowLoopbackHttp)) { $p.Add('HEARTBEAT_URL must be an https URL') }
     if ($S.AlertFormat -notin 'ntfy', 'json') { $p.Add('ALERT_WEBHOOK_FORMAT must be ntfy or json') }
-    foreach ($k in 'BackupMaxAgeMinutes', 'MailSyncStaleMinutes', 'ConfirmRuns', 'ReminderMinutes', 'CommandTimeoutSec', 'BootGraceMinutes', 'MinFreeDiskGb') {
+    foreach ($k in 'BackupMaxAgeMinutes', 'MailSyncStaleMinutes', 'ConfirmRuns', 'ReminderMinutes', 'CommandTimeoutSec', 'MinFreeDiskGb') {
         if ($S.$k -lt 1) { $p.Add("$k must be a positive integer") }
     }
+    if ($S.BootGraceMinutes -lt 0) { $p.Add('BootGraceMinutes must be zero or a positive integer') }
     if ($S.EntraSecretExpires) {
         $d = [datetime]::MinValue
         if (-not [datetime]::TryParseExact($S.EntraSecretExpires, 'yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::None, [ref]$d)) { $p.Add('ENTRA_SECRET_EXPIRES must be yyyy-MM-dd') }

@@ -42,7 +42,7 @@ function New-Config([hashtable]$Extra = @{}) {
     $c = [ordered]@{
         ALERT_WEBHOOK_URL = "http://127.0.0.1:$port/topic"; HEARTBEAT_URL = "http://127.0.0.1:$port/hb"; MONITOR_TEST_ALLOW_LOOPBACK_HTTP = '1'
         BACKUP_DIR = $backups; BACKUP_REQUIRED_DIRS = $nas; MONITOR_STATE_DIR = $state; ENTRA_SECRET_EXPIRES = '2099-12-31'
-        MONITOR_BOOT_GRACE_MINUTES = '1'; MONITOR_MIN_FREE_DISK_GB = '1'; MONITOR_COMMAND_TIMEOUT_SECONDS = '10'
+        MONITOR_BOOT_GRACE_MINUTES = '0'; DOCKER_EXE = (Join-Path $fakeDir 'docker.exe'); MONITOR_MIN_FREE_DISK_GB = '1'; MONITOR_COMMAND_TIMEOUT_SECONDS = '10'
     }
     foreach ($k in $Extra.Keys) { if ($null -eq $Extra[$k]) { $c.Remove($k) } else { $c[$k] = $Extra[$k] } }
     $f = Join-Path $TestDrive ('monitor-' + [guid]::NewGuid().ToString('N') + '.env')
@@ -89,7 +89,8 @@ function Beats($r) { @($r.Requests | Where-Object { $_.Path -eq '/hb' }) }
     }
     It 'alerts once when the failure repeats (within 10 minutes at a 5-minute schedule)' {
         $r = Invoke-Watchdog $cfg 'down'
-        @(Alerts $r 'ALERT: Docker engine').Count | Should Be 1
+        $n = @(Alerts $r 'ALERT: Docker engine').Count
+        if ($n -ne 1) { $diag = Invoke-Watchdog $cfg 'down' @('-DryRun'); throw ("expected 1 Docker alert, got $n. Dry run: " + $diag.Output + " Log: " + (Get-Content -LiteralPath (Join-Path $state 'watchdog.log') -Raw)) }
         ($r.Requests | Where-Object { $_.Title -match 'Docker engine' } | Select-Object -First 1).Body | Should Match 'FIRING'
     }
     It 'does not repeat the alert while the failure continues (deduplication)' {
