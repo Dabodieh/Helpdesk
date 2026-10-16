@@ -73,7 +73,7 @@ public sealed class TicketIsolationLeakageTests(HelpdeskFixture fixture) : IClas
         // Phase 4: search results carry a snippet of the matching message text, but only for callers who may read that content
         // (department members; internal notes need tickets.notes.read). Everyone else must never see a token anywhere.
         string[] insiders = [IsoWorld.ViewerA, IsoWorld.AgentA, IsoWorld.LeadA, IsoWorld.AdminA];
-        foreach (var persona in new[] { IsoWorld.ViewerA, IsoWorld.AgentA, IsoWorld.LeadA, IsoWorld.AdminA, IsoWorld.NoMembership, IsoWorld.PlatformAdminNoMembership, IsoWorld.MemberOfBOnly, IsoWorld.AdminOfBAgainstA })
+        foreach (var persona in new[] { IsoWorld.ViewerA, IsoWorld.AgentA, IsoWorld.LeadA, IsoWorld.AdminA, IsoWorld.NoMembership, IsoWorld.MemberOfBOnly, IsoWorld.AdminOfBAgainstA })
         {
             foreach (var (name, call) in reads)
             {
@@ -346,7 +346,7 @@ public sealed class TicketIsolationLeakageTests(HelpdeskFixture fixture) : IClas
         var idsB = (await IsoKit.TicketIdsOfAsync(fixture, w.B.Id)).ToHashSet();
         Assert.True(idsA.Count > 2 && idsB.Count > 0);
 
-        foreach (var persona in new[] { IsoWorld.NoMembership, IsoWorld.PlatformAdminNoMembership, IsoWorld.MemberOfBOnly, IsoWorld.AdminOfBAgainstA, IsoWorld.ViewerA })
+        foreach (var persona in new[] { IsoWorld.NoMembership, IsoWorld.MemberOfBOnly, IsoWorld.AdminOfBAgainstA, IsoWorld.ViewerA })
         {
             var own = persona is IsoWorld.MemberOfBOnly or IsoWorld.AdminOfBAgainstA ? idsB : persona == IsoWorld.ViewerA ? idsA : [];
             var foreign = idsA.Concat(idsB).Where(id => !own.Contains(id)).ToHashSet();
@@ -399,7 +399,7 @@ public sealed class TicketIsolationLeakageTests(HelpdeskFixture fixture) : IClas
             {
                 var replay = (await w.Actors[persona].Client.GetAsync(query + cursor)).Expect(HttpStatusCode.OK);
                 Assert.DoesNotContain(replay.Ids(), id => idsA.Contains(id));
-                if (persona is IsoWorld.NoMembership or IsoWorld.PlatformAdminNoMembership)
+                if (persona is IsoWorld.NoMembership)
                 {
                     Assert.True(IsoKit.EmptyPage(replay));
                 }

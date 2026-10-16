@@ -35,32 +35,33 @@ public sealed class AuthorizationDecisionTests(HelpdeskFixture fixture) : IClass
     }
 
     [Fact]
-    public async Task Platform_admin_without_membership_never_gets_content_access()
+    public async Task Platform_admin_without_membership_has_content_and_administrative_access_in_every_department()
     {
         var department = await fixture.CreateDepartmentAsync();
         var ticket = await fixture.CreateTicketAsync(department);
         var admin = await fixture.PlatformAdminAsync();
 
-        (await admin.Client.GetAsync($"/api/tickets/{ticket.Id}")).Expect(HttpStatusCode.NotFound);
+        (await admin.Client.GetAsync($"/api/tickets/{ticket.Id}")).Expect(HttpStatusCode.OK);
+        (await admin.Client.GetAsync($"/api/tickets/{Guid.NewGuid()}")).Expect(HttpStatusCode.NotFound);
 
-        // ...but administrative access works without membership.
         (await admin.Client.GetAsync(department.Url)).Expect(HttpStatusCode.OK);
         (await admin.Client.GetAsync($"{department.Url}/members")).Expect(HttpStatusCode.OK);
         (await admin.Client.GetAsync($"{department.Url}/audit")).Expect(HttpStatusCode.OK);
     }
 
     [Fact]
-    public async Task Platform_admin_gains_content_access_only_through_a_membership_which_is_a_flagged_audited_change()
+    public async Task Content_access_follows_the_platform_flag_immediately_in_both_directions()
     {
         var department = await fixture.CreateDepartmentAsync();
         var ticket = await fixture.CreateTicketAsync(department);
         var admin = await fixture.NewUserAsync("padmin");
         var root = await fixture.PlatformAdminAsync();
-        (await root.Client.PutAsync($"/api/platform/users/{admin.Id}/platform-admin", new { value = true })).Expect(HttpStatusCode.OK);
 
         (await admin.Client.GetAsync($"/api/tickets/{ticket.Id}")).Expect(HttpStatusCode.NotFound);
-        (await admin.Client.PutAsync($"{department.Url}/members/{admin.Id}", new { role = DepartmentRoles.Viewer })).Expect(HttpStatusCode.OK);
+        (await root.Client.PutAsync($"/api/platform/users/{admin.Id}/platform-admin", new { value = true })).Expect(HttpStatusCode.OK);
         (await admin.Client.GetAsync($"/api/tickets/{ticket.Id}")).Expect(HttpStatusCode.OK);
+        (await root.Client.PutAsync($"/api/platform/users/{admin.Id}/platform-admin", new { value = false })).Expect(HttpStatusCode.OK);
+        (await admin.Client.GetAsync($"/api/tickets/{ticket.Id}")).Expect(HttpStatusCode.NotFound);
     }
 
     [Fact]

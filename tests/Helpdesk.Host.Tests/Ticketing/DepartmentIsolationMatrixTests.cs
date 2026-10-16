@@ -199,15 +199,17 @@ public sealed class DepartmentIsolationMatrixTests(HelpdeskFixture fixture) : IC
         Assert.Contains(w.ItTicket.Id, Ids((await w.It.Agent.Client.GetAsync($"/api/tickets?q={Uri.EscapeDataString($"note-body-{w.Token}")}&status=Open")).Expect(HttpStatusCode.OK)));
         Assert.Contains(w.ItMerged.Id, Ids((await w.It.Agent.Client.GetAsync($"/api/tickets?q={w.ItMerged.Reference()}")).Expect(HttpStatusCode.OK)));
 
-        // Someone with IT + HR sees both (and still nothing of Finance); the platform administrator, who holds no ticket role, sees no tickets at all.
+        // Someone with IT + HR sees both (and still nothing of Finance); the platform administrator (S-02: every permission in every department) sees them all.
         var finTicket = (await w.Fin.TicketForAsync($"f-{Unique.Id()}@example.test", $"{w.Token} payroll")).Expect(HttpStatusCode.Created);
         var seen = Ids((await w.Both.Client.GetAsync($"/api/tickets?q={w.Token}&status=Open&status=Pending&status=Resolved&status=Closed")).Expect(HttpStatusCode.OK));
         Assert.Contains(w.ItTicket.Id, seen);
         Assert.DoesNotContain(finTicket.Id, seen);
         (await w.Both.GetTicketAsync(finTicket.Id)).Expect(HttpStatusCode.NotFound);
         var admin = await fixture.PlatformAdminAsync();
-        Assert.Empty(Ids((await admin.Client.GetAsync($"/api/tickets?q={w.Token}")).Expect(HttpStatusCode.OK)));
-        (await admin.GetTicketAsync(w.ItTicket.Id)).Expect(HttpStatusCode.NotFound);
+        var adminSeen = Ids((await admin.Client.GetAsync($"/api/tickets?q={w.Token}")).Expect(HttpStatusCode.OK));
+        Assert.Contains(w.ItTicket.Id, adminSeen);
+        Assert.Contains(finTicket.Id, adminSeen);
+        (await admin.GetTicketAsync(w.ItTicket.Id)).Expect(HttpStatusCode.OK);
     }
 
     [Fact]

@@ -201,7 +201,7 @@ public sealed class TicketIngressAndScopeTests(HelpdeskFixture fixture) : IClass
             PermissionCodes.TicketsNotesRead, PermissionCodes.TicketsUpdate, PermissionCodes.TicketsAssignSelf, PermissionCodes.TicketsAssignAny,
         ];
         Assert.All(codes, c => Assert.Equal(PermissionKind.Content, PermissionCatalogue.Get(c).Kind));
-        Assert.All(codes, c => Assert.Equal(EvaluationOutcome.NotFound, PermissionEvaluator.Evaluate(PermissionCatalogue.Get(c), true, null, true))); // never via the platform flag
+        Assert.All(codes, c => Assert.Equal(EvaluationOutcome.Allowed, PermissionEvaluator.Evaluate(PermissionCatalogue.Get(c), true, null, true))); // via the platform flag (S-02)
 
         string[] viewer = [PermissionCodes.TicketsRead, PermissionCodes.TicketsNotesRead];
         string[] agent = [.. viewer, PermissionCodes.TicketsCreate, PermissionCodes.TicketsReply, PermissionCodes.TicketsNote, PermissionCodes.TicketsUpdate, PermissionCodes.TicketsAssignSelf];

@@ -87,7 +87,7 @@ public sealed class AttachmentTests(HelpdeskFixture fixture) : IClassFixture<Hel
         (await fixture.CreateAnonymousClient().GetAsync(url)).Expect(HttpStatusCode.Unauthorized);
         (await other.Agent.Client.GetAsync(url)).Expect(HttpStatusCode.NotFound);
         (await outsider.Client.GetAsync(url)).Expect(HttpStatusCode.NotFound);
-        (await platform.Client.GetAsync(url)).Expect(HttpStatusCode.NotFound); // administration is not content access
+        (await platform.Client.GetAsync(url)).Expect(HttpStatusCode.OK); // S-02: global access
         (await s.D.Viewer.Client.GetAsync(url)).Expect(HttpStatusCode.OK);
 
         // The attachment id never works under another ticket, nor does a random id.

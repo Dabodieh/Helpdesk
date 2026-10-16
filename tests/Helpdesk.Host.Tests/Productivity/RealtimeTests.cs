@@ -192,7 +192,7 @@ public sealed class RealtimeTests(HelpdeskFixture fixture) : IClassFixture<Helpd
         var (_, inB) = await ConnectAsync(b.Agent);
         var (_, inB2) = await ConnectAsync(b.Admin);
         var (_, outsiderEvents) = await ConnectAsync(outsider);
-        var (_, platformEvents) = await ConnectAsync(platform); // administration is not content access
+        var (_, platformEvents) = await ConnectAsync(platform); // S-02: the platform administrator receives every department's events
         var (_, inA) = await ConnectAsync(a.Agent);
 
         var ticket = await a.Agent.CreateTicketAsync(a.Department);
@@ -203,7 +203,7 @@ public sealed class RealtimeTests(HelpdeskFixture fixture) : IClassFixture<Helpd
         Assert.True(await StaysSilentAsync(inB));
         Assert.True(await StaysSilentAsync(inB2, 200));
         Assert.True(await StaysSilentAsync(outsiderEvents, 200));
-        Assert.True(await StaysSilentAsync(platformEvents, 200));
+        Assert.True(await WaitForAsync(platformEvents, e => e.GetProperty("kind").GetString() == "note"));
     }
 
     [Fact]

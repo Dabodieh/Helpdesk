@@ -124,7 +124,7 @@ public sealed class ReportingTests(HelpdeskFixture fixture) : IClassFixture<Help
 
         (await outsider.Client.GetAsync($"/api/departments/{a.Id}/reports/tickets?metric=backlog")).Expect(HttpStatusCode.NotFound);
         var platform = await fixture.PlatformAdminAsync();
-        (await platform.Client.GetAsync(Url(a, "ticket-volume"))).Expect(HttpStatusCode.NotFound); // administrative access is not ticket access
+        (await platform.Client.GetAsync(Url(a, "ticket-volume"))).Expect(HttpStatusCode.OK); // S-02: the platform administrator reports on every department
         (await (await fixture.NewUserAsync()).Client.GetAsync(Url(a, "backlog"))).Expect(HttpStatusCode.NotFound);
 
         // B's own report holds none of A's tickets.

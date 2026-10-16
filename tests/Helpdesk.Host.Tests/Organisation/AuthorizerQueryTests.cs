@@ -58,7 +58,7 @@ public sealed class AuthorizerQueryTests(HelpdeskFixture fixture) : IClassFixtur
     }
 
     [Fact]
-    public async Task Platform_admin_flag_widens_administrative_but_never_content_permissions()
+    public async Task Platform_admin_flag_widens_administrative_and_content_permissions_to_every_department()
     {
         var d1 = await fixture.CreateDepartmentAsync();
         var d2 = await fixture.CreateDepartmentAsync();
@@ -70,7 +70,8 @@ public sealed class AuthorizerQueryTests(HelpdeskFixture fixture) : IClassFixtur
 
         Assert.Contains(d1.Id, administrative);
         Assert.Contains(d2.Id, administrative);
-        Assert.Equal([d1.Id], content); // only the membership
+        Assert.Contains(d1.Id, content);
+        Assert.Contains(d2.Id, content);
     }
 
     [Fact]
@@ -85,6 +86,7 @@ public sealed class AuthorizerQueryTests(HelpdeskFixture fixture) : IClassFixtur
         Assert.True(await WithAuthorizerAsync(deptAdmin.Id, false, a => a.HasInAnyDepartmentAsync(PermissionCodes.DepartmentMembersManage)));
         Assert.False(await WithAuthorizerAsync(nobody.Id, false, a => a.HasInAnyDepartmentAsync(PermissionCodes.DepartmentMembersManage)));
         Assert.True(await WithAuthorizerAsync(nobody.Id, true, a => a.HasInAnyDepartmentAsync(PermissionCodes.DepartmentMembersManage)));
-        Assert.False(await WithAuthorizerAsync(nobody.Id, true, a => a.HasInAnyDepartmentAsync(PermissionCodes.TicketsRead)));
+        Assert.True(await WithAuthorizerAsync(nobody.Id, true, a => a.HasInAnyDepartmentAsync(PermissionCodes.TicketsRead)));
+        Assert.False(await WithAuthorizerAsync(nobody.Id, false, a => a.HasInAnyDepartmentAsync(PermissionCodes.TicketsRead)));
     }
 }

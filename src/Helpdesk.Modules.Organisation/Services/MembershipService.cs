@@ -87,7 +87,7 @@ internal sealed class MembershipService(
             existing.Role = role;
             existing.UpdatedAt = now;
             await db.SaveChangesAsync(ct);
-            await audit.WriteAsync("membership.role_changed", "department_membership", userId, departmentId, new { role = previous }, new { role, selfGrant }, ct);
+            await audit.WriteAsync("membership.role_changed", "department_membership", userId, departmentId, new { role = previous }, new { role, selfGrant, viaPlatformAdmin = await ViaPlatformAdminAsync(departmentId, ct) }, ct);
             roleEndedAssignments = endsAssignments;
         }
 
@@ -128,7 +128,7 @@ internal sealed class MembershipService(
         db.DepartmentMemberships.Remove(membership);
         await db.SaveChangesAsync(ct);
 
-        await audit.WriteAsync("membership.removed", "department_membership", userId, departmentId, new { role = membership.Role }, null, ct);
+        await audit.WriteAsync("membership.removed", "department_membership", userId, departmentId, new { role = membership.Role }, new { viaPlatformAdmin = await ViaPlatformAdminAsync(departmentId, ct) }, ct);
         await tx.CommitAsync(ct);
         memberships.Invalidate();
         await NotifyAccessChangedAsync(userId, ct);
@@ -188,8 +188,13 @@ internal sealed class MembershipService(
         var now = clock.GetUtcNow();
         db.DepartmentMemberships.Add(new DepartmentMembership { UserId = userId, DepartmentId = department.Id, Role = role, CreatedAt = now, UpdatedAt = now });
         await db.SaveChangesAsync(ct);
-        await audit.WriteAsync("membership.added", "department_membership", userId, department.Id, null, new { role, selfGrant = userId == current.UserId }, ct);
+        await audit.WriteAsync("membership.added", "department_membership", userId, department.Id, null, new { role, selfGrant = userId == current.UserId, viaPlatformAdmin = await ViaPlatformAdminAsync(department.Id, ct) }, ct);
     }
+
+    /// <summary>True when the caller changes this department's membership on the strength of the platform-administrator flag alone (S-02), i.e. is not its Department Administrator. Recorded in the audit entry.</summary>
+    private async Task<bool> ViaPlatformAdminAsync(Guid departmentId, CancellationToken ct) =>
+        current.IsAuthenticated && current.IsPlatformAdmin
+        && !((await memberships.GetRolesAsync(ct)).TryGetValue(departmentId, out var own) && own == DepartmentRoles.DepartmentAdmin);
 
     private async Task NotifyAssignmentsEndedAsync(Guid departmentId, Guid userId, CancellationToken ct)
     {

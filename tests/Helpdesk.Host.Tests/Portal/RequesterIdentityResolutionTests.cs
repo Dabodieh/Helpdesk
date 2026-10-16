@@ -128,11 +128,10 @@ public sealed class RequesterIdentityResolutionTests(HelpdeskFixture fixture) : 
         (await hr.Admin.Client.GetAsync($"{Base(it)}/{requesterId}")).Expect(HttpStatusCode.NotFound);
         (await hr.Admin.Client.PostAsync($"{Base(it)}/{requesterId}/link", new { userId = sam.Id })).Expect(HttpStatusCode.NotFound);
 
-        // A platform administrator without an IT membership has no requester or ticket visibility and cannot link.
+        // A platform administrator sees every department's requesters by policy (S-02); linking is left to the department administrator below.
         var platform = await fixture.PlatformAdminAsync();
-        Assert.DoesNotContain(requesterId, CaseIds((await platform.Client.GetAsync(Base(it))).Expect(HttpStatusCode.OK)));
-        (await platform.Client.GetAsync($"{Base(it)}/{requesterId}")).Expect(HttpStatusCode.NotFound);
-        (await platform.Client.PostAsync($"{Base(it)}/{requesterId}/link", new { userId = sam.Id })).Expect(HttpStatusCode.NotFound);
+        Assert.Contains(requesterId, CaseIds((await platform.Client.GetAsync(Base(it))).Expect(HttpStatusCode.OK)));
+        (await platform.Client.GetAsync($"{Base(it)}/{requesterId}")).Expect(HttpStatusCode.OK);
         Assert.Equal(HttpStatusCode.Forbidden, (await it.Agent.Client.GetAsync(Base(it))).Status); // not a people manager
         Assert.Equal(0, await LinksAsync(requesterId));
 

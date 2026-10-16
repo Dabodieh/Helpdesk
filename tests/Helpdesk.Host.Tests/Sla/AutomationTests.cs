@@ -243,9 +243,9 @@ public sealed class AutomationTests(HelpdeskFixture fixture) : IClassFixture<Hel
 
         // Administrator of A, naming B's ticket through A's route: not found.
         (await a.Admin.Client.PostAsync($"{a.Base}/automations/test", new { ticket = referenceB, trigger = "TicketCreated" })).Expect(HttpStatusCode.NotFound);
-        // Platform administrator (administrative rights, no ticket access): not found as well.
+        // Platform administrator (S-02: every permission everywhere): may test against B's own ticket on B's route.
         var platform = await fixture.PlatformAdminAsync();
-        (await platform.Client.PostAsync($"{b.Base}/automations/test", new { ticket = referenceB, trigger = "TicketCreated" })).Expect(HttpStatusCode.NotFound);
+        (await platform.Client.PostAsync($"{b.Base}/automations/test", new { ticket = referenceB, trigger = "TicketCreated" })).Expect(HttpStatusCode.OK);
         // Non-administrators cannot use the feature at all.
         (await a.Agent.Client.PostAsync($"{a.Base}/automations/test", new { ticket = referenceB, trigger = "TicketCreated" })).Expect(HttpStatusCode.Forbidden);
     }

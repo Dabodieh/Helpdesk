@@ -127,7 +127,7 @@ public sealed class InlineImageTests(HelpdeskFixture fixture) : IClassFixture<He
         var other = await fixture.NewDeptAsync();
         (await UploadAsync(d.Viewer, ticketId, Png)).Expect(HttpStatusCode.Forbidden);
         (await UploadAsync(other.Agent, ticketId, Png)).Expect(HttpStatusCode.NotFound);
-        (await UploadAsync(await fixture.PlatformAdminAsync(), ticketId, Png)).Expect(HttpStatusCode.NotFound);
+        (await UploadAsync(await fixture.PlatformAdminAsync(), ticketId, Png)).Expect(HttpStatusCode.OK); // S-02: global access
         (await fixture.CreateAnonymousClient().PostMultipartAsync($"/api/tickets/{ticketId}/inline-images", new ByteArrayContent(Png))).Expect(HttpStatusCode.BadRequest); // CSRF before authentication, as everywhere
     }
 

@@ -50,7 +50,7 @@ public sealed class DepartmentVolumeReportTests(HelpdeskFixture fixture) : IClas
     }
 
     [Fact]
-    public async Task Another_department_and_a_platform_administrator_see_nothing()
+    public async Task Another_department_sees_nothing_and_the_platform_administrator_sees_every_department()
     {
         var it = await fixture.NewDeptAsync();
         var hr = await fixture.NewDeptAsync();
@@ -58,6 +58,6 @@ public sealed class DepartmentVolumeReportTests(HelpdeskFixture fixture) : IClas
         Assert.Equal(0, (await VolumeAsync(it.Agent, it.Department, "")).GetProperty("received").GetInt32());
         Assert.Equal(1, (await VolumeAsync(hr.Agent, hr.Department, "")).GetProperty("received").GetInt32());
         (await hr.Admin.Client.GetAsync($"{it.Department.Url}/reports/volume")).Expect(HttpStatusCode.NotFound);
-        (await (await fixture.PlatformAdminAsync()).Client.GetAsync($"{it.Department.Url}/reports/volume")).Expect(HttpStatusCode.NotFound);
+        (await (await fixture.PlatformAdminAsync()).Client.GetAsync($"{it.Department.Url}/reports/volume")).Expect(HttpStatusCode.OK); // S-02: global access
     }
 }

@@ -89,7 +89,7 @@ public sealed class TicketIsolationMatrixTests(HelpdeskFixture fixture) : IClass
     private static HttpStatusCode Expected(Endpoint endpoint, string persona) => persona switch
     {
         IsoWorld.Anonymous => HttpStatusCode.Unauthorized,
-        IsoWorld.NoMembership or IsoWorld.MemberOfBOnly or IsoWorld.AdminOfBAgainstA or IsoWorld.PlatformAdminNoMembership => HttpStatusCode.NotFound,
+        IsoWorld.NoMembership or IsoWorld.MemberOfBOnly or IsoWorld.AdminOfBAgainstA => HttpStatusCode.NotFound,
         _ => endpoint.Roles.Contains(persona) ? endpoint.Success : HttpStatusCode.Forbidden,
     };
 

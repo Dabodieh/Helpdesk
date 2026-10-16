@@ -11,7 +11,10 @@ internal enum PermissionKind
     /// <summary>Department structure/config; satisfied by a role that grants it, or by the platform-admin flag.</summary>
     Administrative,
 
-    /// <summary>Ticket/message/attachment data; satisfied ONLY by a department membership whose role grants it. Never by platform admin.</summary>
+    /// <summary>
+    /// Ticket/message/attachment data. Satisfied by a department role that grants it or, by policy (S-02), by the platform-admin flag in every existing department.
+    /// The kind is retained as a classification of what the permission protects.
+    /// </summary>
     Content,
 }
 
@@ -62,6 +65,10 @@ internal static class PermissionCatalogue
 
     public static IReadOnlyList<string> AdministrativePermissions { get; } =
         All.Where(p => p.Kind == PermissionKind.Administrative).Select(p => p.Code).ToArray();
+
+    /// <summary>Every department-scoped permission (administrative and content): what a platform administrator holds in each department (S-02).</summary>
+    public static IReadOnlyList<string> DepartmentPermissions { get; } =
+        All.Where(p => p.Kind != PermissionKind.Platform).Select(p => p.Code).ToArray();
 }
 
 internal static class RoleCatalogue
@@ -143,8 +150,9 @@ internal static class PermissionEvaluator
             return EvaluationOutcome.Allowed;
         }
 
-        // Platform admins satisfy administrative permissions only. Content permissions are never satisfied by the flag.
-        if (permission.Kind == PermissionKind.Administrative && isPlatformAdmin)
+        // S-02 policy: the Platform Administrator is the global super-administrator and satisfies every department permission, administrative and content,
+        // in every existing department without a membership. Department Administrators, Agents and Viewers stay confined to their own memberships.
+        if (isPlatformAdmin)
         {
             return role is not null || departmentExists ? EvaluationOutcome.Allowed : EvaluationOutcome.NotFound;
         }

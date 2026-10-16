@@ -34,7 +34,7 @@ public sealed class TicketTypeOptionsTests(HelpdeskFixture fixture) : IClassFixt
         Assert.DoesNotContain("Other", string.Join(',', (await d.Agent.Client.GetAsync($"{d.Department.Url}/ticket-types/options")).Expect(HttpStatusCode.OK).Json.EnumerateArray().Select(o => o.Str("name"))), StringComparison.Ordinal);
         (await d.Viewer.Client.GetAsync($"{d.Department.Url}/ticket-types/options")).Expect(HttpStatusCode.Forbidden); // read-only members cannot create tickets
         (await other.Agent.Client.GetAsync($"{d.Department.Url}/ticket-types/options")).Expect(HttpStatusCode.NotFound);
-        (await (await fixture.PlatformAdminAsync()).Client.GetAsync($"{d.Department.Url}/ticket-types/options")).Expect(HttpStatusCode.NotFound);
+        (await (await fixture.PlatformAdminAsync()).Client.GetAsync($"{d.Department.Url}/ticket-types/options")).Expect(HttpStatusCode.OK); // S-02
         (await fixture.CreateAnonymousClient().GetAsync($"{d.Department.Url}/ticket-types/options")).Expect(HttpStatusCode.Unauthorized);
     }
 }

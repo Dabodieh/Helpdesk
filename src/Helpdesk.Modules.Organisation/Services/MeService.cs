@@ -30,7 +30,7 @@ internal sealed class MeService(OrganisationDbContext db, ICurrentUser current, 
             var permissions = RoleCatalogue.PermissionsOf(role).AsEnumerable();
             if (current.IsPlatformAdmin)
             {
-                permissions = permissions.Union(PermissionCatalogue.AdministrativePermissions);
+                permissions = permissions.Union(PermissionCatalogue.DepartmentPermissions);
             }
 
             return new MeMembershipDto(d.Id, d.Key, d.Name, role, permissions.Order(StringComparer.Ordinal).ToList());

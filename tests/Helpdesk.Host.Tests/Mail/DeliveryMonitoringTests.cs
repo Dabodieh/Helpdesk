@@ -70,13 +70,12 @@ public sealed class DeliveryMonitoringTests(HelpdeskFixture fixture) : IClassFix
         Assert.Equal(0, (await WaitingAsync(other.Admin, other)).GetProperty("total").GetInt32()); // another department's late mail is invisible
         (await d.Admin.Client.GetAsync($"{d.Department.Url}/mail/waiting?limit=0")).Expect(HttpStatusCode.BadRequest);
 
-        // A platform administrator without a membership may see that mail is late, but never whose or about what.
+        // A platform administrator sees late mail in every department with its address and subject (S-02).
         var platform = await WaitingAsync(await fixture.PlatformAdminAsync(), d);
         var item = Assert.Single(platform.GetProperty("items").EnumerateArray());
         Assert.Equal(mailId, item.GetProperty("id").GetGuid());
-        Assert.Equal("", item.Str("address"));
-        Assert.Equal("", item.Str("subject"));
-        Assert.Equal(JsonValueKind.Null, item.GetProperty("ticketId").ValueKind);
+        Assert.NotEqual("", item.Str("address"));
+        Assert.NotEqual("", item.Str("subject"));
     }
 
     [Fact]

@@ -69,7 +69,7 @@ The Phase 1 `GET /api/departments/{id}/ticket-access-probe` no longer exists. Th
 - **PATCH:** `version` is required (missing/malformed 400, mismatch 409). `description`: `null`/absent = unchanged, `""` clears. A PATCH with none of `name`, `description`, `isActive` is 400.
 - **Members:** `PUT .../members/{userId}` returns 200 with `{ userId, displayName, email, role, teamIds }`; `PUT .../teams/{t}/members/{u}` is idempotent, 204; DELETE is 204, or 404 if the membership does not exist.
 - **Inactive:** adding members/teams/team members to an inactive department, members to an inactive team, or an inactive user as a member is 409.
-- **Content access:** a platform admin without membership gets 404 on `GET /api/tickets/{ticket}` (formerly checked through the removed probe).
+- **Content access:** a platform admin without membership gets 200 on `GET /api/tickets/{ticket}` (S-02, ADR-039: global access); any other user without membership gets 404.
 - **Audit events** additionally carry `category` and `departmentId`. Membership events: `objectType: department_membership`, `objectId: <userId>`, `selfGrant` inside `next`. Team membership events: `objectType: team_membership`, `objectId: <teamId>`, `{teamId, userId}` in previous/next. The department audit endpoint returns the `organisation` category only. The actor display name is a snapshot taken at write time.
 - **Platform users list** is ordered by id (creation order); the cursor is the last id; `search` and `limit` (default 50, max 200) are supported.
 - **Bootstrap admins:** a subject in `Authentication:BootstrapPlatformAdminSubjects` becomes platform admin at first provisioning, or at sign-in when no active platform admin exists (recovery); it is not re-applied on every sign-in.

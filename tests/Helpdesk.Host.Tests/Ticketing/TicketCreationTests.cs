@@ -231,7 +231,7 @@ public sealed class TicketCreationTests(HelpdeskFixture fixture) : IClassFixture
         (await d.Viewer.Client.PostAsync(url, TicketHelpers.NewTicketBody())).Expect(HttpStatusCode.Forbidden);
         (await other.Agent.Client.PostAsync(url, TicketHelpers.NewTicketBody())).Expect(HttpStatusCode.NotFound);
         (await fixture.CreateAnonymousClient().PostAsync(url, TicketHelpers.NewTicketBody())).Expect(HttpStatusCode.BadRequest); // CSRF first
-        (await (await fixture.PlatformAdminAsync()).Client.PostAsync(url, TicketHelpers.NewTicketBody())).Expect(HttpStatusCode.NotFound);
+        (await (await fixture.PlatformAdminAsync()).Client.PostAsync(url, TicketHelpers.NewTicketBody())).Expect(HttpStatusCode.Created); // S-02: the platform admin creates tickets in any department
 
         // assign.self only: may take the ticket for themself, nothing else.
         var self = (await d.Agent.Client.PostAsync(url, TicketHelpers.NewTicketBody(extra: new { AssigneeUserId = d.Agent.Id }))).Expect(HttpStatusCode.Created);

@@ -50,6 +50,12 @@ internal sealed class OrganisationDirectory(OrganisationDbContext db, IUserDirec
             return [];
         }
 
+        // S-02: an active platform administrator holds every department permission in every department (realtime groups and notification eligibility follow access).
+        if (user.IsPlatformAdmin && PermissionCatalogue.Get(permission).Kind != PermissionKind.Platform)
+        {
+            return await db.Departments.AsNoTracking().Select(d => d.Id).ToListAsync(cancellationToken);
+        }
+
         var rows = await db.DepartmentMemberships.AsNoTracking().Where(m => m.UserId == userId)
             .Select(m => new { m.DepartmentId, m.Role }).ToListAsync(cancellationToken);
         return [.. rows.Where(r => RoleCatalogue.RoleGrants(r.Role, permission)).Select(r => r.DepartmentId)];

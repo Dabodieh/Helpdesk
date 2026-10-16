@@ -24,8 +24,9 @@ export function canInDepartment(me: Me, code: string, departmentId: string) {
   return me.memberships.some((m) => m.departmentId === departmentId && m.permissions.includes(code))
 }
 
-/** Content permissions come from department membership only (never the platform-admin flag). UX hint; the server decides. */
+/** Ticket (content) permissions: a role in the department grants them, and so does the platform-admin flag in every department (S-02). UX hint; the server decides. */
 export function canTicket(me: Me, code: string, departmentId: string) {
+  if (me.isPlatformAdmin) return true
   return me.memberships.some((m) => m.departmentId === departmentId && m.permissions.includes(code))
 }
 

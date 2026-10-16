@@ -95,7 +95,7 @@ public sealed class IsolationMatrixTests(HelpdeskFixture fixture) : IClassFixtur
     {
         Anonymous => HttpStatusCode.Unauthorized,
         NoMembership or MemberOfBOnly or AdminOfBAgainstA => HttpStatusCode.NotFound,
-        PlatformAdminNoMembership => endpoint.PlatformAdmin ? endpoint.Success : HttpStatusCode.NotFound,
+        PlatformAdminNoMembership => endpoint.Success, // S-02: the platform administrator holds every department permission in every department
         _ => endpoint.Roles.Contains(persona) ? endpoint.Success : HttpStatusCode.Forbidden,
     };
 
@@ -383,12 +383,12 @@ public sealed class IsolationMatrixTests(HelpdeskFixture fixture) : IClassFixtur
     }
 
     [Fact]
-    public async Task Platform_admin_without_membership_administers_but_never_reads_content()
+    public async Task Platform_admin_without_membership_administers_and_reads_content()
     {
         var w = await BuildWorldAsync();
         var root = w.Clients[PlatformAdminNoMembership];
 
-        (await root.GetAsync($"/api/tickets/{w.TicketA}")).Expect(HttpStatusCode.NotFound);
+        (await root.GetAsync($"/api/tickets/{w.TicketA}")).Expect(HttpStatusCode.OK);
         (await root.GetAsync($"/api/tickets/{Guid.NewGuid()}")).Expect(HttpStatusCode.NotFound);
         // isActive is exclusively a platform permission; DepartmentAdmin cannot, platform admin can.
         (await w.Clients[AdminA].PatchAsync(D(w.A.Id), new { version = w.DepartmentVersion, isActive = false })).Expect(HttpStatusCode.Forbidden);

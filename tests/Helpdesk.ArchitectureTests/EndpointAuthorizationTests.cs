@@ -143,7 +143,7 @@ public sealed class EndpointAuthorizationTests(AppFixture app) : IClassFixture<A
             var definition = Helpdesk.Modules.Organisation.Authorization.PermissionCatalogue.Get(meta.Permission);
             Assert.True(
                 definition.Kind == Helpdesk.Modules.Organisation.Authorization.PermissionKind.Content,
-                $"{Describe(endpoint)}: resource permissions must be content permissions (never satisfied by the platform-admin flag)");
+                $"{Describe(endpoint)}: resource permissions must be content permissions (authorised against the persisted resource department)");
             Assert.Contains(endpoint.RoutePattern.Parameters, p => p.Name == meta.ResourceRouteParameter);
             Assert.True(typeof(IResourceDepartmentResolver).IsAssignableFrom(meta.ResolverType), $"{Describe(endpoint)}: resolver type");
             Assert.Null(endpoint.Metadata.GetMetadata<PermissionMetadata>()); // exactly one declaration style per endpoint

@@ -62,7 +62,7 @@ internal sealed class Authorizer(
             return current.IsAuthenticated && current.IsPlatformAdmin;
         }
 
-        if (definition.Kind == PermissionKind.Administrative && current.IsPlatformAdmin)
+        if (current.IsPlatformAdmin)
         {
             return true;
         }
@@ -79,7 +79,7 @@ internal sealed class Authorizer(
             return [];
         }
 
-        if (definition.Kind == PermissionKind.Administrative && current.IsPlatformAdmin)
+        if (current.IsPlatformAdmin)
         {
             return await db.Departments.AsNoTracking().Select(d => d.Id).ToListAsync(cancellationToken);
         }

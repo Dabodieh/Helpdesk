@@ -23,8 +23,8 @@ public sealed class IgnoredMailReleaseTests(HelpdeskFixture fixture) : IClassFix
         Assert.Empty(await d.Agent.TicketsAsync(d, subject));
         var id = await IgnoredIdAsync(d, subject);
 
-        var platform = await fixture.PlatformAdminAsync();
-        (await platform.Client.PostAsync($"{d.Department.Url}/mail/{id}/release")).Expect(HttpStatusCode.NotFound); // administrative permission without membership: no content access
+        var other = await fixture.NewDeptAsync();
+        (await other.Admin.Client.PostAsync($"{d.Department.Url}/mail/{id}/release")).Expect(HttpStatusCode.NotFound); // another department's administrator: the mail does not exist for them
         (await d.Agent.Client.PostAsync($"{d.Department.Url}/mail/{id}/release")).Expect(HttpStatusCode.Forbidden);
 
         var released = (await d.Admin.Client.PostAsync($"{d.Department.Url}/mail/{id}/release")).Expect(HttpStatusCode.OK).Json;

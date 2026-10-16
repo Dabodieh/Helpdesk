@@ -20,10 +20,9 @@ public sealed class TicketMailboxAssignmentTests(HelpdeskFixture fixture) : ICla
         Assert.Equal(System.Text.Json.JsonValueKind.Null, ticket.Json.GetProperty("mailbox").ValueKind);
         var mine = await fixture.CreateMailboxAsync(d);
         var foreign = await fixture.CreateMailboxAsync(other);
-        var platform = await fixture.PlatformAdminAsync();
 
         (await AssignAsync(d.Agent, ticket.Id, ticket.Version, mine.Id)).Expect(HttpStatusCode.Forbidden); // tickets.reply style access is not enough
-        (await AssignAsync(platform, ticket.Id, ticket.Version, mine.Id)).Expect(HttpStatusCode.NotFound);  // administrative permission without membership: the ticket does not exist for them
+        (await AssignAsync(other.Admin, ticket.Id, ticket.Version, mine.Id)).Expect(HttpStatusCode.NotFound);  // another department's mailbox administrator: the ticket does not exist for them
         (await AssignAsync(d.Admin, ticket.Id, ticket.Version, foreign.Id)).Expect(HttpStatusCode.BadRequest);
         (await AssignAsync(d.Admin, ticket.Id, ticket.Version, Guid.NewGuid())).Expect(HttpStatusCode.BadRequest);
 

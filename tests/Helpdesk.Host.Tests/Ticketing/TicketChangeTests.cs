@@ -102,7 +102,7 @@ public sealed class TicketChangeTests(HelpdeskFixture fixture) : IClassFixture<H
 
         (await d.Viewer.PatchTicketAsync(t, new { Status = "Closed" })).Expect(HttpStatusCode.Forbidden);
         (await other.Agent.PatchTicketAsync(t, new { Status = "Closed" })).Expect(HttpStatusCode.NotFound);
-        (await (await fixture.PlatformAdminAsync()).PatchTicketAsync(t, new { Status = "Closed" })).Expect(HttpStatusCode.NotFound);
+        (await other.Admin.PatchTicketAsync(t, new { Status = "Closed" })).Expect(HttpStatusCode.NotFound);
         Assert.Equal("Open", (await d.Agent.GetTicketAsync(t.Id)).Json.Str("status"));
     }
 

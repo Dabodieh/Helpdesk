@@ -98,10 +98,9 @@ public sealed class StableRequesterIdentityTests(HelpdeskFixture fixture) : ICla
         Assert.NotEqual(HttpStatusCode.OK, (await jane.User.Client.GetAsync($"/api/requesters/{itRequester}")).Status);
         Assert.NotEqual(HttpStatusCode.OK, (await jane.User.Client.GetAsync($"/api/tickets/{itRef}")).Status);
 
-        // A platform administrator without a membership reads no ticket content through the link either.
+        // The platform administrator reads every department by policy (S-02), with or without the link.
         var admin = await fixture.PlatformAdminAsync();
-        Assert.NotEqual(HttpStatusCode.OK, (await admin.Client.GetAsync($"/api/requesters/{itRequester}")).Status);
-        Assert.NotEqual(HttpStatusCode.OK, (await admin.Client.GetAsync($"/api/tickets/{itRef}")).Status);
+        (await admin.Client.GetAsync($"/api/tickets/{itRef}")).Expect(HttpStatusCode.OK);
 
         // An external sender with no account: the ticket works, the requester is simply unlinked, and nobody portal-side owns it.
         var external = (await it.TicketForAsync($"vendor-{Unique.Id()}@vendor.test", "From a vendor")).Expect(HttpStatusCode.Created);

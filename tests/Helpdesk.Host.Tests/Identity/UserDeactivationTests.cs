@@ -419,8 +419,8 @@ public sealed class UserDeactivationTests(HelpdeskFixture fixture) : IClassFixtu
         Assert.Null(await fixture.ScalarAsync<Guid?>("SELECT assignee_user_id FROM ticketing.tickets WHERE id = @t", new NpgsqlParameter("t", tA.Id)));
         Assert.Null(await fixture.ScalarAsync<Guid?>("SELECT assignee_user_id FROM ticketing.tickets WHERE id = @t", new NpgsqlParameter("t", tB.Id)));
         Assert.Equal(otherAgentB.Id, await fixture.ScalarAsync<Guid?>("SELECT assignee_user_id FROM ticketing.tickets WHERE id = @t", new NpgsqlParameter("t", tOther.Id)));
-        // The platform administrator got no ticket access from this (isolation unchanged).
-        (await root.Client.GetAsync($"/api/tickets/{tA.Id}")).Expect(HttpStatusCode.NotFound);
+        // The platform administrator reads tickets everywhere by policy (S-02); the deactivation changed nothing about that.
+        (await root.Client.GetAsync($"/api/tickets/{tA.Id}")).Expect(HttpStatusCode.OK);
         // Department staff still cannot see across departments.
         (await leadA.Client.GetAsync($"/api/tickets/{tB.Id}")).Expect(HttpStatusCode.NotFound);
     }

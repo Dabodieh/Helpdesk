@@ -1,6 +1,6 @@
 # ADR-033: What an administrative permission means for a Platform Admin
 
-Status: Accepted (recorded retroactively in WS-16 from decision D14 and WS-1; finding ARC-006)
+Status: Accepted (recorded retroactively in WS-16 from decision D14 and WS-1; finding ARC-006). **Superseded in part by ADR-039 (S-02): the platform-admin flag now also satisfies content permissions.**
 
 ## Decision
 - Permissions are classified. *Administrative* permissions (department structure, teams, memberships, mailboxes, forms, SLA and automation configuration, department audit of configuration) may be satisfied by the platform-admin flag without a department membership. *Content* permissions (everything under `tickets.*`) never are.

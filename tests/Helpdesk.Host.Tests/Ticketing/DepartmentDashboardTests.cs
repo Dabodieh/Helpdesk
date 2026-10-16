@@ -61,7 +61,7 @@ public sealed class DepartmentDashboardTests(HelpdeskFixture fixture) : IClassFi
     }
 
     [Fact]
-    public async Task One_department_at_a_time_platform_admins_and_other_departments_see_nothing_and_mailbox_health_needs_the_mailbox_permission()
+    public async Task One_department_at_a_time_other_departments_see_nothing_the_platform_admin_sees_every_department_and_mailbox_health_needs_the_mailbox_permission()
     {
         var it = await fixture.NewDeptAsync();
         var hr = await fixture.NewDeptAsync();
@@ -77,10 +77,10 @@ public sealed class DepartmentDashboardTests(HelpdeskFixture fixture) : IClassFi
         Assert.Equal(1, Count(await DashboardAsync(both, it.Department), "backlog", "open"));
         Assert.Equal(2, Count(await DashboardAsync(both, hr.Department), "backlog", "open"));
 
-        // No membership (another department's administrator, a platform administrator) means the department does not exist here.
+        // No membership (another department's administrator) means the department does not exist here; the platform administrator (S-02) reaches every department.
         (await hr.Admin.Client.GetAsync($"{it.Department.Url}/dashboard")).Expect(HttpStatusCode.NotFound);
         var platform = await fixture.PlatformAdminAsync();
-        (await platform.Client.GetAsync($"{it.Department.Url}/dashboard")).Expect(HttpStatusCode.NotFound);
+        (await platform.Client.GetAsync($"{it.Department.Url}/dashboard")).Expect(HttpStatusCode.OK);
         (await (await fixture.NewUserAsync("outsider")).Client.GetAsync($"{it.Department.Url}/dashboard")).Expect(HttpStatusCode.NotFound);
 
         // Mailbox diagnostics only for people who manage mailboxes; ticket access alone does not reach them.

@@ -19,14 +19,13 @@ public sealed record Actor(string Name, ApiClient Client, TestUser? User)
 public sealed record Fresh(Guid Id, string Reference, string Version, string Subject, string NoteToken, string PublicToken);
 
 /// <summary>
-/// Two departments, every role in A, a member/admin of B, a user without membership and the platform admin (all through the real API),
+/// Two departments, every role in A, a member/admin of B, a user without membership and the platform admin (all through the real API; since S-02 the platform admin is NOT an outsider and has its own tests),
 /// shared by the tests of one class. A fresh ticket per case keeps the cases independent (xUnit runs a class sequentially).
 /// </summary>
 public sealed class IsoWorld
 {
     public const string Anonymous = "Anonymous";
     public const string NoMembership = "NoMembership";
-    public const string PlatformAdminNoMembership = "PlatformAdminNoMembership";
     public const string MemberOfBOnly = "MemberOfBOnly";
     public const string AdminOfBAgainstA = "AdminOfBAgainstA";
     public const string ViewerA = "ViewerA";
@@ -35,9 +34,9 @@ public sealed class IsoWorld
     public const string AdminA = "AdminA";
 
     public static readonly string[] Personas =
-        [Anonymous, NoMembership, PlatformAdminNoMembership, MemberOfBOnly, AdminOfBAgainstA, ViewerA, AgentA, LeadA, AdminA];
+        [Anonymous, NoMembership, MemberOfBOnly, AdminOfBAgainstA, ViewerA, AgentA, LeadA, AdminA];
 
-    public static readonly string[] Outsiders = [NoMembership, PlatformAdminNoMembership, MemberOfBOnly, AdminOfBAgainstA];
+    public static readonly string[] Outsiders = [NoMembership, MemberOfBOnly, AdminOfBAgainstA];
 
     private static readonly ConditionalWeakTable<HelpdeskFixture, Task<IsoWorld>> Cache = new();
 
@@ -98,7 +97,6 @@ public sealed class IsoWorld
             {
                 [Anonymous] = new(Anonymous, anonymous, null),
                 [NoMembership] = new(NoMembership, noMember.Client, noMember),
-                [PlatformAdminNoMembership] = new(PlatformAdminNoMembership, root.Client, root),
                 [MemberOfBOnly] = new(MemberOfBOnly, userB.Client, userB),
                 [AdminOfBAgainstA] = new(AdminOfBAgainstA, adminB.Client, adminB),
                 [ViewerA] = new(ViewerA, viewer.Client, viewer),

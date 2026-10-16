@@ -98,7 +98,7 @@ public sealed class CannedPlaceholderTests(HelpdeskFixture fixture) : IClassFixt
         (await Render(b.Agent, ticketB.Id.ToString(), responseA.Id)).Expect(HttpStatusCode.NotFound);
         (await Render(b.Agent, ticketA.Id.ToString(), responseA.Id)).Expect(HttpStatusCode.NotFound);
         (await Render(b.Admin, ticketA.Json.Str("reference"), responseA.Id)).Expect(HttpStatusCode.NotFound);
-        (await Render(await fixture.PlatformAdminAsync(), ticketA.Id.ToString(), responseA.Id)).Expect(HttpStatusCode.NotFound);
+        (await Render(await fixture.PlatformAdminAsync(), ticketA.Id.ToString(), responseA.Id)).Expect(HttpStatusCode.OK); // S-02: global access
         (await fixture.CreateAnonymousClient().GetAsync($"/api/tickets/{ticketA.Id}/canned-responses/{responseA.Id}/render")).Expect(HttpStatusCode.Unauthorized);
         (await Render(a.Agent, ticketA.Id.ToString(), Guid.NewGuid())).Expect(HttpStatusCode.NotFound);
 

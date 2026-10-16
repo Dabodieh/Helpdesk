@@ -113,7 +113,7 @@ public sealed class TicketQueueTests(HelpdeskFixture fixture) : IClassFixture<He
         Assert.Empty(await IdsAsync(both, $"?departmentId={c.Id}"));
         Assert.DoesNotContain(tc.Id, await IdsAsync(both));
         Assert.Empty(await IdsAsync(await fixture.NewUserAsync()));
-        Assert.Empty(await IdsAsync(await fixture.PlatformAdminAsync(), $"?departmentId={a.Id}")); // platform admin: no content access
+        Assert.Contains(ta.Id, await IdsAsync(await fixture.PlatformAdminAsync(), $"?departmentId={a.Id}")); // S-02: the platform admin sees every department
         (await fixture.CreateAnonymousClient().GetAsync("/api/tickets")).Expect(HttpStatusCode.Unauthorized);
     }
 

@@ -34,23 +34,30 @@ public sealed class PermissionModelTests
     }
 
     [Fact]
-    public void Platform_admin_never_satisfies_a_content_permission()
+    public void Platform_admin_satisfies_every_content_permission_when_the_department_exists()
     {
         foreach (var permission in PermissionCatalogue.All.Where(p => p.Kind == PermissionKind.Content))
         {
-            foreach (var exists in new[] { true, false })
-            {
-                Assert.NotEqual(EvaluationOutcome.Allowed, PermissionEvaluator.Evaluate(permission, isPlatformAdmin: true, role: null, departmentExists: exists));
-            }
+            Assert.Equal(EvaluationOutcome.Allowed, PermissionEvaluator.Evaluate(permission, isPlatformAdmin: true, role: null, departmentExists: true));
+            Assert.Equal(EvaluationOutcome.NotFound, PermissionEvaluator.Evaluate(permission, isPlatformAdmin: true, role: null, departmentExists: false));
         }
     }
 
     [Fact]
-    public void Platform_admin_without_membership_gets_404_for_content_like_any_outsider()
+    public void An_outsider_who_is_not_a_platform_admin_gets_404_for_content_and_administrative_permissions()
     {
-        var tickets = PermissionCatalogue.Get(PermissionCodes.TicketsRead);
-        Assert.Equal(EvaluationOutcome.NotFound, PermissionEvaluator.Evaluate(tickets, true, null, true));
-        Assert.Equal(EvaluationOutcome.NotFound, PermissionEvaluator.Evaluate(tickets, false, null, true));
+        foreach (var permission in PermissionCatalogue.All.Where(p => p.Kind != PermissionKind.Platform))
+        {
+            Assert.Equal(EvaluationOutcome.NotFound, PermissionEvaluator.Evaluate(permission, false, null, true));
+        }
+    }
+
+    [Fact]
+    public void A_department_role_gets_nothing_from_the_platform_flag_it_lacks_but_the_flag_adds_what_the_role_lacks()
+    {
+        var update = PermissionCatalogue.Get(PermissionCodes.TicketsUpdate);
+        Assert.Equal(EvaluationOutcome.Forbidden, PermissionEvaluator.Evaluate(update, false, DepartmentRoles.Viewer, true));
+        Assert.Equal(EvaluationOutcome.Allowed, PermissionEvaluator.Evaluate(update, true, DepartmentRoles.Viewer, true));
     }
 
     [Fact]

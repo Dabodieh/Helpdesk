@@ -123,7 +123,7 @@ public sealed class CannedAndSearchTests(HelpdeskFixture fixture) : IClassFixtur
             Assert.Empty(await SearchAsync(a.Agent, q));
             Assert.Empty(await SearchAsync(a.Admin, q));
             Assert.Empty(await SearchAsync(await fixture.NewUserAsync(), q));
-            Assert.Empty(await SearchAsync(await fixture.PlatformAdminAsync(), q)); // administration is not content access
+            Assert.NotEmpty(await SearchAsync(await fixture.PlatformAdminAsync(), q)); // S-02: the platform administrator searches every department
         }
 
         // The same search for a member of B finds it, and the note only as a note hit for those who can read notes.

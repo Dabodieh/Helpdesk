@@ -43,8 +43,7 @@ internal sealed class PermissionAuthorizationHandler(ICurrentUser current, Membe
             var roles = await memberships.GetRolesAsync(CancellationToken.None);
             roles.TryGetValue(resource.DepartmentId, out var role);
             var exists = role is not null
-                || (current.IsPlatformAdmin && definition.Kind == PermissionKind.Administrative
-                    && await db.Departments.AnyAsync(d => d.Id == resource.DepartmentId));
+                || (current.IsPlatformAdmin && await db.Departments.AnyAsync(d => d.Id == resource.DepartmentId));
             outcome = PermissionEvaluator.Evaluate(definition, current.IsPlatformAdmin, role, exists);
         }
 
