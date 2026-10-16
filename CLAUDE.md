@@ -81,7 +81,7 @@ A user with access only to one Department must not see or infer another Departme
 - automation
 - configuration
 
-Platform Admin does not automatically gain Department ticket-content access.
+The Platform Administrator is the global super-administrator (S-02, ADR-039): it holds every Department permission, including ticket and Internal Note content, in every Department without a membership. This applies only to the platform-admin flag; Department Administrators, Team Leads, Agents and Viewers stay confined to their own Departments and roles.
 
 Server-side authorization is authoritative.
 Frontend hiding is UX only.
@@ -352,7 +352,6 @@ Do not add unless the user explicitly reverses the decision:
 - Department/global email footers
 - personal-email From addresses
 - Team security boundaries
-- implicit Platform Admin ticket access
 - cross-Department merge
 - generic form scripting
 - chatbot journey builders
