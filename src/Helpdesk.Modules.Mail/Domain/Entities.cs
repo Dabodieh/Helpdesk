@@ -53,6 +53,9 @@ internal static class SubscriptionStates
     public const string None = "None";
     public const string Active = "Active";
     public const string Failed = "Failed";
+
+    /// <summary>Reported (never stored) when the installation deliberately runs in polling mode: there is no subscription to be Active or Failed.</summary>
+    public const string NotUsed = "NotUsed";
 }
 
 /// <summary>A department's mailbox (an Exchange Online shared mailbox reached through the application identity; no credentials stored).</summary>
@@ -111,9 +114,13 @@ internal sealed class MailboxSync
 
     public DateTimeOffset? LastSyncAt { get; set; }
 
+    /// <summary>The last DELTA synchronisation failure only; cleared by the next successful delta pass. Subscription problems live in <see cref="SubscriptionError"/>.</summary>
     public string? LastSyncError { get; set; }
 
     public int ConsecutiveFailures { get; set; }
+
+    /// <summary>The last webhook SUBSCRIPTION failure (create or renew), cleared by the next success. Independent of the delta fields, so neither hides the other.</summary>
+    public string? SubscriptionError { get; set; }
 
     /// <summary>Set by webhooks; a running sync that finds it set runs again so a notification mid-sync is never lost.</summary>
     public bool Dirty { get; set; }

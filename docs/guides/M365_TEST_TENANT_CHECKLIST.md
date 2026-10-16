@@ -5,7 +5,7 @@ Purpose: a short, ordered checklist for the first supervised validation of staff
 ## A. Entry criteria (all must be true; none may be invented)
 
 - [ ] A non-production tenant (a Microsoft 365 Developer Program tenant or an approved separate tenant) and a named operator with Global Administrator, or Application Administrator plus Exchange Administrator.
-- [ ] Decision on webhook reachability recorded (`OPEN_DECISIONS.md` D-19): a public https address Microsoft Graph can reach, or polling-only mail (not built yet).
+- [ ] Decision on webhook reachability recorded (`OPEN_DECISIONS.md` D-19): a public https address Microsoft Graph can reach (`Mail:InboundMode=Webhook`), or polling-only mail (`Mail:InboundMode=Polling`, built; see `INBOUND_MAIL_MODES.md`).
 - [ ] Two shared mailboxes (A, B) and one control mailbox outside the scope, plus an external address you own for sending test mail.
 - [ ] A test staff account (and a second, ordinary employee account) in the tenant.
 - [ ] A restore-tested backup of the private stack's database (empty is fine) and the isolated stack stopped from any real data.

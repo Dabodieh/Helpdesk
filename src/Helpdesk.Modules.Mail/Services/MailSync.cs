@@ -129,6 +129,11 @@ internal sealed class SubscriptionService(MailDbContext db, IMailProvider provid
     public async Task EnsureAsync(Guid mailboxId, CancellationToken ct)
     {
         var settings = options.Value;
+        if (settings.PollingOnly)
+        {
+            return; // intentional polling mode: no subscription is created, renewed or touched (stored subscription data is left exactly as it is)
+        }
+
         var mailbox = await db.Mailboxes.Include(m => m.Sync).SingleOrDefaultAsync(m => m.Id == mailboxId, ct);
         if (mailbox is not { IsActive: true })
         {
@@ -162,13 +167,14 @@ internal sealed class SubscriptionService(MailDbContext db, IMailProvider provid
                     // Renewal is a PATCH of the expiry only (it also reauthorises, ADR-011).
                     sync.SubscriptionExpiresAt = await provider.RenewSubscriptionAsync(mref, existing, expiry, ct);
                     sync.SubscriptionState = SubscriptionStates.Active;
-                    sync.LastSyncError = null;
+                    sync.SubscriptionError = null;
                     await db.SaveChangesAsync(ct);
                     return;
                 }
-                catch (PermanentProviderException)
+                catch (PermanentProviderException ex) when (ex.Code is "graph_404" or "graph_410" or "subscription_not_found")
                 {
-                    // The subscription is gone or invalid: replace it (changes in between are recovered by delta).
+                    // Graph says the subscription no longer exists: replace it (changes in between are recovered by delta). Any OTHER permanent failure keeps the id: the
+                    // subscription may well still exist at Graph, and losing its id would make it unrenewable and leave a duplicate behind when a replacement is made.
                     sync.SubscriptionId = null;
                 }
             }
@@ -181,15 +187,15 @@ internal sealed class SubscriptionService(MailDbContext db, IMailProvider provid
             sync.SubscriptionExpiresAt = created.ExpiresAt;
             sync.SubscriptionState = SubscriptionStates.Active;
             sync.ClientStateHash = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(clientState));
-            sync.LastSyncError = null;
+            sync.SubscriptionError = null;
             await db.SaveChangesAsync(ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // Visible on the mailbox status; delta reconciliation keeps working without webhooks.
             sync.SubscriptionState = SubscriptionStates.Failed;
-            sync.LastSyncError = MailText.ShortError(ex);
-            log.SubscriptionFailed(mailbox.Id, sync.LastSyncError);
+            sync.SubscriptionError = MailText.ShortSubscriptionError(ex);
+            log.SubscriptionFailed(mailbox.Id, sync.SubscriptionError);
             await db.SaveChangesAsync(CancellationToken.None);
         }
     }
@@ -299,6 +305,7 @@ internal sealed class MailJobRunner(
     SubscriptionService subscriptions,
     OutboundSender sender,
     InboundProcessor processor,
+    IOptions<MailOptions> options,
     TimeProvider clock,
     ILogger<MailJobRunner> log) : IMailJobRunner
 {
@@ -385,6 +392,11 @@ internal sealed class MailJobRunner(
 
     public async Task RunSubscriptionMaintenanceAsync(CancellationToken cancellationToken = default)
     {
+        if (options.Value.PollingOnly)
+        {
+            return; // polling mode: nothing to maintain, no Graph call
+        }
+
         var ids = await db.Mailboxes.AsNoTracking().Where(m => m.IsActive).Select(m => m.Id).ToListAsync(cancellationToken);
         foreach (var id in ids)
         {

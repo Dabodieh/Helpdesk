@@ -15,7 +15,11 @@ using Microsoft.Extensions.Options;
 
 namespace Helpdesk.Modules.Mail.Services;
 
-internal sealed record SubscriptionDto(string State, DateTimeOffset? ExpiresAt);
+/// <summary>
+/// The inbound webhook subscription as an administrator should read it. <see cref="Mode"/> is <c>polling</c> when subscriptions are deliberately not used (then State is
+/// <c>NotUsed</c> and nothing about a stored subscription is shown) or <c>webhook</c>. <see cref="Error"/> is the last subscription failure, separate from delta sync errors.
+/// </summary>
+internal sealed record SubscriptionDto(string State, DateTimeOffset? ExpiresAt, string? Error = null, string Mode = "webhook");
 
 internal sealed record MailboxDto(
     Guid Id,
@@ -235,6 +239,11 @@ internal sealed partial class MailboxService(
             throw new RequestValidationException("mailbox", "Activate the mailbox before retrying its inbound subscription.");
         }
 
+        if (options.Value.PollingOnly)
+        {
+            throw new ConflictException("This installation receives inbound mail by polling (Mail:InboundMode=Polling); subscriptions are not used.", ProblemCodes.InvalidState);
+        }
+
         var before = mailbox.Sync?.SubscriptionState ?? SubscriptionStates.None;
         await subscriptions.EnsureAsync(mailboxId, ct);
         db.ChangeTracker.Clear();
@@ -242,7 +251,7 @@ internal sealed partial class MailboxService(
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         await audit.WriteAsync(
             MailAuditActions.SubscriptionRetried, MailAudit.MailboxObject, mailboxId, departmentId,
-            new { state = before }, new { state = result.Subscription.State, error = result.LastSyncError }, ct);
+            new { state = before }, new { state = result.Subscription.State, error = result.Subscription.Error }, ct);
         await tx.CommitAsync(ct);
         return result;
     }
@@ -584,7 +593,9 @@ internal sealed partial class MailboxService(
     private MailboxDto ToDto(Mailbox m, MailboxStats stats) =>
         new(
             m.Id, m.DepartmentId, m.Address, m.DisplayName, m.Provider, m.IsActive, m.IsDefault, ConcurrencyVersion.ToToken(m.Version),
-            new SubscriptionDto(m.Sync?.SubscriptionState ?? SubscriptionStates.None, m.Sync?.SubscriptionExpiresAt),
+            options.Value.PollingOnly
+                ? new SubscriptionDto(SubscriptionStates.NotUsed, null, null, "polling")
+                : new SubscriptionDto(m.Sync?.SubscriptionState ?? SubscriptionStates.None, m.Sync?.SubscriptionExpiresAt, m.Sync?.SubscriptionError),
             m.Sync?.LastSyncAt, m.Sync?.LastSyncError, stats.InboundFailed + stats.OutboundFailed + stats.OutboundUncertain,
             HealthOf(m, stats), stats.LastSendAt, stats.OutboundFailed, stats.OutboundUncertain);
 
@@ -597,14 +608,20 @@ internal sealed partial class MailboxService(
 
         var now = clock.GetUtcNowMicroseconds();
         var sync = m.Sync;
+        var polling = options.Value.PollingOnly;
         if (sync is null || (sync.SubscriptionState == SubscriptionStates.None && sync.LastSyncAt is null))
         {
-            return new MailboxHealthDto("NotConfigured", ["subscription_not_created"]);
+            return new MailboxHealthDto("NotConfigured", [polling ? "sync_not_started" : "subscription_not_created"]);
         }
 
         var failed = new List<string>();
         var attention = new List<string>();
-        if (sync.SubscriptionState == SubscriptionStates.Failed)
+        if (polling)
+        {
+            // Intentional polling mode: the subscription is not part of the health picture at all (whatever an earlier webhook-mode run left in the record).
+            // Only the delta synchronisation (failures, staleness) and the mail itself can make the mailbox unhealthy.
+        }
+        else if (sync.SubscriptionState == SubscriptionStates.Failed)
         {
             failed.Add("subscription_failed");
         }

@@ -10,7 +10,8 @@ export const mailboxSchema = z.object({
   isActive: z.boolean(),
   isDefault: z.boolean(),
   version: z.string(),
-  subscription: z.object({ state: z.string(), expiresAt: z.string().nullable() }),
+  // mode is 'polling' when this installation deliberately runs without webhook subscriptions (state is then 'NotUsed'); error is the last SUBSCRIPTION failure only.
+  subscription: z.object({ state: z.string(), expiresAt: z.string().nullable(), error: z.string().nullable().optional(), mode: z.string().optional() }),
   lastSyncAt: z.string().nullable(),
   lastSyncError: z.string().nullable(),
   attentionCount: z.number(),

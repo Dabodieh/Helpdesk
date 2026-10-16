@@ -259,3 +259,31 @@ test('a failed send shows a safe category; an uncertain one offers no retry butt
   expect(await screen.findByText(/Send outcome uncertain: it may or may not have been sent/)).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Retry sending' })).not.toBeInTheDocument()
 })
+
+test('polling mode is shown as an intentional mode: no subscription state, no retry button, and the two kinds of error are shown separately', async () => {
+  mockFetch({
+    ...deptRoutes(),
+    'GET /api/departments/d1/mailboxes': () => [
+      { ...MAILBOX, subscription: { state: 'NotUsed', expiresAt: null, error: null, mode: 'polling' }, health: { status: 'Healthy', reasons: [] }, lastSyncError: null },
+    ],
+  })
+  renderApp('/admin/departments/d1')
+  fireEvent.click(await screen.findByRole('tab', { name: 'Mailboxes' }))
+  expect(await screen.findByText(/New mail: checked every 5 minutes \(polling\)/)).toBeInTheDocument()
+  expect(screen.queryByText(/Subscription: /)).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /Retry subscription/ })).not.toBeInTheDocument()
+})
+
+test('in webhook mode a failed subscription keeps its own error and a delta failure is labelled as a mail check failure', async () => {
+  mockFetch({
+    ...deptRoutes(),
+    'GET /api/departments/d1/mailboxes': () => [
+      { ...MAILBOX, subscription: { state: 'Failed', expiresAt: null, error: 'PermanentProviderException:graph_400: ExtensionError', mode: 'webhook' }, lastSyncError: 'TransientProviderException:graph_503:x', health: { status: 'Failed', reasons: ['subscription_failed', 'sync_failing'] } },
+    ],
+  })
+  renderApp('/admin/departments/d1')
+  fireEvent.click(await screen.findByRole('tab', { name: 'Mailboxes' }))
+  expect(await screen.findByText(/Mail check failed: TransientProviderException:graph_503:x/)).toBeInTheDocument()
+  expect(screen.getByText(/Subscription error: PermanentProviderException:graph_400: ExtensionError/)).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /Retry subscription/ })).toBeInTheDocument()
+})

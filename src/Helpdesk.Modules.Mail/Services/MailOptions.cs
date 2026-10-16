@@ -10,7 +10,17 @@ internal sealed class MailOptions
     /// <summary><c>Graph</c> (production) or <c>Fake</c> (Development/Testing only: an in-process mailbox simulator).</summary>
     public string Provider { get; set; } = "Graph";
 
-    /// <summary>Public HTTPS base URL Microsoft Graph calls back (webhook + lifecycle). Required for Graph subscriptions.</summary>
+    /// <summary>
+    /// How inbound mail is noticed. <c>Webhook</c> (default): Graph change-notification subscriptions nudge the 5-minute delta sync, which stays the source of truth.
+    /// <c>Polling</c>: an intentional operating mode with NO subscriptions (none are created, renewed or reported as failed); the 5-minute delta sync alone finds new mail.
+    /// Use it where Graph cannot reach the host (a private pilot); switch to <c>Webhook</c> when the host has an always-on public HTTPS endpoint.
+    /// </summary>
+    public string InboundMode { get; set; } = InboundModes.Webhook;
+
+    /// <summary>True when subscriptions are deliberately not used (see <see cref="InboundMode"/>).</summary>
+    public bool PollingOnly => string.Equals(InboundMode, InboundModes.Polling, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Public HTTPS base URL Microsoft Graph calls back (webhook + lifecycle). Required for Graph subscriptions (not in polling mode).</summary>
     public string? NotificationBaseUrl { get; set; }
 
     /// <summary>Target subscription lifetime. Documented maximum for Outlook messages without resource data is just under 7 days.</summary>
@@ -48,6 +58,15 @@ internal sealed class MailOptions
     public string? SystemMailbox { get; set; }
 
     public GraphOptions Graph { get; set; } = new();
+}
+
+internal static class InboundModes
+{
+    public const string Webhook = "Webhook";
+    public const string Polling = "Polling";
+
+    public static bool IsValid(string? mode) =>
+        string.Equals(mode, Webhook, StringComparison.OrdinalIgnoreCase) || string.Equals(mode, Polling, StringComparison.OrdinalIgnoreCase);
 }
 
 internal sealed class GraphOptions

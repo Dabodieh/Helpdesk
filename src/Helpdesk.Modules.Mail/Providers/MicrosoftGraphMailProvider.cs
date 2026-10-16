@@ -392,7 +392,7 @@ internal sealed class MicrosoftGraphMailProvider : IMailProvider
         }
 
         var status = (int)response.StatusCode;
-        var code = await ErrorCodeAsync(response, cancellationToken);
+        var (code, detail) = await ErrorAsync(response, cancellationToken);
         var retryAfter = response.Headers.RetryAfter?.Delta;
         response.Dispose();
         if (status is 429 or 408 || status >= 500)
@@ -400,7 +400,7 @@ internal sealed class MicrosoftGraphMailProvider : IMailProvider
             throw new TransientProviderException($"graph_{status}:{code}") { RetryAfter = retryAfter, Ambiguous = status != 429 };
         }
 
-        throw new PermanentProviderException($"graph_{status}", new InvalidOperationException(code));
+        throw new PermanentProviderException($"graph_{status}", new InvalidOperationException(detail));
     }
 
     private Uri Resolve(string pathOrUrl)
@@ -426,16 +426,19 @@ internal sealed class MicrosoftGraphMailProvider : IMailProvider
     }
 
     /// <summary>Only the Graph error CODE (e.g. ErrorItemNotFound) is kept: never the message text, which may echo content.</summary>
-    private static async Task<string> ErrorCodeAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    /// <summary>Graph's <c>error.code</c> and a short <c>error.message</c> ("code: message"; the message is only ever shown to administrators, never logged with content).</summary>
+    private static async Task<(string Code, string Detail)> ErrorAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         try
         {
             var json = await JsonNode.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
-            return json?["error"]?["code"]?.GetValue<string>() ?? "unknown";
+            var code = json?["error"]?["code"]?.GetValue<string>() ?? "unknown";
+            var message = json?["error"]?["message"]?.GetValue<string>();
+            return (code, string.IsNullOrWhiteSpace(message) ? code : $"{code}: {message}");
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
-            return "unknown";
+            return ("unknown", "unknown");
         }
     }
 

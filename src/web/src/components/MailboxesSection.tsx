@@ -81,7 +81,8 @@ function MailboxRow({ departmentId, mailbox: m }: { departmentId: string; mailbo
   })
   const server = fieldErrors(patch.error)
   const resub = useMutation({ mutationFn: () => retryMailboxSubscription(departmentId, m.id), onSettled: refresh })
-  const needsResub = m.isActive && m.subscription.state !== 'Active'
+  const polling = m.subscription.mode === 'polling'
+  const needsResub = m.isActive && !polling && m.subscription.state !== 'Active'
   return (
     <>
       <tr>
@@ -102,16 +103,23 @@ function MailboxRow({ departmentId, mailbox: m }: { departmentId: string; mailbo
         </td>
         <td>
           <span className="mailbox-sync">{m.lastSyncAt ? formatDateTime(m.lastSyncAt) : 'Never synced'}</span>
-          <details className="mailbox-subscription"><summary>Subscription: {m.subscription.state}</summary>
-            {m.subscription.expiresAt ? <span className="muted small">Expires {formatDateTime(m.subscription.expiresAt)}</span> : <span className="muted small">No expiry recorded</span>}
-          </details>
-          {m.lastSyncError && <span className="field-error small"> ({m.lastSyncError})</span>}
+          {polling ? (
+            <details className="mailbox-subscription"><summary>New mail: checked every 5 minutes (polling)</summary>
+              <span className="muted small">Webhook subscriptions are not used by this installation (intentional operating mode).</span>
+            </details>
+          ) : (
+            <details className="mailbox-subscription"><summary>Subscription: {m.subscription.state}</summary>
+              {m.subscription.expiresAt ? <span className="muted small">Expires {formatDateTime(m.subscription.expiresAt)}</span> : <span className="muted small">No expiry recorded</span>}
+              {m.subscription.error && <span className="field-error small"> Subscription error: {m.subscription.error}</span>}
+            </details>
+          )}
+          {m.lastSyncError && <span className="field-error small"> (Mail check failed: {m.lastSyncError})</span>}
           {resub.isError && <ErrorNotice error={resub.error} />}
           {resub.data && (
             <div role="status" className={resub.data.subscription.state === 'Active' ? 'muted small' : 'field-error small'}>
               {resub.data.subscription.state === 'Active'
                 ? `Subscription active${resub.data.subscription.expiresAt ? `, expires ${formatDateTime(resub.data.subscription.expiresAt)}` : ''}.`
-                : `Retry did not succeed: subscription ${resub.data.subscription.state}${resub.data.lastSyncError ? ` (${resub.data.lastSyncError})` : ''}.`}
+                : `Retry did not succeed: subscription ${resub.data.subscription.state}${resub.data.subscription.error ? ` (${resub.data.subscription.error})` : ''}.`}
             </div>
           )}
         </td>

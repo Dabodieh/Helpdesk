@@ -18,7 +18,7 @@ namespace Helpdesk.Modules.Mail.Persistence.Migrations
 #pragma warning disable 612, 618
             modelBuilder
                 .HasDefaultSchema("mail")
-                .HasAnnotation("ProductVersion", "10.0.12")
+                .HasAnnotation("ProductVersion", "10.0.13")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -407,6 +407,11 @@ namespace Helpdesk.Modules.Mail.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasColumnName("last_sync_error");
+
+                    b.Property<string>("SubscriptionError")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("subscription_error");
 
                     b.Property<DateTimeOffset?>("SubscriptionExpiresAt")
                         .HasColumnType("timestamp with time zone")

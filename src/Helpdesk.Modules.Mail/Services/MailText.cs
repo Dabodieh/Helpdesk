@@ -193,6 +193,22 @@ internal static partial class MailText
         return s.Length > 200 ? s[..200] : s;
     }
 
+    /// <summary>
+    /// <see cref="ShortError"/> plus, for a permanent provider failure, the provider's own error code and short message (Graph <c>error.code</c>/<c>error.message</c>),
+    /// so an operator can tell a validation failure from a permission failure. Control characters are removed; never contains a token or message content.
+    /// </summary>
+    public static string ShortSubscriptionError(Exception ex)
+    {
+        var s = ShortError(ex);
+        if (ex is Providers.PermanentProviderException { InnerException: InvalidOperationException inner } && !string.IsNullOrWhiteSpace(inner.Message))
+        {
+            var detail = new string([.. inner.Message.Where(c => !char.IsControl(c))]).Trim();
+            s += ": " + (detail.Length > 120 ? detail[..120] : detail);
+        }
+
+        return s.Length > 200 ? s[..200] : s;
+    }
+
     public static string FormatList(IEnumerable<string> items)
     {
         var sb = new StringBuilder();

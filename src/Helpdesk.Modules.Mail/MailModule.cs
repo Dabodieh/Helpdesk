@@ -36,9 +36,10 @@ public static class MailModule
                 o => o.Provider != "Graph" || (!string.IsNullOrWhiteSpace(o.Graph.TenantId) && !string.IsNullOrWhiteSpace(o.Graph.ClientId)
                     && (!string.IsNullOrWhiteSpace(o.Graph.ClientSecret) || !string.IsNullOrWhiteSpace(o.Graph.CertificatePath))),
                 "Mail:Graph needs TenantId, ClientId and a ClientSecret or CertificatePath (secrets via user-secrets or environment).")
+            .Validate(o => InboundModes.IsValid(o.InboundMode), "Mail:InboundMode must be Webhook or Polling.")
             .Validate(
-                o => o.Provider != "Graph" || (Uri.TryCreate(o.NotificationBaseUrl, UriKind.Absolute, out var u) && u.Scheme == Uri.UriSchemeHttps),
-                "Mail:NotificationBaseUrl must be a public https URL for Graph webhooks.")
+                o => o.Provider != "Graph" || o.PollingOnly || (Uri.TryCreate(o.NotificationBaseUrl, UriKind.Absolute, out var u) && u.Scheme == Uri.UriSchemeHttps),
+                "Mail:NotificationBaseUrl must be a public https URL for Graph webhooks (not needed when Mail:InboundMode is Polling).")
             .ValidateOnStart();
 
         var provider = configuration.GetSection(MailOptions.Section)[nameof(MailOptions.Provider)] ?? "Graph";

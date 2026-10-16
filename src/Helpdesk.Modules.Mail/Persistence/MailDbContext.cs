@@ -72,6 +72,7 @@ internal sealed class MailDbContext(DbContextOptions<MailDbContext> options) : D
             e.Property(x => x.DeltaToken).HasColumnName("delta_token");
             e.Property(x => x.LastSyncAt).HasColumnName("last_sync_at");
             e.Property(x => x.LastSyncError).HasColumnName("last_sync_error").HasMaxLength(200);
+            e.Property(x => x.SubscriptionError).HasColumnName("subscription_error").HasMaxLength(200);
             e.Property(x => x.ConsecutiveFailures).HasColumnName("consecutive_failures");
             e.Property(x => x.Dirty).HasColumnName("dirty");
 

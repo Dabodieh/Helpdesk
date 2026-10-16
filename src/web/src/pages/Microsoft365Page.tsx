@@ -48,14 +48,24 @@ function Overview({ s }: { s: Microsoft365Status }) {
       </li>
       <li>
         <h3>Receiving mail</h3>
-        <StatusBadge tone={s.notifications.mode === 'webhook' ? 'ok' : 'info'}>{s.notifications.mode === 'webhook' ? 'Notifications + check' : 'Simulator'}</StatusBadge>
+        <StatusBadge tone={s.notifications.mode === 'simulated' ? 'info' : 'ok'}>
+          {s.notifications.mode === 'webhook' ? 'Notifications + check' : s.notifications.mode === 'polling' ? 'Regular check (polling)' : 'Simulator'}
+        </StatusBadge>
         <dl className="kv">
-          <dt>Notification URL</dt>
-          <dd>{s.notifications.baseUrl ?? '–'}</dd>
+          {s.notifications.mode !== 'polling' && (
+            <>
+              <dt>Notification URL</dt>
+              <dd>{s.notifications.baseUrl ?? '–'}</dd>
+            </>
+          )}
           <dt>Regular check</dt>
-          <dd>Every {s.notifications.reconcileMinutes} min</dd>
-          <dt>Subscription life</dt>
-          <dd>{s.notifications.subscriptionLifetimeDays} days</dd>
+          <dd>Every {s.notifications.reconcileMinutes} min{s.notifications.mode === 'polling' ? ' (webhook subscriptions are intentionally not used)' : ''}</dd>
+          {s.notifications.mode !== 'polling' && (
+            <>
+              <dt>Subscription life</dt>
+              <dd>{s.notifications.subscriptionLifetimeDays} days</dd>
+            </>
+          )}
           <dt>System email</dt>
           <dd>{s.systemMailbox ?? 'Not set (invitations are not emailed)'}</dd>
         </dl>
@@ -128,8 +138,8 @@ function MailboxRow({ m }: { m: M365Mailbox }) {
             <dl className="kv">
               <dt>Inbound subscription</dt>
               <dd>
-                {m.subscriptionState}
-                {m.subscriptionExpiresAt ? `, renews before ${formatDateTime(m.subscriptionExpiresAt)}` : ''}
+                {m.subscriptionState === 'NotUsed' ? 'Not used (polling mode)' : m.subscriptionState}
+                {m.subscriptionState !== 'NotUsed' && m.subscriptionExpiresAt ? `, renews before ${formatDateTime(m.subscriptionExpiresAt)}` : ''}
               </dd>
               <dt>Last mail check</dt>
               <dd>{m.lastSyncAt ? `${formatDateTime(m.lastSyncAt)}${m.lastSyncFailed ? ' (failed)' : ''}` : 'Not yet'}</dd>

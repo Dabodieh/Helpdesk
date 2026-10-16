@@ -9,6 +9,7 @@ export const HEALTH_REASON: Record<string, string> = {
   subscription_failed: 'Inbound subscription failed',
   subscription_expired: 'Inbound subscription expired',
   subscription_expiring: 'Inbound subscription renewal is overdue',
+  sync_not_started: 'Waiting for the first mail check',
   sync_failing: 'Inbound sync is failing',
   sync_stale: 'Inbound sync has not run recently',
   outbound_uncertain: 'Some sends have an uncertain outcome',

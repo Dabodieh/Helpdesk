@@ -113,22 +113,32 @@ from hangfire.hash where key like 'recurring-job:%' and field in ('NextExecution
     Add-Check 'hangfire activity (10 min)' $(if ([int]$ok -gt 0) { 'PASS' } else { 'FAIL' }) "$ok succeeded"
 } catch { Add-Check 'hangfire' 'FAIL' "query failed: $($_.Exception.Message)" }
 
-# ---- Microsoft Graph subscription (database state only; no call to Microsoft) -----------------------------------------------------------------------
+# ---- Inbound mail: delta synchronisation, and (webhook mode only) the Graph subscription (database state only; no call to Microsoft) ------------------
+# Mail:InboundMode comes from the running container: Polling is an intentional operating mode with NO subscriptions, so a stored subscription record is not a finding.
+# last_sync_error is the DELTA error only; subscription_error is read through to_jsonb so this still works before the column exists.
 try {
-    $rows = @(Invoke-ProdSql "select m.is_active, s.subscription_state, extract(epoch from (s.subscription_expires_at - now())) / 3600, extract(epoch from (now() - s.last_sync_at)) / 60, s.consecutive_failures, coalesce(s.last_sync_error, '') from mail.mailboxes m left join mail.mailbox_sync s on s.mailbox_id = m.id")
+    $modeLine = & docker inspect $app --format '{{range .Config.Env}}{{println .}}{{end}}' 2>$null | Where-Object { $_ -like 'Mail__InboundMode=*' } | Select-Object -First 1
+    $polling = ($modeLine -replace '^Mail__InboundMode=', '').Trim() -ieq 'Polling'
+    $rows = @(Invoke-ProdSql "select m.is_active, s.subscription_state, extract(epoch from (s.subscription_expires_at - now())) / 3600, extract(epoch from (now() - s.last_sync_at)) / 60, s.consecutive_failures, coalesce(s.last_sync_error, ''), coalesce(to_jsonb(s) ->> 'subscription_error', '') from mail.mailboxes m left join mail.mailbox_sync s on s.mailbox_id = m.id")
     $i = 0
     foreach ($row in $rows) {
         $i++
-        $act, $state, $hours, $mins, $fails, $err = $row.Split('|')
+        $act, $state, $hours, $mins, $fails, $err, $suberr = $row.Split('|')
         if ($act -ne 't') { Add-Check "mailbox $i" 'PASS' 'inactive (not monitored)'; continue }
         $p = @()
-        if ($state -ne 'Active') { $p += "subscription=$state" }
-        if ($hours -eq '' -or [double]$hours -lt $MinSubscriptionHours) { $p += "expires in $([math]::Round([double]('0' + $hours), 1)) h" }
+        if (-not $polling) {
+            if ($state -ne 'Active') { $p += "subscription=$state" }
+            if ($hours -eq '' -or [double]$hours -lt $MinSubscriptionHours) { $p += "expires in $([math]::Round([double]('0' + $hours), 1)) h" }
+            if ($suberr) { $p += "subscription error: $suberr" }
+        }
         if ($mins -eq '' -or [double]$mins -gt $MaxSyncAgeMinutes) { $p += "last sync $([math]::Round([double]('0' + $mins), 0)) min ago" }
         if ([int]$fails -gt 0) { $p += "consecutive failures=$fails" }
-        if ($err) { $p += "last error: $err" }
-        if ($p.Count -eq 0) { Add-Check "mailbox $i subscription" 'PASS' ("Active, expires in {0:n0} h, last sync {1:n0} min ago" -f [double]$hours, [double]$mins) }
-        else { Add-Check "mailbox $i subscription" 'FAIL' ($p -join '; ') }
+        if ($err) { $p += "mail check error: $err" }
+        if ($p.Count -eq 0) {
+            if ($polling) { Add-Check "mailbox $i inbound mail" 'PASS' ("polling mode (intentional, no subscription), last sync {0:n0} min ago" -f [double]$mins) }
+            else { Add-Check "mailbox $i subscription" 'PASS' ("Active, expires in {0:n0} h, last sync {1:n0} min ago" -f [double]$hours, [double]$mins) }
+        }
+        else { Add-Check $(if ($polling) { "mailbox $i inbound mail" } else { "mailbox $i subscription" }) 'FAIL' ($p -join '; ') }
     }
     if ($i -eq 0) { Add-Check 'mailboxes' 'WARN' 'no mailbox configured' }
 } catch { Add-Check 'graph subscription' 'FAIL' "query failed: $($_.Exception.Message)" }

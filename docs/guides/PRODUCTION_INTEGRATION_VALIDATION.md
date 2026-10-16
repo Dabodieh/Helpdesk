@@ -141,7 +141,7 @@ Verified from outside without an Access session: both endpoints answer a POST wi
 
 Rollback: delete application `<webhook-app-id>` (webhooks then return to Access).
 
-Subscription for helpdesk-test-a: state `Failed`, no subscription yet. The next automatic attempt is the `mail-subscriptions` job (every 6 h, 00:00Z); delta sync (every 5 min) works without webhooks.
+(Superseded 2026-10-16: production now runs `Mail:InboundMode=Polling`, see `INBOUND_MAIL_MODES.md`.) Subscription for helpdesk-test-a: state `Failed`, no subscription yet. The next automatic attempt is the `mail-subscriptions` job (every 6 h, 00:00Z); delta sync (every 5 min) works without webhooks.
 
 ## 11. Manual subscription retry (2026-10-14)
 

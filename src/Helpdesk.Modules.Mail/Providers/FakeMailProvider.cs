@@ -52,6 +52,9 @@ internal sealed class FakeMailProvider : IMailProvider
     private int _sequence;
     private int _failNextSends;
     private int _failNextAttachmentFetches;
+    private int _failNextFetches;
+    private string? _failSubscriptionCode;
+    private string? _failSubscriptionDetail;
     private bool _failNextSendPermanently;
     private int _timeoutNextSends;
     private bool _timeoutNextSendsReach;
@@ -230,6 +233,25 @@ internal sealed class FakeMailProvider : IMailProvider
         }
     }
 
+    /// <summary>The next <paramref name="count"/> delta fetches fail with a transient error (a failing mail check, independent of any subscription).</summary>
+    public void FailNextFetches(int count)
+    {
+        lock (_gate)
+        {
+            _failNextFetches = count;
+        }
+    }
+
+    /// <summary>Every subscription create and renew fails permanently with <paramref name="code"/> (and the provider's own <paramref name="detail"/>) until called with null.</summary>
+    public void FailSubscriptionCalls(string? code, string detail = "ExtensionError: Subscription validation request failed.")
+    {
+        lock (_gate)
+        {
+            _failSubscriptionCode = code;
+            _failSubscriptionDetail = detail;
+        }
+    }
+
     public int SubscriptionCount
     {
         get
@@ -247,6 +269,11 @@ internal sealed class FakeMailProvider : IMailProvider
     {
         lock (_gate)
         {
+            if (_failSubscriptionCode is not null)
+            {
+                throw new PermanentProviderException(_failSubscriptionCode, new InvalidOperationException(_failSubscriptionDetail));
+            }
+
             var id = "sub-" + Guid.NewGuid().ToString("N");
             _subscriptions[id] = mailbox.Address;
             _clientStates[id] = request.ClientState;
@@ -258,6 +285,11 @@ internal sealed class FakeMailProvider : IMailProvider
     {
         lock (_gate)
         {
+            if (_failSubscriptionCode is not null)
+            {
+                throw new PermanentProviderException(_failSubscriptionCode, new InvalidOperationException(_failSubscriptionDetail));
+            }
+
             if (!_subscriptions.ContainsKey(subscriptionId))
             {
                 throw new PermanentProviderException("subscription_not_found");
@@ -281,6 +313,12 @@ internal sealed class FakeMailProvider : IMailProvider
     {
         lock (_gate)
         {
+            if (_failNextFetches > 0)
+            {
+                _failNextFetches--;
+                throw new TransientProviderException("graph_503:serviceNotAvailable");
+            }
+
             var since = 0;
             if (deltaToken is not null && !int.TryParse(deltaToken, NumberStyles.None, CultureInfo.InvariantCulture, out since))
             {

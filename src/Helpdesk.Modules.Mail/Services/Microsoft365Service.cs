@@ -124,7 +124,7 @@ internal sealed partial class Microsoft365Service(
             configuration.GetValue<bool>("Authentication:DevSignIn:Enabled"), "/api/auth/signin-oidc");
 
         var publicHttps = Uri.TryCreate(settings.NotificationBaseUrl, UriKind.Absolute, out var url) && url.Scheme == Uri.UriSchemeHttps;
-        var notifications = new NotificationsDto(simulated ? "simulated" : "webhook", settings.NotificationBaseUrl, publicHttps, ReconcileMinutes, settings.SubscriptionLifetimeDays);
+        var notifications = new NotificationsDto(simulated ? "simulated" : settings.PollingOnly ? "polling" : "webhook", settings.NotificationBaseUrl, publicHttps, ReconcileMinutes, settings.SubscriptionLifetimeDays);
 
         var all = await mailboxes.ListAllAsync(ct);
         var departments = await organisation.GetDepartmentsAsync([.. all.Select(m => m.DepartmentId).Distinct()], ct);

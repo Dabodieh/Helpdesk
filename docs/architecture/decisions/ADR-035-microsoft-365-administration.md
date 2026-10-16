@@ -19,4 +19,4 @@ Administrators needed one place to see how Helpdesk uses Microsoft 365 and a gui
 
 - Platform administrators can see mailbox health across departments (address, department, health, sync, delivery counts). No ticket content is involved.
 - Helpdesk never deletes a Microsoft 365 mailbox, including when setup is abandoned.
-- Local Docker without a public HTTPS address: the Graph provider currently requires `Mail:NotificationBaseUrl` to be a public https URL at startup, because subscriptions are created when a mailbox is registered (D-19).
+- Local Docker without a public HTTPS address: `Mail:InboundMode=Polling` (D-19, built 2026-10-16) skips webhook subscriptions entirely and needs no public `Mail:NotificationBaseUrl`; in the default `Webhook` mode the Graph provider still requires a public https URL at startup, because subscriptions are created when a mailbox is registered. See `docs/guides/INBOUND_MAIL_MODES.md`.

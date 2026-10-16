@@ -99,6 +99,9 @@ services:
       Authentication__Entra__ClientSecret: ${ENTRA_CLIENT_SECRET:-}
       Authentication__BootstrapPlatformAdminSubjects__0: ${BOOTSTRAP_PLATFORM_ADMIN_SUBJECT:-}
       Mail__Provider: Graph
+      # Inbound mail: Polling = the 5-minute delta sync only, no Graph webhook subscriptions (the supported mode while the host is private; docs/guides/INBOUND_MAIL_MODES.md).
+      # Webhook = subscriptions nudge the same sync; needs an always-on public https endpoint and the Access bypass for the two Graph paths.
+      Mail__InboundMode: ${MAIL_INBOUND_MODE:-Polling}
       Mail__NotificationBaseUrl: https://${PUBLIC_HOST:-helpdesk.amb-it.co.uk}
       Mail__Graph__TenantId: ${GRAPH_TENANT_ID:-}
       Mail__Graph__ClientId: ${GRAPH_CLIENT_ID:-}
